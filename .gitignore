@@ -1,0 +1,7 @@
+# temp / scratch from local verification & profiling
+_*.html
+_bundle.js
+
+# OS cruft
+Thumbs.db
+.DS_Store
