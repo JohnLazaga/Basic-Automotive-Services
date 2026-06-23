@@ -45,13 +45,162 @@ function cloudBoot(){
 }
 
 async function onSignedIn(user){
-  // Increment 1: load data locally; the Firestore swap replaces this next.
-  await loadState();
+  renderCloudLoading();
+  try {
+    await cloudLoadAll();
+  } catch(e){
+    console.error('cloud load failed', e);
+    renderCloudError('Couldn’t load shop data.', (e&&e.message)||'Check your connection and reload.');
+    return;
+  }
   applyTheme((S.shop && S.shop.theme) || 'light');
+  cloudSubscribe();
   render();
-  // surface who is signed in (added to the top bar by the shell)
   updateUserChip();
 }
+
+function renderCloudLoading(){
+  var app=(typeof document!=='undefined') && document.getElementById('app'); if(!app) return;
+  app.innerHTML='<div class="login-bg"><div class="login-card">'+
+    '<img class="login-logo" src="'+LOGO_LOCKUP+'" alt="Basic by JMSI"/>'+
+    '<div class="login-sub">Loading shop data…</div>'+
+    '<div class="cloud-spin"></div></div></div>';
+}
+
+/* ============================================================================
+   Firestore data layer (increment 2.2)
+   - One-time migration of current local data when the cloud is empty.
+   - Load all collections into S; keep S as the in-memory working cache.
+   - Real-time listeners merge remote changes (skipping local echoes).
+   - Writes go through cloudPersist(): diff S vs last snapshot, upsert/delete.
+   - Job photos are uploaded to Firebase Storage so docs stay under 1 MB.
+   ========================================================================== */
+var COLLECTIONS = ['staff','bays','parts','labor','vehicles','estimates','jobs','appointments','purchaseOrders'];
+var _cloudSnap = {};       /* {collection: {id: jsonString}} — for diffing */
+var _cloudSubs = [];       /* unsubscribe fns */
+var _applyingRemote = false;
+
+function plain(o){ return JSON.parse(JSON.stringify(o)); }          /* drops undefined/functions */
+function snapMap(arr){ var m={}; (arr||[]).forEach(function(r){ m[r.id]=JSON.stringify(r); }); return m; }
+function modalOpen(){ return typeof document!=='undefined' && !!document.querySelector('#modalRoot .modal'); }
+
+async function cloudLoadAll(){
+  // is the cloud already populated?
+  var shopDoc = await FB.db.collection('meta').doc('shop').get();
+  if (!shopDoc.exists){
+    // empty cloud → migrate from current local data (or a fresh seed)
+    var raw = await Storage.get(STORE_KEY);
+    var base = null; try { base = raw ? JSON.parse(raw) : null; } catch(e){}
+    if (!base || base.version!==2) base = seedState();
+    await cloudMigrate(base);
+  }
+  S = await cloudFetchState();
+  ensureStateShape();
+  rememberSnap();
+}
+
+function ensureStateShape(){
+  COLLECTIONS.forEach(function(c){ if(!Array.isArray(S[c])) S[c]=[]; });
+  if(!S.counters) S.counters={ est:0, jo:0, or:1000, po:0 };
+  if(!S.shop) S.shop=seedState().shop;
+  if(!S.shop.theme) S.shop.theme='light';
+}
+
+async function cloudFetchState(){
+  var st = seedState();              // defaults for shop/counters + array shape
+  var shopDoc = await FB.db.collection('meta').doc('shop').get();
+  if (shopDoc.exists) st.shop = Object.assign(st.shop, shopDoc.data());
+  var cntDoc = await FB.db.collection('meta').doc('counters').get();
+  if (cntDoc.exists) st.counters = Object.assign(st.counters, cntDoc.data());
+  for (var i=0;i<COLLECTIONS.length;i++){
+    var c = COLLECTIONS[i];
+    var snap = await FB.db.collection(c).get();
+    st[c] = snap.docs.map(function(d){ return d.data(); });
+  }
+  return st;
+}
+
+async function cloudMigrate(base){
+  await FB.db.collection('meta').doc('shop').set(plain(base.shop||{}));
+  await FB.db.collection('meta').doc('counters').set(plain(base.counters||{est:0,jo:0,or:1000,po:0}));
+  for (var i=0;i<COLLECTIONS.length;i++){
+    var c = COLLECTIONS[i]; var arr = base[c]||[];
+    for (var j=0;j<arr.length;j++){
+      var rec = arr[j]; if (c==='jobs') await uploadJobPhotos(rec);
+      await FB.db.collection(c).doc(rec.id).set(plain(rec));
+    }
+  }
+}
+
+async function cloudFetchState_noop(){}  /* reserved */
+
+/* ---- Write path: diff S against last snapshot, sync changes -------------- */
+async function cloudPersist(){
+  if (!FB.ready || !FB.user || _applyingRemote) return;
+  // meta (shop + counters) — last-write-wins (fine for a single shop)
+  await FB.db.collection('meta').doc('shop').set(plain(S.shop));
+  await FB.db.collection('meta').doc('counters').set(plain(S.counters));
+  for (var i=0;i<COLLECTIONS.length;i++){
+    var c = COLLECTIONS[i];
+    var cur = {}; (S[c]||[]).forEach(function(r){ cur[r.id]=r; });
+    var prev = _cloudSnap[c] || {};
+    // upserts (new or changed)
+    var ids = Object.keys(cur);
+    for (var k=0;k<ids.length;k++){
+      var id = ids[k], rec = cur[id];
+      if (prev[id] === JSON.stringify(rec)) continue;          // unchanged
+      if (c==='jobs') await uploadJobPhotos(rec);              // relocate base64 → Storage
+      await FB.db.collection(c).doc(id).set(plain(rec));
+    }
+    // deletes (gone from S)
+    var prevIds = Object.keys(prev);
+    for (var d=0; d<prevIds.length; d++){ if(!cur[prevIds[d]]) await FB.db.collection(c).doc(prevIds[d]).delete(); }
+  }
+  rememberSnap();
+}
+
+function rememberSnap(){ COLLECTIONS.forEach(function(c){ _cloudSnap[c]=snapMap(S[c]); }); }
+
+/* ---- Photos → Firebase Storage ------------------------------------------- */
+async function uploadJobPhotos(job){
+  if (!job || !Array.isArray(job.photos) || !FB.storage) return;
+  for (var i=0;i<job.photos.length;i++){
+    var p = job.photos[i];
+    if (p.url || !p.data) continue;                            // already uploaded / nothing to do
+    try {
+      var ref = FB.storage.ref('photos/'+job.id+'/'+p.id+'.jpg');
+      await ref.putString(p.data, 'data_url');
+      var url = await ref.getDownloadURL();
+      job.photos[i] = { id:p.id, url:url, caption:p.caption||'', ts:p.ts };
+    } catch(e){ console.error('photo upload failed', e); /* keep base64 as fallback */ }
+  }
+}
+
+/* ---- Real-time listeners ------------------------------------------------- */
+function cloudSubscribe(){
+  cloudUnsub();
+  COLLECTIONS.forEach(function(c){
+    var u = FB.db.collection(c).onSnapshot(function(snap){
+      if (snap.metadata.hasPendingWrites) return;             // ignore our own local writes
+      _applyingRemote = true;
+      S[c] = snap.docs.map(function(d){ return d.data(); });
+      _cloudSnap[c] = snapMap(S[c]);
+      _applyingRemote = false;
+      if (!modalOpen()) render();
+    }, function(err){ console.error('listener '+c, err); });
+    _cloudSubs.push(u);
+  });
+  var um = FB.db.collection('meta').onSnapshot(function(snap){
+    if (snap.metadata.hasPendingWrites) return;
+    snap.docs.forEach(function(d){
+      if (d.id==='shop') S.shop = Object.assign(S.shop||{}, d.data());
+      if (d.id==='counters') S.counters = Object.assign(S.counters||{}, d.data());
+    });
+    if (!modalOpen()) render();
+  });
+  _cloudSubs.push(um);
+}
+function cloudUnsub(){ _cloudSubs.forEach(function(u){ try{u();}catch(e){} }); _cloudSubs=[]; }
 
 /* ---- Login screen --------------------------------------------------------- */
 function renderLogin(msg, kind, connecting){

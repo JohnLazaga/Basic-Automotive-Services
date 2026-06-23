@@ -33,7 +33,7 @@ function portalHTML(){
       '<div class="p-big">'+(v.nextServiceDate? (due?'⚠ Overdue · ':'')+fmtDate(v.nextServiceDate) : 'Not scheduled')+'</div>'+
       (v.nextServiceOdo?'<div class="p-card-s">or at '+num(v.nextServiceOdo)+' km</div>':'')+'</div>'+
     '<div class="p-card"><div class="p-card-t">Service history</div>'+timeline+'</div>'+
-    (photos.length?'<div class="p-card"><div class="p-card-t">Photos</div><div class="p-photos">'+photos.slice(0,12).map(function(p){return '<img src="'+p.data+'"/>';}).join('')+'</div></div>':'')+
+    (photos.length?'<div class="p-card"><div class="p-card-t">Photos</div><div class="p-photos">'+photos.slice(0,12).map(function(p){return '<img src="'+(p.url||p.data)+'"/>';}).join('')+'</div></div>':'')+
     '<div class="p-card"><div class="p-card-t">Contact</div><div class="p-contact">'+esc(S.shop.name)+'<br>'+esc(S.shop.address)+'<br>'+esc(S.shop.contact)+'</div>'+
       '<a class="p-btn" href="tel:'+esc((S.shop.contact||'').replace(/[^0-9+]/g,''))+'">Call the shop</a></div>'+
     '<div class="p-foot">Read-only customer portal · powered by '+esc(S.shop.name)+'</div>'+

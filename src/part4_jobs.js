@@ -322,14 +322,14 @@ function saveInspection(){
 /* ---- Photos panel --------------------------------------------------------- */
 function jobPhotosPanel(j){
   var grid=(j.photos||[]).map(function(p){
-    return '<div class="thumb"><img src="'+p.data+'" onclick="openLightbox(_photoSrc(\''+j.id+'\',\''+p.id+'\'))"/>'+
+    return '<div class="thumb"><img src="'+(p.url||p.data)+'" onclick="openLightbox(_photoSrc(\''+j.id+'\',\''+p.id+'\'))"/>'+
       '<button class="thumb-x" onclick="delPhoto(\''+j.id+'\',\''+p.id+'\')">✕</button></div>';
   }).join('');
   return '<div class="card"><div class="card-head"><h2>Photos <span class="muted small">('+(j.photos||[]).length+'/12)</span></h2>'+
     '<label class="btn sm"><input type="file" accept="image/*" multiple style="display:none" onchange="addPhotos(\''+j.id+'\',this.files)">＋ Add photos</label></div>'+
     '<div class="thumbs">'+(grid||emptyState('No photos attached.'))+'</div></div>';
 }
-function _photoSrc(jid,pid){ var j=jobById(jid); var p=(j.photos||[]).find(function(x){return x.id===pid;}); return p?p.data:''; }
+function _photoSrc(jid,pid){ var j=jobById(jid); var p=(j.photos||[]).find(function(x){return x.id===pid;}); return p?(p.url||p.data):''; }
 function addPhotos(id,files){
   var j=jobById(id);
   handlePhotoFiles(files, function(datas){

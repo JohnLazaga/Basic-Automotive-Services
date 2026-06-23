@@ -268,6 +268,8 @@ textarea{resize:vertical} .chk{display:flex;align-items:center;gap:8px;font-size
 .lg-msg{border-radius:10px;padding:9px 12px;font-size:12.5px;margin-bottom:14px;text-align:left}
 .lg-msg.err{background:rgba(242,23,23,.16);color:#ff9a9a;border:1px solid rgba(242,23,23,.35)}
 .lg-msg.ok{background:rgba(52,199,89,.16);color:#7fe6a0;border:1px solid rgba(52,199,89,.3)}
+.cloud-spin{width:26px;height:26px;margin:18px auto 4px;border:3px solid rgba(255,255,255,.15);border-top-color:var(--brand);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
 .lg-status{margin-top:16px;font-size:11px;color:#7a7a80}
 .lg-status.ok b{color:#9a9a9f}
 .userchip{font-size:12px;color:var(--ink2);background:var(--canvas);padding:3px 10px;border-radius:20px;max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -508,12 +510,18 @@ var S = null;                 // the single state object
 var SAVE_TIMER = null;
 
 function persist(){
-  // debounced save with indicator
+  // debounced save with indicator. In cloud mode, sync changed records to
+  // Firestore; otherwise fall back to the local storage adapter.
   setSaveState('saving');
   if (SAVE_TIMER) clearTimeout(SAVE_TIMER);
   SAVE_TIMER = setTimeout(function(){
-    Storage.set(STORE_KEY, JSON.stringify(S)).then(function(){ setSaveState('saved'); });
-  }, 350);
+    if (typeof cloudOn==='function' && cloudOn() && typeof FB!=='undefined' && FB && FB.ready && FB.user){
+      cloudPersist().then(function(){ setSaveState('saved'); })
+        .catch(function(e){ console.error('cloud save failed', e); setSaveState('saved'); });
+    } else {
+      Storage.set(STORE_KEY, JSON.stringify(S)).then(function(){ setSaveState('saved'); });
+    }
+  }, 400);
 }
 function setSaveState(st){
   if (typeof document==='undefined') return;
@@ -1513,14 +1521,14 @@ function saveInspection(){
 /* ---- Photos panel --------------------------------------------------------- */
 function jobPhotosPanel(j){
   var grid=(j.photos||[]).map(function(p){
-    return '<div class="thumb"><img src="'+p.data+'" onclick="openLightbox(_photoSrc(\''+j.id+'\',\''+p.id+'\'))"/>'+
+    return '<div class="thumb"><img src="'+(p.url||p.data)+'" onclick="openLightbox(_photoSrc(\''+j.id+'\',\''+p.id+'\'))"/>'+
       '<button class="thumb-x" onclick="delPhoto(\''+j.id+'\',\''+p.id+'\')">✕</button></div>';
   }).join('');
   return '<div class="card"><div class="card-head"><h2>Photos <span class="muted small">('+(j.photos||[]).length+'/12)</span></h2>'+
     '<label class="btn sm"><input type="file" accept="image/*" multiple style="display:none" onchange="addPhotos(\''+j.id+'\',this.files)">＋ Add photos</label></div>'+
     '<div class="thumbs">'+(grid||emptyState('No photos attached.'))+'</div></div>';
 }
-function _photoSrc(jid,pid){ var j=jobById(jid); var p=(j.photos||[]).find(function(x){return x.id===pid;}); return p?p.data:''; }
+function _photoSrc(jid,pid){ var j=jobById(jid); var p=(j.photos||[]).find(function(x){return x.id===pid;}); return p?(p.url||p.data):''; }
 function addPhotos(id,files){
   var j=jobById(id);
   handlePhotoFiles(files, function(datas){
@@ -2665,7 +2673,7 @@ function portalHTML(){
       '<div class="p-big">'+(v.nextServiceDate? (due?'⚠ Overdue · ':'')+fmtDate(v.nextServiceDate) : 'Not scheduled')+'</div>'+
       (v.nextServiceOdo?'<div class="p-card-s">or at '+num(v.nextServiceOdo)+' km</div>':'')+'</div>'+
     '<div class="p-card"><div class="p-card-t">Service history</div>'+timeline+'</div>'+
-    (photos.length?'<div class="p-card"><div class="p-card-t">Photos</div><div class="p-photos">'+photos.slice(0,12).map(function(p){return '<img src="'+p.data+'"/>';}).join('')+'</div></div>':'')+
+    (photos.length?'<div class="p-card"><div class="p-card-t">Photos</div><div class="p-photos">'+photos.slice(0,12).map(function(p){return '<img src="'+(p.url||p.data)+'"/>';}).join('')+'</div></div>':'')+
     '<div class="p-card"><div class="p-card-t">Contact</div><div class="p-contact">'+esc(S.shop.name)+'<br>'+esc(S.shop.address)+'<br>'+esc(S.shop.contact)+'</div>'+
       '<a class="p-btn" href="tel:'+esc((S.shop.contact||'').replace(/[^0-9+]/g,''))+'">Call the shop</a></div>'+
     '<div class="p-foot">Read-only customer portal · powered by '+esc(S.shop.name)+'</div>'+
@@ -2771,13 +2779,162 @@ function cloudBoot(){
 }
 
 async function onSignedIn(user){
-  // Increment 1: load data locally; the Firestore swap replaces this next.
-  await loadState();
+  renderCloudLoading();
+  try {
+    await cloudLoadAll();
+  } catch(e){
+    console.error('cloud load failed', e);
+    renderCloudError('Couldn’t load shop data.', (e&&e.message)||'Check your connection and reload.');
+    return;
+  }
   applyTheme((S.shop && S.shop.theme) || 'light');
+  cloudSubscribe();
   render();
-  // surface who is signed in (added to the top bar by the shell)
   updateUserChip();
 }
+
+function renderCloudLoading(){
+  var app=(typeof document!=='undefined') && document.getElementById('app'); if(!app) return;
+  app.innerHTML='<div class="login-bg"><div class="login-card">'+
+    '<img class="login-logo" src="'+LOGO_LOCKUP+'" alt="Basic by JMSI"/>'+
+    '<div class="login-sub">Loading shop data…</div>'+
+    '<div class="cloud-spin"></div></div></div>';
+}
+
+/* ============================================================================
+   Firestore data layer (increment 2.2)
+   - One-time migration of current local data when the cloud is empty.
+   - Load all collections into S; keep S as the in-memory working cache.
+   - Real-time listeners merge remote changes (skipping local echoes).
+   - Writes go through cloudPersist(): diff S vs last snapshot, upsert/delete.
+   - Job photos are uploaded to Firebase Storage so docs stay under 1 MB.
+   ========================================================================== */
+var COLLECTIONS = ['staff','bays','parts','labor','vehicles','estimates','jobs','appointments','purchaseOrders'];
+var _cloudSnap = {};       /* {collection: {id: jsonString}} — for diffing */
+var _cloudSubs = [];       /* unsubscribe fns */
+var _applyingRemote = false;
+
+function plain(o){ return JSON.parse(JSON.stringify(o)); }          /* drops undefined/functions */
+function snapMap(arr){ var m={}; (arr||[]).forEach(function(r){ m[r.id]=JSON.stringify(r); }); return m; }
+function modalOpen(){ return typeof document!=='undefined' && !!document.querySelector('#modalRoot .modal'); }
+
+async function cloudLoadAll(){
+  // is the cloud already populated?
+  var shopDoc = await FB.db.collection('meta').doc('shop').get();
+  if (!shopDoc.exists){
+    // empty cloud → migrate from current local data (or a fresh seed)
+    var raw = await Storage.get(STORE_KEY);
+    var base = null; try { base = raw ? JSON.parse(raw) : null; } catch(e){}
+    if (!base || base.version!==2) base = seedState();
+    await cloudMigrate(base);
+  }
+  S = await cloudFetchState();
+  ensureStateShape();
+  rememberSnap();
+}
+
+function ensureStateShape(){
+  COLLECTIONS.forEach(function(c){ if(!Array.isArray(S[c])) S[c]=[]; });
+  if(!S.counters) S.counters={ est:0, jo:0, or:1000, po:0 };
+  if(!S.shop) S.shop=seedState().shop;
+  if(!S.shop.theme) S.shop.theme='light';
+}
+
+async function cloudFetchState(){
+  var st = seedState();              // defaults for shop/counters + array shape
+  var shopDoc = await FB.db.collection('meta').doc('shop').get();
+  if (shopDoc.exists) st.shop = Object.assign(st.shop, shopDoc.data());
+  var cntDoc = await FB.db.collection('meta').doc('counters').get();
+  if (cntDoc.exists) st.counters = Object.assign(st.counters, cntDoc.data());
+  for (var i=0;i<COLLECTIONS.length;i++){
+    var c = COLLECTIONS[i];
+    var snap = await FB.db.collection(c).get();
+    st[c] = snap.docs.map(function(d){ return d.data(); });
+  }
+  return st;
+}
+
+async function cloudMigrate(base){
+  await FB.db.collection('meta').doc('shop').set(plain(base.shop||{}));
+  await FB.db.collection('meta').doc('counters').set(plain(base.counters||{est:0,jo:0,or:1000,po:0}));
+  for (var i=0;i<COLLECTIONS.length;i++){
+    var c = COLLECTIONS[i]; var arr = base[c]||[];
+    for (var j=0;j<arr.length;j++){
+      var rec = arr[j]; if (c==='jobs') await uploadJobPhotos(rec);
+      await FB.db.collection(c).doc(rec.id).set(plain(rec));
+    }
+  }
+}
+
+async function cloudFetchState_noop(){}  /* reserved */
+
+/* ---- Write path: diff S against last snapshot, sync changes -------------- */
+async function cloudPersist(){
+  if (!FB.ready || !FB.user || _applyingRemote) return;
+  // meta (shop + counters) — last-write-wins (fine for a single shop)
+  await FB.db.collection('meta').doc('shop').set(plain(S.shop));
+  await FB.db.collection('meta').doc('counters').set(plain(S.counters));
+  for (var i=0;i<COLLECTIONS.length;i++){
+    var c = COLLECTIONS[i];
+    var cur = {}; (S[c]||[]).forEach(function(r){ cur[r.id]=r; });
+    var prev = _cloudSnap[c] || {};
+    // upserts (new or changed)
+    var ids = Object.keys(cur);
+    for (var k=0;k<ids.length;k++){
+      var id = ids[k], rec = cur[id];
+      if (prev[id] === JSON.stringify(rec)) continue;          // unchanged
+      if (c==='jobs') await uploadJobPhotos(rec);              // relocate base64 → Storage
+      await FB.db.collection(c).doc(id).set(plain(rec));
+    }
+    // deletes (gone from S)
+    var prevIds = Object.keys(prev);
+    for (var d=0; d<prevIds.length; d++){ if(!cur[prevIds[d]]) await FB.db.collection(c).doc(prevIds[d]).delete(); }
+  }
+  rememberSnap();
+}
+
+function rememberSnap(){ COLLECTIONS.forEach(function(c){ _cloudSnap[c]=snapMap(S[c]); }); }
+
+/* ---- Photos → Firebase Storage ------------------------------------------- */
+async function uploadJobPhotos(job){
+  if (!job || !Array.isArray(job.photos) || !FB.storage) return;
+  for (var i=0;i<job.photos.length;i++){
+    var p = job.photos[i];
+    if (p.url || !p.data) continue;                            // already uploaded / nothing to do
+    try {
+      var ref = FB.storage.ref('photos/'+job.id+'/'+p.id+'.jpg');
+      await ref.putString(p.data, 'data_url');
+      var url = await ref.getDownloadURL();
+      job.photos[i] = { id:p.id, url:url, caption:p.caption||'', ts:p.ts };
+    } catch(e){ console.error('photo upload failed', e); /* keep base64 as fallback */ }
+  }
+}
+
+/* ---- Real-time listeners ------------------------------------------------- */
+function cloudSubscribe(){
+  cloudUnsub();
+  COLLECTIONS.forEach(function(c){
+    var u = FB.db.collection(c).onSnapshot(function(snap){
+      if (snap.metadata.hasPendingWrites) return;             // ignore our own local writes
+      _applyingRemote = true;
+      S[c] = snap.docs.map(function(d){ return d.data(); });
+      _cloudSnap[c] = snapMap(S[c]);
+      _applyingRemote = false;
+      if (!modalOpen()) render();
+    }, function(err){ console.error('listener '+c, err); });
+    _cloudSubs.push(u);
+  });
+  var um = FB.db.collection('meta').onSnapshot(function(snap){
+    if (snap.metadata.hasPendingWrites) return;
+    snap.docs.forEach(function(d){
+      if (d.id==='shop') S.shop = Object.assign(S.shop||{}, d.data());
+      if (d.id==='counters') S.counters = Object.assign(S.counters||{}, d.data());
+    });
+    if (!modalOpen()) render();
+  });
+  _cloudSubs.push(um);
+}
+function cloudUnsub(){ _cloudSubs.forEach(function(u){ try{u();}catch(e){} }); _cloudSubs=[]; }
 
 /* ---- Login screen --------------------------------------------------------- */
 function renderLogin(msg, kind, connecting){

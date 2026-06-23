@@ -153,12 +153,18 @@ var S = null;                 // the single state object
 var SAVE_TIMER = null;
 
 function persist(){
-  // debounced save with indicator
+  // debounced save with indicator. In cloud mode, sync changed records to
+  // Firestore; otherwise fall back to the local storage adapter.
   setSaveState('saving');
   if (SAVE_TIMER) clearTimeout(SAVE_TIMER);
   SAVE_TIMER = setTimeout(function(){
-    Storage.set(STORE_KEY, JSON.stringify(S)).then(function(){ setSaveState('saved'); });
-  }, 350);
+    if (typeof cloudOn==='function' && cloudOn() && typeof FB!=='undefined' && FB && FB.ready && FB.user){
+      cloudPersist().then(function(){ setSaveState('saved'); })
+        .catch(function(e){ console.error('cloud save failed', e); setSaveState('saved'); });
+    } else {
+      Storage.set(STORE_KEY, JSON.stringify(S)).then(function(){ setSaveState('saved'); });
+    }
+  }, 400);
 }
 function setSaveState(st){
   if (typeof document==='undefined') return;
