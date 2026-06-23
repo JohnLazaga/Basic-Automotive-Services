@@ -91,6 +91,10 @@ function topbarHTML(){
       '<span class="tb-stat">'+openJobs+' active</span>'+
       '<span id="saveState" class="savestate" data-st="saved">All changes saved</span>'+
       '<button class="iconbtn" id="themeBtn" onclick="toggleTheme()" title="Toggle dark mode" aria-label="Toggle dark mode">'+(THEME==='dark'?'☀':'☾')+'</button>'+
+      ((typeof cloudOn==='function' && cloudOn() && FB && FB.user)
+        ? '<span class="userchip" id="userChip" title="Signed in">'+esc(FB.user.email||'')+'</span>'+
+          '<button class="iconbtn" onclick="doLogout()" title="Sign out" aria-label="Sign out">⎋</button>'
+        : '')+
     '</div>'+
   '</header>';
 }

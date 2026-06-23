@@ -53,6 +53,8 @@ function previewPortal(id){
 
 /* ---- Boot ----------------------------------------------------------------- */
 async function boot(){
+  // Cloud mode: require staff sign-in first; cloudBoot() drives rendering.
+  if (typeof cloudOn==='function' && cloudOn()){ cloudBoot(); return; }
   await loadState();
   applyTheme((S.shop && S.shop.theme) || 'light');
   render();
