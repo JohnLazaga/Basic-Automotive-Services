@@ -5,3 +5,5 @@ _bundle.js
 # OS cruft
 Thumbs.db
 .DS_Store
+
+makeDiag.js
