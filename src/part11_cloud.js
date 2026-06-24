@@ -106,6 +106,7 @@ function renderCloudLoading(){
    ========================================================================== */
 var COLLECTIONS = ['staff','bays','parts','labor','vehicles','estimates','jobs','appointments','purchaseOrders'];
 var _cloudSnap = {};       /* {collection: {id: jsonString}} — for diffing */
+var _metaSnap = { shop:null, counters:null };  /* last-synced meta docs */
 var _cloudSubs = [];       /* unsubscribe fns */
 var _applyingRemote = false;
 
@@ -166,9 +167,13 @@ async function cloudFetchState_noop(){}  /* reserved */
 /* ---- Write path: diff S against last snapshot, sync changes -------------- */
 async function cloudPersist(){
   if (!FB.ready || !FB.user || _applyingRemote) return;
-  // meta (shop + counters) — last-write-wins (fine for a single shop)
-  await FB.db.collection('meta').doc('shop').set(plain(S.shop));
-  await FB.db.collection('meta').doc('counters').set(plain(S.counters));
+  // meta — write only when changed. shop/permissions are admin-only at the DB
+  // level; counters are written by any active staff during normal ops, so we
+  // must not blindly write shop on every save (non-admins would be denied).
+  var shopJSON = JSON.stringify(S.shop);
+  if (shopJSON !== _metaSnap.shop){ await FB.db.collection('meta').doc('shop').set(plain(S.shop)); _metaSnap.shop = shopJSON; }
+  var cntJSON = JSON.stringify(S.counters);
+  if (cntJSON !== _metaSnap.counters){ await FB.db.collection('meta').doc('counters').set(plain(S.counters)); _metaSnap.counters = cntJSON; }
   for (var i=0;i<COLLECTIONS.length;i++){
     var c = COLLECTIONS[i];
     var cur = {}; (S[c]||[]).forEach(function(r){ cur[r.id]=r; });
@@ -188,7 +193,11 @@ async function cloudPersist(){
   rememberSnap();
 }
 
-function rememberSnap(){ COLLECTIONS.forEach(function(c){ _cloudSnap[c]=snapMap(S[c]); }); }
+function rememberSnap(){
+  COLLECTIONS.forEach(function(c){ _cloudSnap[c]=snapMap(S[c]); });
+  _metaSnap.shop = JSON.stringify(S.shop);
+  _metaSnap.counters = JSON.stringify(S.counters);
+}
 
 /* ---- Photos → Firebase Storage ------------------------------------------- */
 async function uploadJobPhotos(job){

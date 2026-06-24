@@ -106,7 +106,7 @@ function addAccountDialog(){
     field('Full name','<input id="acName" placeholder="Juan Dela Cruz">')+
     field('Email','<input id="acEmail" type="email" placeholder="staff@example.com">')+
     '<div class="grid2">'+
-    field('Role','<select id="acRole">'+ROLE_LIST.map(function(r){return '<option>'+r+'</option>';}).join('')+'</select>')+
+    field('Role','<select id="acRole">'+ROLE_LIST.map(function(r){return '<option value="'+r+'">'+esc(roleLabel(r))+'</option>';}).join('')+'</select>')+
     field('Admin?','<label class="chk"><input type="checkbox" id="acAdmin"> Full admin access</label>')+'</div>'+
     '<p class="muted small">The staff member gets an email to set their own password. They can sign in once they do.</p>',
     { onOk:'createStaffAccount', okText:'Create account' });
@@ -157,7 +157,7 @@ VIEWS.accounts = function(){
   else {
     var rows = ACCOUNTS.map(function(u){
       var roleSel = '<select onchange="setAccountRole(\''+u.uid+'\',this.value)"'+(u.isAdmin?' disabled':'')+'>'+
-        ROLE_LIST.map(function(r){return '<option'+(u.role===r?' selected':'')+'>'+r+'</option>';}).join('')+'</select>';
+        ROLE_LIST.map(function(r){return '<option value="'+r+'"'+(u.role===r?' selected':'')+'>'+esc(roleLabel(r))+'</option>';}).join('')+'</select>';
       var me = CURRENT_USER && CURRENT_USER.uid===u.uid;
       return '<tr><td><b>'+esc(u.name||u.email)+'</b>'+(me?' <span class="chip">you</span>':'')+'<div class="muted small">'+esc(u.email)+'</div></td>'+
         '<td>'+(u.isAdmin?chip('Admin','gold'):roleSel)+'</td>'+
@@ -172,7 +172,7 @@ VIEWS.accounts = function(){
   }
 
   var m = permsMatrix();
-  var head = '<tr><th>Capability</th>'+ROLE_LIST.map(function(r){return '<th class="r">'+esc(r)+'</th>';}).join('')+'</tr>';
+  var head = '<tr><th>Capability</th>'+ROLE_LIST.map(function(r){return '<th class="r">'+esc(roleLabel(r))+'</th>';}).join('')+'</tr>';
   var body = CAPS.map(function(c){
     return '<tr><td>'+esc(c.label)+'</td>'+ROLE_LIST.map(function(r){
       var on=!!(m[r]&&m[r][c.key]);

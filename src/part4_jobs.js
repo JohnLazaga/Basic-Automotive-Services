@@ -357,7 +357,7 @@ function line2(k,v,cls){ return '<div class="l2 '+(cls||'')+'"><span>'+k+'</span
 
 /* ---- Assignment panel ----------------------------------------------------- */
 function jobAssignPanel(j){
-  var mechBoxes = staffByRole('Mechanic').map(function(m){
+  var mechBoxes = mechanicStaff().map(function(m){
     var on=(j.mechanicIds||[]).indexOf(m.id)>=0;
     return '<label class="chk small"><input type="checkbox" '+(on?'checked':'')+' onchange="toggleMech(\''+j.id+'\',\''+m.id+'\')"> '+esc(m.name)+'</label>';
   }).join('');
@@ -401,7 +401,7 @@ function editJobDetails(id){
     field('ETD','<input id="jdEtd" type="date" value="'+attr(j.etd)+'">')+
     field('Odometer','<input id="jdOdo" type="number" value="'+attr(j.odometer)+'">')+
     field('Job hours','<input id="jdHours" type="number" step="0.5" value="'+attr(j.jobHours)+'">')+
-    field('Assessed by (SM)','<select id="jdAssess">'+optionList(staffByRole('SM'),j.assessedBy,true)+'</select>')+
+    field('Assessed by (Senior Mechanic)','<select id="jdAssess">'+optionList(staffByRole('SM'),j.assessedBy,true)+'</select>')+
     field('SI reference #','<input id="jdSI" value="'+attr(j.siRef||'')+'">')+
     field('PMS reference #','<input id="jdPMS" value="'+attr(j.pmsRef||'')+'">')+
     '</div>'+ field('Service notes','<textarea id="jdNotes" rows="3">'+esc(j.notes||'')+'</textarea>'),

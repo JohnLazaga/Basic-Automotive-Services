@@ -300,9 +300,9 @@ function receivePO(id){
 var ROLES=['SV','SA','SM','Mechanic','Parts Salesman'];
 VIEWS.staff = function(){
   var rows=S.staff.map(function(s){
-    var comm = s.role==='Mechanic'? (S.shop.mechCommissionRate||5)+'% of labor (shop rate)'
+    var comm = isMechanicRole(s.role)? (S.shop.mechCommissionRate||5)+'% of labor (shop rate)'
       : (s.commissionBase&&s.commissionBase!=='none'? s.commissionRate+'% of '+s.commissionBase : '—');
-    return '<tr><td><b>'+esc(s.name)+'</b></td><td>'+chip(s.role)+'</td><td>'+esc(comm)+'</td>'+
+    return '<tr><td><b>'+esc(s.name)+'</b></td><td>'+chip(roleLabel(s.role))+'</td><td>'+esc(comm)+'</td>'+
       '<td class="r"><button class="ic" onclick="editStaff(\''+s.id+'\')">✎</button><button class="ic" onclick="delStaff(\''+s.id+'\')">✕</button></td></tr>';
   }).join('');
   return '<div class="page"><div class="page-head"><h1>Staff</h1><button class="btn primary" onclick="editStaff()">＋ Add staff</button></div>'+
@@ -311,7 +311,7 @@ VIEWS.staff = function(){
 function editStaff(id){ var s=id?staffById(id):{};
   openModal(id?'Edit staff':'Add staff',
     field('Name','<input id="stName" value="'+attr(s.name||'')+'">')+
-    field('Role','<select id="stRole">'+ROLES.map(function(r){return '<option'+(s.role===r?' selected':'')+'>'+r+'</option>';}).join('')+'</select>')+
+    field('Role','<select id="stRole">'+ROLES.map(function(r){return '<option value="'+r+'"'+(s.role===r?' selected':'')+'>'+esc(roleLabel(r))+'</option>';}).join('')+'</select>')+
     '<div class="grid2">'+field('Commission base','<select id="stBase"><option value="none"'+(s.commissionBase==='none'||!s.commissionBase?' selected':'')+'>None</option><option value="labor"'+(s.commissionBase==='labor'?' selected':'')+'>Labor</option><option value="total"'+(s.commissionBase==='total'?' selected':'')+'>Total</option></select>')+
     field('Commission rate %','<input id="stRate" type="number" step="0.1" value="'+attr(s.commissionRate||0)+'">')+'</div>'+
     '<p class="muted small">Mechanics always use the shop\'s labor-commission rate, split evenly across mechanics on a job.</p>',

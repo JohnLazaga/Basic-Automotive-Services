@@ -68,7 +68,7 @@ function commissionTable(jobs){
     (j.mechanicIds||[]).filter(function(x){return x&&x!=='TBA';}).forEach(function(mid){ add(mid, lc.perMech); });
     // non-mechanic roles attached to the job
     [j.saId, j.assessedBy, j.partsSalesman].forEach(function(sid){
-      var s=staffById(sid); if(!s||s.role==='Mechanic') return;
+      var s=staffById(sid); if(!s||isMechanicRole(s.role)) return;
       if(s.commissionBase==='labor') add(sid, round2(laborTotal(j.lines)*(s.commissionRate||0)/100));
       else if(s.commissionBase==='total') add(sid, round2(jobGross(j)*(s.commissionRate||0)/100));
     });
@@ -113,11 +113,34 @@ VIEWS.dailyclose = function(){
 };
 
 /* ---- Productivity (mechanic KPI) ------------------------------------------ */
-var PROD_PERIOD='all';
+/* ---- Productivity period (all / today / week / month / custom) ----------- */
+var PROD_PERIOD='month', PROD_FROM='', PROD_TO='';
+function prodRange(){
+  var today=todayISO();
+  if(PROD_PERIOD==='today') return { from:today, to:today };
+  if(PROD_PERIOD==='week'){ var d=new Date(); var dow=(d.getDay()+6)%7; var mon=new Date(d); mon.setDate(d.getDate()-dow); return { from:todayISO(mon), to:today }; }
+  if(PROD_PERIOD==='month') return { from:today.slice(0,7)+'-01', to:today };
+  if(PROD_PERIOD==='custom') return { from:PROD_FROM||'0000-01-01', to:PROD_TO||'9999-12-31' };
+  return { from:'0000-01-01', to:'9999-12-31' };  // all
+}
+function jobsInProdPeriod(jobs){
+  var r=prodRange();
+  return jobs.filter(function(j){ var d=(j.billedAt||'').slice(0,10); return d && d>=r.from && d<=r.to; });
+}
+function setProd(p){
+  PROD_PERIOD=p;
+  if(p==='custom' && !PROD_FROM){ PROD_FROM=todayISO().slice(0,7)+'-01'; PROD_TO=todayISO(); }
+  render();
+}
+function prodPeriodLabel(){
+  if(PROD_PERIOD==='all') return 'All time';
+  if(PROD_PERIOD==='today') return 'Today · '+fmtDate(todayISO());
+  var r=prodRange(); return fmtDate(r.from)+' – '+fmtDate(r.to);
+}
+
 VIEWS.productivity = function(){
-  var jobs=billedJobs();
-  if(PROD_PERIOD==='month'){ var m=todayISO().slice(0,7); jobs=jobs.filter(function(j){return (j.billedAt||'').slice(0,7)===m;}); }
-  var mechs=staffByRole('Mechanic').map(function(m){ return { id:m.id, name:m.name, jobs:0, hours:0, labor:0, commission:0 }; });
+  var jobs=jobsInProdPeriod(billedJobs());
+  var mechs=mechanicStaff().map(function(m){ return { id:m.id, name:m.name, role:m.role, jobs:0, hours:0, labor:0, commission:0 }; });
   var byId={}; mechs.forEach(function(m){byId[m.id]=m;});
   jobs.forEach(function(j){
     var lc=jobLaborCommission(j,S); var lab=laborTotal(j.lines);
@@ -126,15 +149,23 @@ VIEWS.productivity = function(){
       r.labor=round2(r.labor+lab/assigned.length); r.commission=round2(r.commission+lc.perMech); });
   });
   var rows=mechs.map(function(m){
-    return '<tr><td><b>'+esc(m.name)+'</b></td><td class="r">'+m.jobs+'</td><td class="r">'+num(m.hours)+'</td>'+
+    return '<tr><td><b>'+esc(m.name)+'</b> <span class="muted small">'+esc(roleLabel(m.role))+'</span></td><td class="r">'+m.jobs+'</td><td class="r">'+num(m.hours)+'</td>'+
       '<td class="r">'+peso(m.labor)+'</td><td class="r">'+peso(m.jobs?round2(m.labor/m.jobs):0)+'</td><td class="r"><b>'+peso(m.commission)+'</b></td></tr>';
   }).join('');
   var commBars=mechs.filter(function(m){return m.commission>0;}).map(function(m){return {label:m.name,value:m.commission};});
+  var seg=['all','today','week','month','custom'].map(function(p){
+    var lab={all:'All time',today:'Today',week:'This week',month:'This month',custom:'Custom'}[p];
+    return '<button class="seg-b'+(PROD_PERIOD===p?' on':'')+'" onclick="setProd(\''+p+'\')">'+lab+'</button>';
+  }).join('');
+  var custom = PROD_PERIOD==='custom' ? '<div class="row gap" style="align-items:center">'+
+    '<input type="date" value="'+attr(PROD_FROM)+'" onchange="PROD_FROM=this.value;render()"> <span class="muted">to</span> '+
+    '<input type="date" value="'+attr(PROD_TO)+'" onchange="PROD_TO=this.value;render()"></div>' : '';
   return '<div class="page"><div class="page-head"><h1>Mechanic Productivity</h1>'+
-    '<div class="row gap"><div class="seg"><button class="seg-b'+(PROD_PERIOD==='all'?' on':'')+'" onclick="PROD_PERIOD=\'all\';render()">All time</button>'+
-    '<button class="seg-b'+(PROD_PERIOD==='month'?' on':'')+'" onclick="PROD_PERIOD=\'month\';render()">This month</button></div>'+
-    '<button class="btn primary" onclick="printPayout()">⎙ Payout sheet</button></div></div>'+
-    '<div class="card pad0"><table class="tbl"><thead><tr><th>Mechanic</th><th class="r">Jobs</th><th class="r">Job hrs</th><th class="r">Labor billed</th><th class="r">Avg/job</th><th class="r">Commission</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
+    '<button class="btn primary" onclick="printPayout()">⎙ Payout sheet</button></div>'+
+    '<div class="row gap" style="align-items:center;flex-wrap:wrap"><div class="seg">'+seg+'</div>'+custom+
+      '<span class="muted small">'+esc(prodPeriodLabel())+'</span></div>'+
+    '<p class="muted small mt8">All mechanics (Senior & Junior) earn '+(S.shop.mechCommissionRate||5)+'% of labor, split evenly among those assigned to each billed job.</p>'+
+    '<div class="card pad0"><table class="tbl"><thead><tr><th>Mechanic</th><th class="r">Jobs</th><th class="r">Job hrs</th><th class="r">Labor billed</th><th class="r">Avg/job</th><th class="r">Commission</th></tr></thead><tbody>'+(rows||'<tr><td colspan="6" class="muted center">No mechanics.</td></tr>')+'</tbody></table></div>'+
     '<div class="card"><h2>Commission by mechanic</h2>'+(commBars.length?bars(commBars,peso):emptyState('No commissions in this period.'))+'</div></div>';
 };
 

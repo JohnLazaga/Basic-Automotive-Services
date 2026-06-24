@@ -99,7 +99,7 @@ function topbarHTML(){
       '<span id="saveState" class="savestate" data-st="saved">All changes saved</span>'+
       '<button class="iconbtn" id="themeBtn" onclick="toggleTheme()" title="Toggle dark mode" aria-label="Toggle dark mode">'+(THEME==='dark'?'☀':'☾')+'</button>'+
       ((typeof cloudOn==='function' && cloudOn() && FB && FB.user)
-        ? (CURRENT_USER ? '<span class="rolebadge'+(CURRENT_USER.isAdmin?' admin':'')+'">'+esc(CURRENT_USER.isAdmin?'Admin':CURRENT_USER.role)+'</span>' : '')+
+        ? (CURRENT_USER ? '<span class="rolebadge'+(CURRENT_USER.isAdmin?' admin':'')+'">'+esc(CURRENT_USER.isAdmin?'Admin':roleLabel(CURRENT_USER.role))+'</span>' : '')+
           '<span class="userchip" id="userChip" title="Signed in">'+esc(FB.user.email||'')+'</span>'+
           '<button class="iconbtn" onclick="doLogout()" title="Sign out" aria-label="Sign out">⎋</button>'
         : '')+

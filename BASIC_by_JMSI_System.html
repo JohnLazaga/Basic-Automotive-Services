@@ -554,6 +554,15 @@ function nextNo(kind, prefix, pad){
   return prefix + String(c[kind]).padStart(pad||4,'0');
 }
 
+/* ---- Roles --------------------------------------------------------------- */
+/* Internal role KEYS are unchanged (avoids data migration); only labels change. */
+var ROLE_LABELS = { SV:'Supervisor', SA:'Service Adviser', SM:'Senior Mechanic', Mechanic:'Junior Mechanic', 'Parts Salesman':'Parts Salesman' };
+function roleLabel(role){ return ROLE_LABELS[role] || role || '—'; }
+/* Both Senior (SM) and Junior (Mechanic) mechanics earn labor commission and
+   can be assigned to jobs. */
+function isMechanicRole(role){ return role==='SM' || role==='Mechanic'; }
+function mechanicStaff(){ return (S.staff||[]).filter(function(s){return isMechanicRole(s.role);}); }
+
 /* ---- Lookups -------------------------------------------------------------- */
 function staffById(id){ return (S.staff||[]).find(function(s){return s.id===id;}) || null; }
 function staffName(id){ if(!id||id==='TBA') return 'TBA'; var s=staffById(id); return s?s.name:'—'; }
@@ -786,7 +795,7 @@ function topbarHTML(){
       '<span id="saveState" class="savestate" data-st="saved">All changes saved</span>'+
       '<button class="iconbtn" id="themeBtn" onclick="toggleTheme()" title="Toggle dark mode" aria-label="Toggle dark mode">'+(THEME==='dark'?'☀':'☾')+'</button>'+
       ((typeof cloudOn==='function' && cloudOn() && FB && FB.user)
-        ? (CURRENT_USER ? '<span class="rolebadge'+(CURRENT_USER.isAdmin?' admin':'')+'">'+esc(CURRENT_USER.isAdmin?'Admin':CURRENT_USER.role)+'</span>' : '')+
+        ? (CURRENT_USER ? '<span class="rolebadge'+(CURRENT_USER.isAdmin?' admin':'')+'">'+esc(CURRENT_USER.isAdmin?'Admin':roleLabel(CURRENT_USER.role))+'</span>' : '')+
           '<span class="userchip" id="userChip" title="Signed in">'+esc(FB.user.email||'')+'</span>'+
           '<button class="iconbtn" onclick="doLogout()" title="Sign out" aria-label="Sign out">⎋</button>'
         : '')+
@@ -1581,7 +1590,7 @@ function line2(k,v,cls){ return '<div class="l2 '+(cls||'')+'"><span>'+k+'</span
 
 /* ---- Assignment panel ----------------------------------------------------- */
 function jobAssignPanel(j){
-  var mechBoxes = staffByRole('Mechanic').map(function(m){
+  var mechBoxes = mechanicStaff().map(function(m){
     var on=(j.mechanicIds||[]).indexOf(m.id)>=0;
     return '<label class="chk small"><input type="checkbox" '+(on?'checked':'')+' onchange="toggleMech(\''+j.id+'\',\''+m.id+'\')"> '+esc(m.name)+'</label>';
   }).join('');
@@ -1625,7 +1634,7 @@ function editJobDetails(id){
     field('ETD','<input id="jdEtd" type="date" value="'+attr(j.etd)+'">')+
     field('Odometer','<input id="jdOdo" type="number" value="'+attr(j.odometer)+'">')+
     field('Job hours','<input id="jdHours" type="number" step="0.5" value="'+attr(j.jobHours)+'">')+
-    field('Assessed by (SM)','<select id="jdAssess">'+optionList(staffByRole('SM'),j.assessedBy,true)+'</select>')+
+    field('Assessed by (Senior Mechanic)','<select id="jdAssess">'+optionList(staffByRole('SM'),j.assessedBy,true)+'</select>')+
     field('SI reference #','<input id="jdSI" value="'+attr(j.siRef||'')+'">')+
     field('PMS reference #','<input id="jdPMS" value="'+attr(j.pmsRef||'')+'">')+
     '</div>'+ field('Service notes','<textarea id="jdNotes" rows="3">'+esc(j.notes||'')+'</textarea>'),
@@ -1783,7 +1792,7 @@ VIEWS.estimate = function(id){
       '</div>'+
     '</div><div class="colside">'+
       '<div class="card"><h2>Approvals</h2>'+
-        field('Assessed by (SM)','<select onchange="setEstField(\''+e.id+'\',\'assessedBy\',this.value)">'+optionList(staffByRole('SM'),e.assessedBy,true)+'</select>')+
+        field('Assessed by (Senior Mechanic)','<select onchange="setEstField(\''+e.id+'\',\'assessedBy\',this.value)">'+optionList(staffByRole('SM'),e.assessedBy,true)+'</select>')+
         field('Approved by (SA)','<select onchange="setEstField(\''+e.id+'\',\'approvedSA\',this.value)">'+optionList(staffByRole('SA'),e.approvedSA,true)+'</select>')+
         field('Approved by (SV)','<select onchange="setEstField(\''+e.id+'\',\'approvedSV\',this.value)">'+optionList(staffByRole('SV'),e.approvedSV,true)+'</select>')+
       '</div>'+
@@ -2122,9 +2131,9 @@ function receivePO(id){
 var ROLES=['SV','SA','SM','Mechanic','Parts Salesman'];
 VIEWS.staff = function(){
   var rows=S.staff.map(function(s){
-    var comm = s.role==='Mechanic'? (S.shop.mechCommissionRate||5)+'% of labor (shop rate)'
+    var comm = isMechanicRole(s.role)? (S.shop.mechCommissionRate||5)+'% of labor (shop rate)'
       : (s.commissionBase&&s.commissionBase!=='none'? s.commissionRate+'% of '+s.commissionBase : '—');
-    return '<tr><td><b>'+esc(s.name)+'</b></td><td>'+chip(s.role)+'</td><td>'+esc(comm)+'</td>'+
+    return '<tr><td><b>'+esc(s.name)+'</b></td><td>'+chip(roleLabel(s.role))+'</td><td>'+esc(comm)+'</td>'+
       '<td class="r"><button class="ic" onclick="editStaff(\''+s.id+'\')">✎</button><button class="ic" onclick="delStaff(\''+s.id+'\')">✕</button></td></tr>';
   }).join('');
   return '<div class="page"><div class="page-head"><h1>Staff</h1><button class="btn primary" onclick="editStaff()">＋ Add staff</button></div>'+
@@ -2133,7 +2142,7 @@ VIEWS.staff = function(){
 function editStaff(id){ var s=id?staffById(id):{};
   openModal(id?'Edit staff':'Add staff',
     field('Name','<input id="stName" value="'+attr(s.name||'')+'">')+
-    field('Role','<select id="stRole">'+ROLES.map(function(r){return '<option'+(s.role===r?' selected':'')+'>'+r+'</option>';}).join('')+'</select>')+
+    field('Role','<select id="stRole">'+ROLES.map(function(r){return '<option value="'+r+'"'+(s.role===r?' selected':'')+'>'+esc(roleLabel(r))+'</option>';}).join('')+'</select>')+
     '<div class="grid2">'+field('Commission base','<select id="stBase"><option value="none"'+(s.commissionBase==='none'||!s.commissionBase?' selected':'')+'>None</option><option value="labor"'+(s.commissionBase==='labor'?' selected':'')+'>Labor</option><option value="total"'+(s.commissionBase==='total'?' selected':'')+'>Total</option></select>')+
     field('Commission rate %','<input id="stRate" type="number" step="0.1" value="'+attr(s.commissionRate||0)+'">')+'</div>'+
     '<p class="muted small">Mechanics always use the shop\'s labor-commission rate, split evenly across mechanics on a job.</p>',
@@ -2218,7 +2227,7 @@ function commissionTable(jobs){
     (j.mechanicIds||[]).filter(function(x){return x&&x!=='TBA';}).forEach(function(mid){ add(mid, lc.perMech); });
     // non-mechanic roles attached to the job
     [j.saId, j.assessedBy, j.partsSalesman].forEach(function(sid){
-      var s=staffById(sid); if(!s||s.role==='Mechanic') return;
+      var s=staffById(sid); if(!s||isMechanicRole(s.role)) return;
       if(s.commissionBase==='labor') add(sid, round2(laborTotal(j.lines)*(s.commissionRate||0)/100));
       else if(s.commissionBase==='total') add(sid, round2(jobGross(j)*(s.commissionRate||0)/100));
     });
@@ -2263,11 +2272,34 @@ VIEWS.dailyclose = function(){
 };
 
 /* ---- Productivity (mechanic KPI) ------------------------------------------ */
-var PROD_PERIOD='all';
+/* ---- Productivity period (all / today / week / month / custom) ----------- */
+var PROD_PERIOD='month', PROD_FROM='', PROD_TO='';
+function prodRange(){
+  var today=todayISO();
+  if(PROD_PERIOD==='today') return { from:today, to:today };
+  if(PROD_PERIOD==='week'){ var d=new Date(); var dow=(d.getDay()+6)%7; var mon=new Date(d); mon.setDate(d.getDate()-dow); return { from:todayISO(mon), to:today }; }
+  if(PROD_PERIOD==='month') return { from:today.slice(0,7)+'-01', to:today };
+  if(PROD_PERIOD==='custom') return { from:PROD_FROM||'0000-01-01', to:PROD_TO||'9999-12-31' };
+  return { from:'0000-01-01', to:'9999-12-31' };  // all
+}
+function jobsInProdPeriod(jobs){
+  var r=prodRange();
+  return jobs.filter(function(j){ var d=(j.billedAt||'').slice(0,10); return d && d>=r.from && d<=r.to; });
+}
+function setProd(p){
+  PROD_PERIOD=p;
+  if(p==='custom' && !PROD_FROM){ PROD_FROM=todayISO().slice(0,7)+'-01'; PROD_TO=todayISO(); }
+  render();
+}
+function prodPeriodLabel(){
+  if(PROD_PERIOD==='all') return 'All time';
+  if(PROD_PERIOD==='today') return 'Today · '+fmtDate(todayISO());
+  var r=prodRange(); return fmtDate(r.from)+' – '+fmtDate(r.to);
+}
+
 VIEWS.productivity = function(){
-  var jobs=billedJobs();
-  if(PROD_PERIOD==='month'){ var m=todayISO().slice(0,7); jobs=jobs.filter(function(j){return (j.billedAt||'').slice(0,7)===m;}); }
-  var mechs=staffByRole('Mechanic').map(function(m){ return { id:m.id, name:m.name, jobs:0, hours:0, labor:0, commission:0 }; });
+  var jobs=jobsInProdPeriod(billedJobs());
+  var mechs=mechanicStaff().map(function(m){ return { id:m.id, name:m.name, role:m.role, jobs:0, hours:0, labor:0, commission:0 }; });
   var byId={}; mechs.forEach(function(m){byId[m.id]=m;});
   jobs.forEach(function(j){
     var lc=jobLaborCommission(j,S); var lab=laborTotal(j.lines);
@@ -2276,15 +2308,23 @@ VIEWS.productivity = function(){
       r.labor=round2(r.labor+lab/assigned.length); r.commission=round2(r.commission+lc.perMech); });
   });
   var rows=mechs.map(function(m){
-    return '<tr><td><b>'+esc(m.name)+'</b></td><td class="r">'+m.jobs+'</td><td class="r">'+num(m.hours)+'</td>'+
+    return '<tr><td><b>'+esc(m.name)+'</b> <span class="muted small">'+esc(roleLabel(m.role))+'</span></td><td class="r">'+m.jobs+'</td><td class="r">'+num(m.hours)+'</td>'+
       '<td class="r">'+peso(m.labor)+'</td><td class="r">'+peso(m.jobs?round2(m.labor/m.jobs):0)+'</td><td class="r"><b>'+peso(m.commission)+'</b></td></tr>';
   }).join('');
   var commBars=mechs.filter(function(m){return m.commission>0;}).map(function(m){return {label:m.name,value:m.commission};});
+  var seg=['all','today','week','month','custom'].map(function(p){
+    var lab={all:'All time',today:'Today',week:'This week',month:'This month',custom:'Custom'}[p];
+    return '<button class="seg-b'+(PROD_PERIOD===p?' on':'')+'" onclick="setProd(\''+p+'\')">'+lab+'</button>';
+  }).join('');
+  var custom = PROD_PERIOD==='custom' ? '<div class="row gap" style="align-items:center">'+
+    '<input type="date" value="'+attr(PROD_FROM)+'" onchange="PROD_FROM=this.value;render()"> <span class="muted">to</span> '+
+    '<input type="date" value="'+attr(PROD_TO)+'" onchange="PROD_TO=this.value;render()"></div>' : '';
   return '<div class="page"><div class="page-head"><h1>Mechanic Productivity</h1>'+
-    '<div class="row gap"><div class="seg"><button class="seg-b'+(PROD_PERIOD==='all'?' on':'')+'" onclick="PROD_PERIOD=\'all\';render()">All time</button>'+
-    '<button class="seg-b'+(PROD_PERIOD==='month'?' on':'')+'" onclick="PROD_PERIOD=\'month\';render()">This month</button></div>'+
-    '<button class="btn primary" onclick="printPayout()">⎙ Payout sheet</button></div></div>'+
-    '<div class="card pad0"><table class="tbl"><thead><tr><th>Mechanic</th><th class="r">Jobs</th><th class="r">Job hrs</th><th class="r">Labor billed</th><th class="r">Avg/job</th><th class="r">Commission</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
+    '<button class="btn primary" onclick="printPayout()">⎙ Payout sheet</button></div>'+
+    '<div class="row gap" style="align-items:center;flex-wrap:wrap"><div class="seg">'+seg+'</div>'+custom+
+      '<span class="muted small">'+esc(prodPeriodLabel())+'</span></div>'+
+    '<p class="muted small mt8">All mechanics (Senior & Junior) earn '+(S.shop.mechCommissionRate||5)+'% of labor, split evenly among those assigned to each billed job.</p>'+
+    '<div class="card pad0"><table class="tbl"><thead><tr><th>Mechanic</th><th class="r">Jobs</th><th class="r">Job hrs</th><th class="r">Labor billed</th><th class="r">Avg/job</th><th class="r">Commission</th></tr></thead><tbody>'+(rows||'<tr><td colspan="6" class="muted center">No mechanics.</td></tr>')+'</tbody></table></div>'+
     '<div class="card"><h2>Commission by mechanic</h2>'+(commBars.length?bars(commBars,peso):emptyState('No commissions in this period.'))+'</div></div>';
 };
 
@@ -2488,7 +2528,7 @@ function docJobOrder(j){
       (j.notes?'<div class="notes"><b>Service notes:</b> '+esc(j.notes)+'</div>':'')+
       '<div class="notes"><b>Inspection:</b> Fuel '+esc((j.inspection||{}).fuel||'—')+' · Lights '+esc((j.inspection||{}).lights||'None')+' · '+esc((j.inspection||{}).condition||'')+'</div>'+
       cl+
-      '<div class="sig-grid"><div class="sigline">Assessed by (SM)<br>'+esc(staffName(j.assessedBy))+'</div>'+
+      '<div class="sig-grid"><div class="sigline">Assessed by (Senior Mechanic)<br>'+esc(staffName(j.assessedBy))+'</div>'+
         '<div class="sigline">Service Adviser<br>'+esc(staffName(j.saId))+'</div>'+
         '<div class="sigline">Customer</div></div>'+
       '<div class="foot">This Job Order carries no prices. Pricing appears on the Post Job Report and Final Billing.</div>';
@@ -2569,7 +2609,7 @@ function docEstimate(e){
       '<div class="totbox">'+(vs.exempt?'<div class="l2"><span>VAT-Exempt Sales</span><span>'+peso(vs.gross)+'</span></div>':
         '<div class="l2"><span>VATable Sales</span><span>'+peso(vs.vatable)+'</span></div><div class="l2"><span>VAT ('+(S.shop.vatRate||12)+'%)</span><span>'+peso(vs.vat)+'</span></div>')+
         '<div class="l2 grand"><span>Estimated Total</span><span>'+peso(vs.gross)+'</span></div></div>'+
-      '<div class="sig-grid"><div class="sigline">Assessed by (SM)<br>'+esc(staffName(e.assessedBy))+'</div>'+
+      '<div class="sig-grid"><div class="sigline">Assessed by (Senior Mechanic)<br>'+esc(staffName(e.assessedBy))+'</div>'+
         '<div class="sigline">Approved (SA)<br>'+esc(staffName(e.approvedSA))+'</div>'+
         '<div class="sigline">Customer'+(e.signature?'<br><img class="sigimg" src="'+e.signature+'"/>':'')+'</div></div>'+
       '<div class="foot">This is an estimate only. Final charges may vary after diagnosis.</div>';
@@ -2609,16 +2649,15 @@ function printStatement(encName){ printDoc(docStatement(decodeURIComponent(encNa
 
 /* ---- Payout sheet --------------------------------------------------------- */
 function docPayout(){
-  var jobs=billedJobs();
-  if(PROD_PERIOD==='month'){ var m=todayISO().slice(0,7); jobs=jobs.filter(function(j){return (j.billedAt||'').slice(0,7)===m;}); }
-  var byId={}; staffByRole('Mechanic').forEach(function(m){byId[m.id]={name:m.name,jobs:0,labor:0,commission:0};});
+  var jobs=jobsInProdPeriod(billedJobs());
+  var byId={}; mechanicStaff().forEach(function(m){byId[m.id]={name:m.name,role:m.role,jobs:0,labor:0,commission:0};});
   jobs.forEach(function(j){ var lc=jobLaborCommission(j,S); var lab=laborTotal(j.lines);
     var as=(j.mechanicIds||[]).filter(function(x){return x&&x!=='TBA';});
     as.forEach(function(mid){ var r=byId[mid]; if(!r) return; r.jobs++; r.labor=round2(r.labor+lab/as.length); r.commission=round2(r.commission+lc.perMech); }); });
   var rows=Object.keys(byId).map(function(k){var r=byId[k];
-    return '<tr><td>'+esc(r.name)+'</td><td class="r">'+r.jobs+'</td><td class="r">'+peso(r.labor)+'</td><td class="r">'+peso(r.commission)+'</td><td class="sigline" style="margin-top:18px"></td></tr>';}).join('');
+    return '<tr><td>'+esc(r.name)+' ('+esc(roleLabel(r.role))+')</td><td class="r">'+r.jobs+'</td><td class="r">'+peso(r.labor)+'</td><td class="r">'+peso(r.commission)+'</td><td class="sigline" style="margin-top:18px"></td></tr>';}).join('');
   var tot=Object.keys(byId).reduce(function(s,k){return s+byId[k].commission;},0);
-  var body=docHeader('Mechanic Commission Payout · '+(PROD_PERIOD==='month'?'This month':'All time'))+
+  var body=docHeader('Mechanic Commission Payout · '+esc(prodPeriodLabel()))+
     '<table><thead><tr><th>Mechanic</th><th class="r">Jobs</th><th class="r">Labor billed</th><th class="r">Commission</th><th>Signature</th></tr></thead><tbody>'+rows+'</tbody></table>'+
     '<div class="totbox"><div class="l2 grand"><span>Total payout</span><span>'+peso(tot)+'</span></div></div>'+
     '<div class="foot">Commission = labor × '+(S.shop.mechCommissionRate||5)+'% split evenly among assigned mechanics.</div>';
@@ -2866,6 +2905,7 @@ function renderCloudLoading(){
    ========================================================================== */
 var COLLECTIONS = ['staff','bays','parts','labor','vehicles','estimates','jobs','appointments','purchaseOrders'];
 var _cloudSnap = {};       /* {collection: {id: jsonString}} — for diffing */
+var _metaSnap = { shop:null, counters:null };  /* last-synced meta docs */
 var _cloudSubs = [];       /* unsubscribe fns */
 var _applyingRemote = false;
 
@@ -2926,9 +2966,13 @@ async function cloudFetchState_noop(){}  /* reserved */
 /* ---- Write path: diff S against last snapshot, sync changes -------------- */
 async function cloudPersist(){
   if (!FB.ready || !FB.user || _applyingRemote) return;
-  // meta (shop + counters) — last-write-wins (fine for a single shop)
-  await FB.db.collection('meta').doc('shop').set(plain(S.shop));
-  await FB.db.collection('meta').doc('counters').set(plain(S.counters));
+  // meta — write only when changed. shop/permissions are admin-only at the DB
+  // level; counters are written by any active staff during normal ops, so we
+  // must not blindly write shop on every save (non-admins would be denied).
+  var shopJSON = JSON.stringify(S.shop);
+  if (shopJSON !== _metaSnap.shop){ await FB.db.collection('meta').doc('shop').set(plain(S.shop)); _metaSnap.shop = shopJSON; }
+  var cntJSON = JSON.stringify(S.counters);
+  if (cntJSON !== _metaSnap.counters){ await FB.db.collection('meta').doc('counters').set(plain(S.counters)); _metaSnap.counters = cntJSON; }
   for (var i=0;i<COLLECTIONS.length;i++){
     var c = COLLECTIONS[i];
     var cur = {}; (S[c]||[]).forEach(function(r){ cur[r.id]=r; });
@@ -2948,7 +2992,11 @@ async function cloudPersist(){
   rememberSnap();
 }
 
-function rememberSnap(){ COLLECTIONS.forEach(function(c){ _cloudSnap[c]=snapMap(S[c]); }); }
+function rememberSnap(){
+  COLLECTIONS.forEach(function(c){ _cloudSnap[c]=snapMap(S[c]); });
+  _metaSnap.shop = JSON.stringify(S.shop);
+  _metaSnap.counters = JSON.stringify(S.counters);
+}
 
 /* ---- Photos → Firebase Storage ------------------------------------------- */
 async function uploadJobPhotos(job){
@@ -3175,7 +3223,7 @@ function addAccountDialog(){
     field('Full name','<input id="acName" placeholder="Juan Dela Cruz">')+
     field('Email','<input id="acEmail" type="email" placeholder="staff@example.com">')+
     '<div class="grid2">'+
-    field('Role','<select id="acRole">'+ROLE_LIST.map(function(r){return '<option>'+r+'</option>';}).join('')+'</select>')+
+    field('Role','<select id="acRole">'+ROLE_LIST.map(function(r){return '<option value="'+r+'">'+esc(roleLabel(r))+'</option>';}).join('')+'</select>')+
     field('Admin?','<label class="chk"><input type="checkbox" id="acAdmin"> Full admin access</label>')+'</div>'+
     '<p class="muted small">The staff member gets an email to set their own password. They can sign in once they do.</p>',
     { onOk:'createStaffAccount', okText:'Create account' });
@@ -3226,7 +3274,7 @@ VIEWS.accounts = function(){
   else {
     var rows = ACCOUNTS.map(function(u){
       var roleSel = '<select onchange="setAccountRole(\''+u.uid+'\',this.value)"'+(u.isAdmin?' disabled':'')+'>'+
-        ROLE_LIST.map(function(r){return '<option'+(u.role===r?' selected':'')+'>'+r+'</option>';}).join('')+'</select>';
+        ROLE_LIST.map(function(r){return '<option value="'+r+'"'+(u.role===r?' selected':'')+'>'+esc(roleLabel(r))+'</option>';}).join('')+'</select>';
       var me = CURRENT_USER && CURRENT_USER.uid===u.uid;
       return '<tr><td><b>'+esc(u.name||u.email)+'</b>'+(me?' <span class="chip">you</span>':'')+'<div class="muted small">'+esc(u.email)+'</div></td>'+
         '<td>'+(u.isAdmin?chip('Admin','gold'):roleSel)+'</td>'+
@@ -3241,7 +3289,7 @@ VIEWS.accounts = function(){
   }
 
   var m = permsMatrix();
-  var head = '<tr><th>Capability</th>'+ROLE_LIST.map(function(r){return '<th class="r">'+esc(r)+'</th>';}).join('')+'</tr>';
+  var head = '<tr><th>Capability</th>'+ROLE_LIST.map(function(r){return '<th class="r">'+esc(roleLabel(r))+'</th>';}).join('')+'</tr>';
   var body = CAPS.map(function(c){
     return '<tr><td>'+esc(c.label)+'</td>'+ROLE_LIST.map(function(r){
       var on=!!(m[r]&&m[r][c.key]);

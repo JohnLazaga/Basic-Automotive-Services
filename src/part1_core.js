@@ -180,6 +180,15 @@ function nextNo(kind, prefix, pad){
   return prefix + String(c[kind]).padStart(pad||4,'0');
 }
 
+/* ---- Roles --------------------------------------------------------------- */
+/* Internal role KEYS are unchanged (avoids data migration); only labels change. */
+var ROLE_LABELS = { SV:'Supervisor', SA:'Service Adviser', SM:'Senior Mechanic', Mechanic:'Junior Mechanic', 'Parts Salesman':'Parts Salesman' };
+function roleLabel(role){ return ROLE_LABELS[role] || role || '—'; }
+/* Both Senior (SM) and Junior (Mechanic) mechanics earn labor commission and
+   can be assigned to jobs. */
+function isMechanicRole(role){ return role==='SM' || role==='Mechanic'; }
+function mechanicStaff(){ return (S.staff||[]).filter(function(s){return isMechanicRole(s.role);}); }
+
 /* ---- Lookups -------------------------------------------------------------- */
 function staffById(id){ return (S.staff||[]).find(function(s){return s.id===id;}) || null; }
 function staffName(id){ if(!id||id==='TBA') return 'TBA'; var s=staffById(id); return s?s.name:'—'; }

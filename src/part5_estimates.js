@@ -51,7 +51,7 @@ VIEWS.estimate = function(id){
       '</div>'+
     '</div><div class="colside">'+
       '<div class="card"><h2>Approvals</h2>'+
-        field('Assessed by (SM)','<select onchange="setEstField(\''+e.id+'\',\'assessedBy\',this.value)">'+optionList(staffByRole('SM'),e.assessedBy,true)+'</select>')+
+        field('Assessed by (Senior Mechanic)','<select onchange="setEstField(\''+e.id+'\',\'assessedBy\',this.value)">'+optionList(staffByRole('SM'),e.assessedBy,true)+'</select>')+
         field('Approved by (SA)','<select onchange="setEstField(\''+e.id+'\',\'approvedSA\',this.value)">'+optionList(staffByRole('SA'),e.approvedSA,true)+'</select>')+
         field('Approved by (SV)','<select onchange="setEstField(\''+e.id+'\',\'approvedSV\',this.value)">'+optionList(staffByRole('SV'),e.approvedSV,true)+'</select>')+
       '</div>'+

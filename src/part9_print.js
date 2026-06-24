@@ -66,7 +66,7 @@ function docJobOrder(j){
       (j.notes?'<div class="notes"><b>Service notes:</b> '+esc(j.notes)+'</div>':'')+
       '<div class="notes"><b>Inspection:</b> Fuel '+esc((j.inspection||{}).fuel||'—')+' · Lights '+esc((j.inspection||{}).lights||'None')+' · '+esc((j.inspection||{}).condition||'')+'</div>'+
       cl+
-      '<div class="sig-grid"><div class="sigline">Assessed by (SM)<br>'+esc(staffName(j.assessedBy))+'</div>'+
+      '<div class="sig-grid"><div class="sigline">Assessed by (Senior Mechanic)<br>'+esc(staffName(j.assessedBy))+'</div>'+
         '<div class="sigline">Service Adviser<br>'+esc(staffName(j.saId))+'</div>'+
         '<div class="sigline">Customer</div></div>'+
       '<div class="foot">This Job Order carries no prices. Pricing appears on the Post Job Report and Final Billing.</div>';
@@ -147,7 +147,7 @@ function docEstimate(e){
       '<div class="totbox">'+(vs.exempt?'<div class="l2"><span>VAT-Exempt Sales</span><span>'+peso(vs.gross)+'</span></div>':
         '<div class="l2"><span>VATable Sales</span><span>'+peso(vs.vatable)+'</span></div><div class="l2"><span>VAT ('+(S.shop.vatRate||12)+'%)</span><span>'+peso(vs.vat)+'</span></div>')+
         '<div class="l2 grand"><span>Estimated Total</span><span>'+peso(vs.gross)+'</span></div></div>'+
-      '<div class="sig-grid"><div class="sigline">Assessed by (SM)<br>'+esc(staffName(e.assessedBy))+'</div>'+
+      '<div class="sig-grid"><div class="sigline">Assessed by (Senior Mechanic)<br>'+esc(staffName(e.assessedBy))+'</div>'+
         '<div class="sigline">Approved (SA)<br>'+esc(staffName(e.approvedSA))+'</div>'+
         '<div class="sigline">Customer'+(e.signature?'<br><img class="sigimg" src="'+e.signature+'"/>':'')+'</div></div>'+
       '<div class="foot">This is an estimate only. Final charges may vary after diagnosis.</div>';
@@ -187,16 +187,15 @@ function printStatement(encName){ printDoc(docStatement(decodeURIComponent(encNa
 
 /* ---- Payout sheet --------------------------------------------------------- */
 function docPayout(){
-  var jobs=billedJobs();
-  if(PROD_PERIOD==='month'){ var m=todayISO().slice(0,7); jobs=jobs.filter(function(j){return (j.billedAt||'').slice(0,7)===m;}); }
-  var byId={}; staffByRole('Mechanic').forEach(function(m){byId[m.id]={name:m.name,jobs:0,labor:0,commission:0};});
+  var jobs=jobsInProdPeriod(billedJobs());
+  var byId={}; mechanicStaff().forEach(function(m){byId[m.id]={name:m.name,role:m.role,jobs:0,labor:0,commission:0};});
   jobs.forEach(function(j){ var lc=jobLaborCommission(j,S); var lab=laborTotal(j.lines);
     var as=(j.mechanicIds||[]).filter(function(x){return x&&x!=='TBA';});
     as.forEach(function(mid){ var r=byId[mid]; if(!r) return; r.jobs++; r.labor=round2(r.labor+lab/as.length); r.commission=round2(r.commission+lc.perMech); }); });
   var rows=Object.keys(byId).map(function(k){var r=byId[k];
-    return '<tr><td>'+esc(r.name)+'</td><td class="r">'+r.jobs+'</td><td class="r">'+peso(r.labor)+'</td><td class="r">'+peso(r.commission)+'</td><td class="sigline" style="margin-top:18px"></td></tr>';}).join('');
+    return '<tr><td>'+esc(r.name)+' ('+esc(roleLabel(r.role))+')</td><td class="r">'+r.jobs+'</td><td class="r">'+peso(r.labor)+'</td><td class="r">'+peso(r.commission)+'</td><td class="sigline" style="margin-top:18px"></td></tr>';}).join('');
   var tot=Object.keys(byId).reduce(function(s,k){return s+byId[k].commission;},0);
-  var body=docHeader('Mechanic Commission Payout · '+(PROD_PERIOD==='month'?'This month':'All time'))+
+  var body=docHeader('Mechanic Commission Payout · '+esc(prodPeriodLabel()))+
     '<table><thead><tr><th>Mechanic</th><th class="r">Jobs</th><th class="r">Labor billed</th><th class="r">Commission</th><th>Signature</th></tr></thead><tbody>'+rows+'</tbody></table>'+
     '<div class="totbox"><div class="l2 grand"><span>Total payout</span><span>'+peso(tot)+'</span></div></div>'+
     '<div class="foot">Commission = labor × '+(S.shop.mechCommissionRate||5)+'% split evenly among assigned mechanics.</div>';
