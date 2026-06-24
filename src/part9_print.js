@@ -189,9 +189,9 @@ function printStatement(encName){ printDoc(docStatement(decodeURIComponent(encNa
 function docPayout(){
   var jobs=jobsInProdPeriod(billedJobs());
   var byId={}; mechanicStaff().forEach(function(m){byId[m.id]={name:m.name,role:m.role,jobs:0,labor:0,commission:0};});
-  jobs.forEach(function(j){ var lc=jobLaborCommission(j,S); var lab=laborTotal(j.lines);
+  jobs.forEach(function(j){ var cm=jobLaborCommissionMap(j,S); var lab=laborTotal(j.lines);
     var as=(j.mechanicIds||[]).filter(function(x){return x&&x!=='TBA';});
-    as.forEach(function(mid){ var r=byId[mid]; if(!r) return; r.jobs++; r.labor=round2(r.labor+lab/as.length); r.commission=round2(r.commission+lc.perMech); }); });
+    as.forEach(function(mid){ var r=byId[mid]; if(!r) return; r.jobs++; r.labor=round2(r.labor+lab/as.length); r.commission=round2(r.commission+(cm[mid]||0)); }); });
   var rows=Object.keys(byId).map(function(k){var r=byId[k];
     return '<tr><td>'+esc(r.name)+' ('+esc(roleLabel(r.role))+')</td><td class="r">'+r.jobs+'</td><td class="r">'+peso(r.labor)+'</td><td class="r">'+peso(r.commission)+'</td><td class="sigline" style="margin-top:18px"></td></tr>';}).join('');
   var tot=Object.keys(byId).reduce(function(s,k){return s+byId[k].commission;},0);

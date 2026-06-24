@@ -111,12 +111,27 @@ function vatSplit(gross, S){
   return { vatable:vatable, vat:vat, gross:gross, exempt:false };
 }
 
-/* Mechanic commission: labor × rate ÷ #mechanics, split evenly. */
+/* Mechanic commission pool: labor × rate ÷ #mechanics, split evenly. */
 function jobLaborCommission(job, S){
   var rate = (Number(S.shop.mechCommissionRate)||0)/100;
   var pool = round2(laborTotal(job.lines) * rate);
   var n = (job.mechanicIds||[]).filter(function(x){return x && x!=='TBA';}).length;
   return { pool:pool, perMech: n>0 ? round2(pool/n) : 0, count:n };
+}
+/* Per-person labor commission for ONE job — the single source of truth.
+   Mechanics split the pool; the Service Adviser earns a full 5%. If one person
+   is BOTH the Service Adviser AND an assigned mechanic on the job, they earn
+   only ONE 5% (the adviser amount replaces their mechanic share — no stacking). */
+function jobLaborCommissionMap(job, S){
+  var rate = (Number(S.shop.mechCommissionRate)||0)/100;
+  var labor = laborTotal(job.lines);
+  var pool = round2(labor*rate);
+  var mechs = (job.mechanicIds||[]).filter(function(x){return x && x!=='TBA';});
+  var perMech = mechs.length ? round2(pool/mechs.length) : 0;
+  var map = {};
+  mechs.forEach(function(m){ map[m] = round2((map[m]||0) + perMech); });
+  if (job.saId && job.saId!=='TBA'){ map[job.saId] = round2(labor*rate); }  // caps the SA at one 5%
+  return map;
 }
 
 /* ---- Payment helpers ------------------------------------------------------ */

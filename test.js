@@ -91,6 +91,13 @@ section('5. Commission: 1 mech on ₱500 labor = ₱25.00; 2 mechs = ₱12.50 ea
   const saRow=ct.find(r=>r.name===sa.name), mRow=ct.find(r=>r.name===mech[0].name);
   ok('Service Adviser earns 25.00 (5% labor)', saRow && saRow.amount===25);
   ok('assigned mechanic still earns 25.00', mRow && mRow.amount===25);
+  // Dual role: same person is Service Adviser AND assigned mechanic -> only ONE 5%
+  const dual={ id:'j3', no:'JO-Y', stage:'Released', lines:[{type:'labor',ref:null,desc:'L',qty:1,price:500}],
+    mechanicIds:[mech[0].id], saId:mech[0].id, assessedBy:'', partsSalesman:'', discount:{type:'amount',value:0}, payments:[], addlWork:[] };
+  const cmap=M.jobLaborCommissionMap(dual, s);
+  ok('SA+mechanic same person earns single 5% (25.00, not 50)', cmap[mech[0].id]===25);
+  const dualCt=M.commissionTable([dual]);
+  ok('commission table shows one 25.00 row for dual-role person', dualCt.length===1 && dualCt[0].amount===25);
 })();
 
 /* ---------------------------------------------------------------- TEST 6 */

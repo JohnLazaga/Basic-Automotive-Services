@@ -485,12 +485,27 @@ function vatSplit(gross, S){
   return { vatable:vatable, vat:vat, gross:gross, exempt:false };
 }
 
-/* Mechanic commission: labor × rate ÷ #mechanics, split evenly. */
+/* Mechanic commission pool: labor × rate ÷ #mechanics, split evenly. */
 function jobLaborCommission(job, S){
   var rate = (Number(S.shop.mechCommissionRate)||0)/100;
   var pool = round2(laborTotal(job.lines) * rate);
   var n = (job.mechanicIds||[]).filter(function(x){return x && x!=='TBA';}).length;
   return { pool:pool, perMech: n>0 ? round2(pool/n) : 0, count:n };
+}
+/* Per-person labor commission for ONE job — the single source of truth.
+   Mechanics split the pool; the Service Adviser earns a full 5%. If one person
+   is BOTH the Service Adviser AND an assigned mechanic on the job, they earn
+   only ONE 5% (the adviser amount replaces their mechanic share — no stacking). */
+function jobLaborCommissionMap(job, S){
+  var rate = (Number(S.shop.mechCommissionRate)||0)/100;
+  var labor = laborTotal(job.lines);
+  var pool = round2(labor*rate);
+  var mechs = (job.mechanicIds||[]).filter(function(x){return x && x!=='TBA';});
+  var perMech = mechs.length ? round2(pool/mechs.length) : 0;
+  var map = {};
+  mechs.forEach(function(m){ map[m] = round2((map[m]||0) + perMech); });
+  if (job.saId && job.saId!=='TBA'){ map[job.saId] = round2(labor*rate); }  // caps the SA at one 5%
+  return map;
 }
 
 /* ---- Payment helpers ------------------------------------------------------ */
@@ -2228,13 +2243,13 @@ function commissionTable(jobs){
   function add(id,amt){ if(!id||id==='TBA') return; var s=staffById(id); if(!s) return;
     if(!map[id]) map[id]={ name:s.name, role:s.role, amount:0 }; map[id].amount=round2(map[id].amount+amt); }
   jobs.forEach(function(j){
-    var rate=(Number(S.shop.mechCommissionRate)||0)/100;
-    var lc=jobLaborCommission(j,S);
-    (j.mechanicIds||[]).filter(function(x){return x&&x!=='TBA';}).forEach(function(mid){ add(mid, lc.perMech); });
-    // roles attached to the job
-    [j.saId, j.assessedBy, j.partsSalesman].forEach(function(sid){
-      var s=staffById(sid); if(!s||isMechanicRole(s.role)) return;        // mechanics handled via the pool
-      if(s.role==='SA'){ add(sid, round2(laborTotal(j.lines)*rate)); return; }  // Service Adviser: 5% of labor
+    // labor commissions (mechanics + Service Adviser, de-duped to one 5% per person)
+    var cm=jobLaborCommissionMap(j,S);
+    Object.keys(cm).forEach(function(id){ add(id, cm[id]); });
+    // other configured commissions (assessedBy / parts salesman, if not a labor-commission role)
+    [j.assessedBy, j.partsSalesman].forEach(function(sid){
+      var s=staffById(sid); if(!s) return;
+      if(isMechanicRole(s.role) || s.role==='SA') return;               // handled by the labor map
       if(s.commissionBase==='labor') add(sid, round2(laborTotal(j.lines)*(s.commissionRate||0)/100));
       else if(s.commissionBase==='total') add(sid, round2(jobGross(j)*(s.commissionRate||0)/100));
     });
@@ -2309,10 +2324,10 @@ VIEWS.productivity = function(){
   var mechs=mechanicStaff().map(function(m){ return { id:m.id, name:m.name, role:m.role, jobs:0, hours:0, labor:0, commission:0 }; });
   var byId={}; mechs.forEach(function(m){byId[m.id]=m;});
   jobs.forEach(function(j){
-    var lc=jobLaborCommission(j,S); var lab=laborTotal(j.lines);
+    var cm=jobLaborCommissionMap(j,S); var lab=laborTotal(j.lines);
     var assigned=(j.mechanicIds||[]).filter(function(x){return x&&x!=='TBA';});
     assigned.forEach(function(mid){ var r=byId[mid]; if(!r) return; r.jobs++; r.hours=round2(r.hours+(Number(j.jobHours)||0)/assigned.length);
-      r.labor=round2(r.labor+lab/assigned.length); r.commission=round2(r.commission+lc.perMech); });
+      r.labor=round2(r.labor+lab/assigned.length); r.commission=round2(r.commission+(cm[mid]||0)); });
   });
   var rows=mechs.map(function(m){
     return '<tr><td><b>'+esc(m.name)+'</b> <span class="muted small">'+esc(roleLabel(m.role))+'</span></td><td class="r">'+m.jobs+'</td><td class="r">'+num(m.hours)+'</td>'+
@@ -2658,9 +2673,9 @@ function printStatement(encName){ printDoc(docStatement(decodeURIComponent(encNa
 function docPayout(){
   var jobs=jobsInProdPeriod(billedJobs());
   var byId={}; mechanicStaff().forEach(function(m){byId[m.id]={name:m.name,role:m.role,jobs:0,labor:0,commission:0};});
-  jobs.forEach(function(j){ var lc=jobLaborCommission(j,S); var lab=laborTotal(j.lines);
+  jobs.forEach(function(j){ var cm=jobLaborCommissionMap(j,S); var lab=laborTotal(j.lines);
     var as=(j.mechanicIds||[]).filter(function(x){return x&&x!=='TBA';});
-    as.forEach(function(mid){ var r=byId[mid]; if(!r) return; r.jobs++; r.labor=round2(r.labor+lab/as.length); r.commission=round2(r.commission+lc.perMech); }); });
+    as.forEach(function(mid){ var r=byId[mid]; if(!r) return; r.jobs++; r.labor=round2(r.labor+lab/as.length); r.commission=round2(r.commission+(cm[mid]||0)); }); });
   var rows=Object.keys(byId).map(function(k){var r=byId[k];
     return '<tr><td>'+esc(r.name)+' ('+esc(roleLabel(r.role))+')</td><td class="r">'+r.jobs+'</td><td class="r">'+peso(r.labor)+'</td><td class="r">'+peso(r.commission)+'</td><td class="sigline" style="margin-top:18px"></td></tr>';}).join('');
   var tot=Object.keys(byId).reduce(function(s,k){return s+byId[k].commission;},0);
@@ -2797,7 +2812,7 @@ if (typeof module!=='undefined' && module.exports){
     LOGO_URI:function(){ return LOGO_URI; }, LOGO_LOCKUP:function(){ return LOGO_LOCKUP; },
     arJobs:arJobs, jobByNo:jobByNo, vehicleByPlate:vehicleByPlate, partById:partById,
     can:can, routeAllowed:routeAllowed, setCurrentUser:function(u){ CURRENT_USER=u; },
-    commissionTable:commissionTable, jobLaborCommission:jobLaborCommission, laborTotal:laborTotal,
+    commissionTable:commissionTable, jobLaborCommission:jobLaborCommission, jobLaborCommissionMap:jobLaborCommissionMap, laborTotal:laborTotal,
     advancePostJob:null
   };
 }
