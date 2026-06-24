@@ -115,11 +115,13 @@ function copyRem(){ var t=val('remMsg'); if(navigator.clipboard) navigator.clipb
 
 /* ---- Parts catalog -------------------------------------------------------- */
 VIEWS.parts = function(){
+  var showCost = (typeof can!=='function') || can('part_cost');
   var rows=S.parts.map(function(p){
     var margin = p.price? Math.round((p.price-p.cost)/p.price*100) : 0;
     var low=(p.stock||0)<=(p.reorder||0);
-    return '<tr><td><b>'+esc(p.partNo)+'</b></td><td>'+esc(p.name)+'</td><td class="r">'+peso(p.cost)+'</td>'+
-      '<td class="r">'+peso(p.price)+'</td><td class="r">'+margin+'%</td>'+
+    return '<tr><td><b>'+esc(p.partNo)+'</b></td><td>'+esc(p.name)+'</td>'+
+      (showCost?'<td class="r">'+peso(p.cost)+'</td>':'')+
+      '<td class="r">'+peso(p.price)+'</td>'+(showCost?'<td class="r">'+margin+'%</td>':'')+
       '<td class="r">'+num(p.stock)+(low?' <span class="lowpill">low</span>':'')+'</td>'+
       '<td class="r"><button class="ic" onclick="editPart(\''+p.id+'\')">✎</button><button class="ic" onclick="delPart(\''+p.id+'\')">✕</button></td></tr>';
   }).join('');
@@ -128,8 +130,8 @@ VIEWS.parts = function(){
     '<div class="row gap"><button class="btn ghost" onclick="go(\'settings\')">Server sync</button>'+
     '<button class="btn ghost" onclick="importPartsDialog()">Import CSV/JSON</button>'+
     '<button class="btn primary" onclick="editPart()">＋ Add part</button></div></div>'+
-    '<div class="muted small mb8">Inventory value at cost: <b>'+peso(inv)+'</b>'+(S.shop.partsSyncedAt?' · last synced '+fmtDateTime(S.shop.partsSyncedAt):'')+'</div>'+
-    '<div class="card pad0"><table class="tbl"><thead><tr><th>Part #</th><th>Name</th><th class="r">Cost</th><th class="r">Price</th><th class="r">Margin</th><th class="r">Stock</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+    (showCost?'<div class="muted small mb8">Inventory value at cost: <b>'+peso(inv)+'</b>'+(S.shop.partsSyncedAt?' · last synced '+fmtDateTime(S.shop.partsSyncedAt):'')+'</div>':'')+
+    '<div class="card pad0"><table class="tbl"><thead><tr><th>Part #</th><th>Name</th>'+(showCost?'<th class="r">Cost</th>':'')+'<th class="r">Price</th>'+(showCost?'<th class="r">Margin</th>':'')+'<th class="r">Stock</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
 };
 function editPart(id){
   var p=id?partById(id):{};

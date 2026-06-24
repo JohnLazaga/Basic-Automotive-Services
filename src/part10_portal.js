@@ -83,6 +83,7 @@ if (typeof module!=='undefined' && module.exports){
     render:function(){ return render(); }, setRoute:function(v,a){ ROUTE.view=v; ROUTE.arg=a||null; },
     LOGO_URI:function(){ return LOGO_URI; }, LOGO_LOCKUP:function(){ return LOGO_LOCKUP; },
     arJobs:arJobs, jobByNo:jobByNo, vehicleByPlate:vehicleByPlate, partById:partById,
+    can:can, routeAllowed:routeAllowed, setCurrentUser:function(u){ CURRENT_USER=u; },
     advancePostJob:null
   };
 }

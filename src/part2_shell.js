@@ -23,27 +23,29 @@ function updateThemeBtn(){
 var NAV = [
   { group:'OPERATIONS', items:[
     { id:'board', label:'Board', icon:'▦' },
-    { id:'appointments', label:'Appointments', icon:'▤' },
+    { id:'appointments', label:'Appointments', icon:'▤', cap:'appointments' },
     { id:'jobs', label:'Job Orders', icon:'▧' },
-    { id:'estimates', label:'Estimates', icon:'✎' }
+    { id:'estimates', label:'Estimates', icon:'✎', cap:'estimates' }
   ]},
   { group:'ANALYTICS', items:[
-    { id:'reports', label:'Reports', icon:'▣' },
-    { id:'dailyclose', label:'Daily Close', icon:'◷' },
-    { id:'productivity', label:'Productivity', icon:'⚙' },
-    { id:'receivables', label:'Receivables', icon:'₱' }
+    { id:'reports', label:'Reports', icon:'▣', cap:'reports' },
+    { id:'dailyclose', label:'Daily Close', icon:'◷', cap:'reports' },
+    { id:'productivity', label:'Productivity', icon:'⚙', cap:'productivity' },
+    { id:'receivables', label:'Receivables', icon:'₱', cap:'receivables' }
   ]},
   { group:'RECORDS', items:[
     { id:'vehicles', label:'Vehicles', icon:'⛛' },
-    { id:'parts', label:'Parts Catalog', icon:'◫' },
-    { id:'labor', label:'Labor Catalog', icon:'☰' },
-    { id:'purchaseorders', label:'Purchase Orders', icon:'⊞' },
-    { id:'staff', label:'Staff', icon:'☺' }
+    { id:'parts', label:'Parts Catalog', icon:'◫', cap:'parts_manage' },
+    { id:'labor', label:'Labor Catalog', icon:'☰', cap:'parts_manage' },
+    { id:'purchaseorders', label:'Purchase Orders', icon:'⊞', cap:'parts_manage' },
+    { id:'staff', label:'Staff', icon:'☺', cap:'staff_manage' }
   ]},
   { group:'SETUP', items:[
-    { id:'settings', label:'Settings', icon:'⚒' }
+    { id:'accounts', label:'Accounts & Roles', icon:'⚷', cap:'staff_manage' },
+    { id:'settings', label:'Settings', icon:'⚒', cap:'settings' }
   ]}
 ];
+function navAllowed(it){ return (typeof can!=='function') || !it.cap || can(it.cap); }
 
 function go(view, arg){
   ROUTE.view = view; ROUTE.arg = arg||null;
@@ -58,6 +60,9 @@ function go(view, arg){
 var VIEWS = {}; // id -> function(arg) -> html string
 
 function renderView(){
+  if (typeof routeAllowed==='function' && !routeAllowed(ROUTE.view)){
+    return '<div class="page">'+accessDenied(viewTitle(ROUTE.view))+'</div>';
+  }
   var fn = VIEWS[ROUTE.view] || VIEWS['board'];
   try { return fn(ROUTE.arg); }
   catch(e){ return '<div class="card"><h2>View error</h2><pre>'+esc(e&&e.stack||e)+'</pre></div>'; }
@@ -66,7 +71,9 @@ function renderView(){
 /* ---- Sidebar -------------------------------------------------------------- */
 function sidebarHTML(){
   var nav = NAV.map(function(g){
-    var items = g.items.map(function(it){
+    var allowed = g.items.filter(navAllowed);
+    if (!allowed.length) return '';
+    var items = allowed.map(function(it){
       var on = (ROUTE.view===it.id) ? ' active' : '';
       return '<button class="nav'+on+'" data-nav="'+it.id+'" onclick="go(\''+it.id+'\')">'+
         '<span class="nav-i">'+it.icon+'</span>'+esc(it.label)+'</button>';
@@ -92,7 +99,8 @@ function topbarHTML(){
       '<span id="saveState" class="savestate" data-st="saved">All changes saved</span>'+
       '<button class="iconbtn" id="themeBtn" onclick="toggleTheme()" title="Toggle dark mode" aria-label="Toggle dark mode">'+(THEME==='dark'?'☀':'☾')+'</button>'+
       ((typeof cloudOn==='function' && cloudOn() && FB && FB.user)
-        ? '<span class="userchip" id="userChip" title="Signed in">'+esc(FB.user.email||'')+'</span>'+
+        ? (CURRENT_USER ? '<span class="rolebadge'+(CURRENT_USER.isAdmin?' admin':'')+'">'+esc(CURRENT_USER.isAdmin?'Admin':CURRENT_USER.role)+'</span>' : '')+
+          '<span class="userchip" id="userChip" title="Signed in">'+esc(FB.user.email||'')+'</span>'+
           '<button class="iconbtn" onclick="doLogout()" title="Sign out" aria-label="Sign out">⎋</button>'
         : '')+
     '</div>'+

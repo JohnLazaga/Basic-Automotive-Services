@@ -175,6 +175,36 @@ section('Extra invariants');
   s.shop.vatReg=false; const ex=M.vatSplit(1000,s); ok('non-VAT yields exempt', ex.exempt===true && ex.vat===0);
 })();
 
+/* ---------------------------------------------------------------- RBAC */
+section('RBAC permission engine');
+(function(){
+  const s=fresh();
+  // Admin: everything
+  M.setCurrentUser({ uid:'a', role:'SV', isAdmin:true });
+  ok('admin can settings', M.can('settings')===true);
+  ok('admin can delete', M.can('delete')===true);
+  ok('admin route settings allowed', M.routeAllowed('settings')===true);
+  // SA: billing yes, part_cost/reports no
+  M.setCurrentUser({ uid:'b', role:'SA', isAdmin:false });
+  ok('SA can billing', M.can('billing')===true);
+  ok('SA cannot part_cost', M.can('part_cost')===false);
+  ok('SA cannot reports', M.can('reports')===false);
+  ok('SA blocked from settings route', M.routeAllowed('settings')===false);
+  ok('SA allowed board route', M.routeAllowed('board')===true);
+  // Mechanic: baseline only
+  M.setCurrentUser({ uid:'c', role:'Mechanic', isAdmin:false });
+  ok('Mechanic cannot prices', M.can('prices')===false);
+  ok('Mechanic cannot reports', M.can('reports')===false);
+  ok('Mechanic blocked from accounts', M.routeAllowed('accounts')===false);
+  // Parts Salesman: parts_manage yes, part_cost no
+  M.setCurrentUser({ uid:'d', role:'Parts Salesman', isAdmin:false });
+  ok('Parts can manage parts', M.can('parts_manage')===true);
+  ok('Parts cannot see cost', M.can('part_cost')===false);
+  // No user (local/dev): full access
+  M.setCurrentUser(null);
+  ok('no-user defaults to full access', M.can('settings')===true && M.routeAllowed('settings')===true);
+})();
+
 /* ---------------------------------------------------------------- SUMMARY */
 console.log('\n────────────────────────────────────────');
 console.log('  PASS: '+pass+'   FAIL: '+fail);

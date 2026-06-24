@@ -61,6 +61,20 @@ function whenFirebaseReady(cb){
 
 async function onSignedIn(user){
   renderCloudLoading();
+  // 1) Resolve this user's account & role (bootstraps first Admin).
+  try {
+    await loadCurrentUser(user);
+  } catch(e){
+    if (e.code==='not-provisioned'){
+      await FB.auth.signOut(); renderLogin('This account isn’t set up yet. Ask your administrator to add you.','err'); return;
+    }
+    if (e.code==='inactive'){
+      await FB.auth.signOut(); renderLogin('Your account has been disabled. Contact your administrator.','err'); return;
+    }
+    console.error('account load failed', e);
+    renderCloudError('Sign-in problem.', (e&&e.message)||'Please try again.'); return;
+  }
+  // 2) Load shop data.
   try {
     await cloudLoadAll();
   } catch(e){
