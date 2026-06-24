@@ -25,23 +25,38 @@ function initFirebase(){
   } catch(e){ console.error('Firebase init failed:', e); return false; }
 }
 
-/* Entry point from boot() when cloud is enabled. */
-function cloudBoot(){
-  if (typeof firebase==='undefined'){
-    renderCloudError('Couldn’t load the Firebase service.',
-      'Check your internet connection and reload. (The app needs to reach Google to sign you in.)');
-    return;
-  }
-  if (!initFirebase()){
-    renderCloudError('Firebase failed to initialize.', 'The configuration may be incomplete.');
-    return;
-  }
-  renderLogin(null, null, true); // show a connecting state immediately
-  FB.auth.onAuthStateChanged(function(user){
-    FB.user = user;
-    if (user) onSignedIn(user);
-    else renderLogin();
+/* Entry point from boot() when cloud is enabled.
+   Paints the login screen IMMEDIATELY (no Firebase needed to draw it), then
+   waits for the deferred Firebase SDK to finish loading before wiring auth.
+   This keeps first paint fast on mobile — the SDK downloads in the background. */
+function cloudStart(){
+  renderLogin(null, null, true);              // instant first paint
+  whenFirebaseReady(function(ok){
+    if (!ok){
+      renderCloudError('Couldn’t load the sign-in service.',
+        'Check your internet connection and reload.');
+      return;
+    }
+    if (!initFirebase()){
+      renderCloudError('Firebase failed to initialize.', 'The configuration may be incomplete.');
+      return;
+    }
+    FB.auth.onAuthStateChanged(function(user){
+      FB.user = user;
+      if (user) onSignedIn(user);
+      else renderLogin();
+    });
   });
+}
+/* Poll briefly for the deferred Firebase SDK to become available. */
+function whenFirebaseReady(cb){
+  if (typeof window==='undefined') return cb(false);
+  var tries=0;
+  (function check(){
+    if (typeof firebase!=='undefined' && firebase.auth && firebase.firestore) return cb(true);
+    if (tries++ > 150) return cb(false);     // ~15s ceiling
+    setTimeout(check, 100);
+  })();
 }
 
 async function onSignedIn(user){

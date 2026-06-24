@@ -53,19 +53,17 @@ function previewPortal(id){
 
 /* ---- Boot ----------------------------------------------------------------- */
 async function boot(){
-  // Cloud mode: require staff sign-in first; cloudBoot() drives rendering.
-  if (typeof cloudOn==='function' && cloudOn()){ cloudBoot(); return; }
+  if (typeof window!=='undefined'){ window.addEventListener('hashchange', render); }
+  // Cloud mode: paint the login screen immediately, load Firebase in the
+  // background (deferred SDK), then wire auth — so the page never blocks on it.
+  if (typeof cloudOn==='function' && cloudOn()){ cloudStart(); return; }
   await loadState();
   applyTheme((S.shop && S.shop.theme) || 'light');
   render();
-  if (typeof window!=='undefined'){
-    window.addEventListener('hashchange', render);
-  }
 }
-if (typeof window!=='undefined'){
-  if (document.readyState==='loading') document.addEventListener('DOMContentLoaded', boot);
-  else boot();
-}
+// The app script sits at the end of <body>, so #app already exists — boot now
+// (don't wait for DOMContentLoaded, which would block on the deferred SDK).
+if (typeof window!=='undefined'){ boot(); }
 
 /* ---- Node test exports ---------------------------------------------------- */
 if (typeof module!=='undefined' && module.exports){
