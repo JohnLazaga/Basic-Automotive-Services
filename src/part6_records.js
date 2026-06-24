@@ -297,10 +297,10 @@ function receivePO(id){
 }
 
 /* ---- Staff ---------------------------------------------------------------- */
-var ROLES=['SV','SA','SM','Mechanic','Parts Salesman'];
+var ROLES=['SV','SA','SM','Mechanic','Parts Salesman','Secretary'];
 VIEWS.staff = function(){
   var rows=S.staff.map(function(s){
-    var comm = isMechanicRole(s.role)? (S.shop.mechCommissionRate||5)+'% of labor (shop rate)'
+    var comm = earnsLaborCommission(s.role)? (S.shop.mechCommissionRate||5)+'% of labor (shop rate)'
       : (s.commissionBase&&s.commissionBase!=='none'? s.commissionRate+'% of '+s.commissionBase : '—');
     return '<tr><td><b>'+esc(s.name)+'</b></td><td>'+chip(roleLabel(s.role))+'</td><td>'+esc(comm)+'</td>'+
       '<td class="r"><button class="ic" onclick="editStaff(\''+s.id+'\')">✎</button><button class="ic" onclick="delStaff(\''+s.id+'\')">✕</button></td></tr>';
@@ -314,7 +314,7 @@ function editStaff(id){ var s=id?staffById(id):{};
     field('Role','<select id="stRole">'+ROLES.map(function(r){return '<option value="'+r+'"'+(s.role===r?' selected':'')+'>'+esc(roleLabel(r))+'</option>';}).join('')+'</select>')+
     '<div class="grid2">'+field('Commission base','<select id="stBase"><option value="none"'+(s.commissionBase==='none'||!s.commissionBase?' selected':'')+'>None</option><option value="labor"'+(s.commissionBase==='labor'?' selected':'')+'>Labor</option><option value="total"'+(s.commissionBase==='total'?' selected':'')+'>Total</option></select>')+
     field('Commission rate %','<input id="stRate" type="number" step="0.1" value="'+attr(s.commissionRate||0)+'">')+'</div>'+
-    '<p class="muted small">Mechanics always use the shop\'s labor-commission rate, split evenly across mechanics on a job.</p>',
+    '<p class="muted small">Mechanics (Senior & Junior) split the shop\'s labor-commission rate per job; the Service Adviser earns the same rate on their jobs. The settings below apply only to other roles.</p>',
     { onOk:'saveStaff' }); setTimeout(function(){stCtx=id||null;},10); }
 var stCtx=null;
 function saveStaff(){ var data={ name:val('stName'), role:val('stRole'), commissionBase:val('stBase'), commissionRate:Number(val('stRate'))||0 };

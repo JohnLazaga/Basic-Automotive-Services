@@ -182,8 +182,11 @@ function nextNo(kind, prefix, pad){
 
 /* ---- Roles --------------------------------------------------------------- */
 /* Internal role KEYS are unchanged (avoids data migration); only labels change. */
-var ROLE_LABELS = { SV:'Supervisor', SA:'Service Adviser', SM:'Senior Mechanic', Mechanic:'Junior Mechanic', 'Parts Salesman':'Parts Salesman' };
+var ROLE_LABELS = { SV:'Supervisor', SA:'Service Adviser', SM:'Senior Mechanic', Mechanic:'Junior Mechanic', 'Parts Salesman':'Parts Salesman', Secretary:'Secretary' };
 function roleLabel(role){ return ROLE_LABELS[role] || role || '—'; }
+/* Roles that earn the shop's labor-commission rate (5% of labor). Mechanics
+   split the pool; the Service Adviser on a job earns their own 5%. */
+function earnsLaborCommission(role){ return isMechanicRole(role) || role==='SA'; }
 /* Both Senior (SM) and Junior (Mechanic) mechanics earn labor commission and
    can be assigned to jobs. */
 function isMechanicRole(role){ return role==='SM' || role==='Mechanic'; }

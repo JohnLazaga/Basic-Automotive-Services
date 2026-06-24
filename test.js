@@ -82,6 +82,15 @@ section('5. Commission: 1 mech on ₱500 labor = ₱25.00; 2 mechs = ₱12.50 ea
   const c2=M.jobLaborCommission(job, s);
   ok('2 mechanics earn 12.50 each', c2.perMech===12.5);
   ok('commission pool is 25', c2.pool===25);
+  // Service Adviser earns its own 5% of labor (not split); Senior Mechanic also earns.
+  const sa=s.staff.find(x=>x.role==='SA'), sm=s.staff.find(x=>x.role==='SM');
+  const job2={ id:'j2', no:'JO-X', stage:'Released', lines:[{type:'labor',ref:null,desc:'L',qty:1,price:500}],
+    mechanicIds:[mech[0].id], saId:sa.id, assessedBy:sm.id, partsSalesman:'', discount:{type:'amount',value:0}, payments:[], addlWork:[] };
+  s.jobs=[job2];
+  const ct=M.commissionTable([job2]);
+  const saRow=ct.find(r=>r.name===sa.name), mRow=ct.find(r=>r.name===mech[0].name);
+  ok('Service Adviser earns 25.00 (5% labor)', saRow && saRow.amount===25);
+  ok('assigned mechanic still earns 25.00', mRow && mRow.amount===25);
 })();
 
 /* ---------------------------------------------------------------- TEST 6 */

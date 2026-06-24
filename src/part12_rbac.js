@@ -12,7 +12,7 @@ var CURRENT_USER = null;     // {uid,email,name,role,isAdmin,active}
 var ACCOUNTS = null;         // cached users list for the Accounts screen
 var _accountsLoading = false;
 
-var ROLE_LIST = ['SV','SA','SM','Mechanic','Parts Salesman'];
+var ROLE_LIST = ['SV','SA','SM','Mechanic','Parts Salesman','Secretary'];
 
 /* Capabilities that gate features (baseline board/jobs/vehicles are always on). */
 var CAPS = [
@@ -37,7 +37,8 @@ var DEFAULT_PERMS = {
   SA:               { appointments:1, estimates:1, prices:1, billing:1, receivables:1 },
   SM:               { estimates:1, prices:1 },
   Mechanic:         {},
-  'Parts Salesman': { prices:1, parts_manage:1 }
+  'Parts Salesman': { prices:1, parts_manage:1 },
+  Secretary:        { appointments:1, prices:1, billing:1, receivables:1 }
 };
 
 function permsMatrix(){

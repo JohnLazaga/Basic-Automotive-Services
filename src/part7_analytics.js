@@ -57,18 +57,22 @@ VIEWS.reports = function(){
     '</div></div></div>';
 };
 
-/* Commission across a set of jobs. Mechanics: labor×rate÷#mechs split evenly.
-   Other roles: their commissionBase/rate on the job they're attached to. */
+/* Commission across a set of jobs.
+   Mechanics: labor×rate÷#mechs split evenly (the pool).
+   Service Adviser on the job: its own labor×rate (same 5% rate, not split).
+   Other roles: their configured commissionBase/rate. */
 function commissionTable(jobs){
   var map={};
   function add(id,amt){ if(!id||id==='TBA') return; var s=staffById(id); if(!s) return;
     if(!map[id]) map[id]={ name:s.name, role:s.role, amount:0 }; map[id].amount=round2(map[id].amount+amt); }
   jobs.forEach(function(j){
+    var rate=(Number(S.shop.mechCommissionRate)||0)/100;
     var lc=jobLaborCommission(j,S);
     (j.mechanicIds||[]).filter(function(x){return x&&x!=='TBA';}).forEach(function(mid){ add(mid, lc.perMech); });
-    // non-mechanic roles attached to the job
+    // roles attached to the job
     [j.saId, j.assessedBy, j.partsSalesman].forEach(function(sid){
-      var s=staffById(sid); if(!s||isMechanicRole(s.role)) return;
+      var s=staffById(sid); if(!s||isMechanicRole(s.role)) return;        // mechanics handled via the pool
+      if(s.role==='SA'){ add(sid, round2(laborTotal(j.lines)*rate)); return; }  // Service Adviser: 5% of labor
       if(s.commissionBase==='labor') add(sid, round2(laborTotal(j.lines)*(s.commissionRate||0)/100));
       else if(s.commissionBase==='total') add(sid, round2(jobGross(j)*(s.commissionRate||0)/100));
     });
