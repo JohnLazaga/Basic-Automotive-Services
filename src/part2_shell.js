@@ -121,9 +121,23 @@ function toggleSidebar(){ var sb=document.getElementById('sidebar'); if(sb) sb.c
    is repainted. Avoids rebuilding/re-laying-out the sidebar on every action and
    preserves scroll/focus — the main "make it fast" win. A full remount happens
    only on first paint or when switching between the shop UI and the portal. */
+/* ESC = "back": close an open modal, else step a detail page back to its list. */
+var _keysBound=false;
+function bindKeys(){
+  if (_keysBound || typeof document==='undefined' || !document.addEventListener) return;
+  _keysBound=true;
+  document.addEventListener('keydown', function(e){
+    if (e.key!=='Escape' && e.keyCode!==27) return;
+    if (document.querySelector && document.querySelector('#modalRoot .modal-back')){ e.preventDefault(); closeModal(); return; }
+    var back={ job:'jobs', estimate:'estimates', vehicle:'vehicles', po:'purchaseorders' };
+    if (back[ROUTE.view]){ e.preventDefault(); go(back[ROUTE.view]); }
+  });
+}
+
 var _mounted=false, _mode=null;
 function render(){
   if (typeof document==='undefined') return;
+  bindKeys();
   var mode = isPortalRoute() ? 'portal' : 'app';
   if (!_mounted || mode!==_mode){
     if (mode==='portal'){ document.getElementById('app').innerHTML = portalHTML(); _mode='portal'; _mounted=true; return; }
