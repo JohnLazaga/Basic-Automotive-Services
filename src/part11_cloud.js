@@ -256,8 +256,7 @@ function renderLogin(msg, kind, connecting){
       '<label class="lg-field"><span>Username</span>'+
         '<input id="lgEmail" type="text" autocomplete="username" placeholder="your username" autocapitalize="off"></label>'+
       '<label class="lg-field"><span>Password</span>'+
-        '<input id="lgPass" type="password" autocomplete="current-password" placeholder="••••••••" '+
-        'onkeydown="if(event.key===\'Enter\')doLogin()"></label>'+
+        '<input id="lgPass" type="password" autocomplete="current-password" placeholder="••••••••"></label>'+
       '<button class="btn primary full lg-btn" onclick="doLogin()">Sign in</button>'+
       '<div class="lg-link" style="cursor:default">Forgot your password? Ask your administrator.</div>'+
       status+

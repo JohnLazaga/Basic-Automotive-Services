@@ -835,16 +835,52 @@ function toggleSidebar(){ var sb=document.getElementById('sidebar'); if(sb) sb.c
    is repainted. Avoids rebuilding/re-laying-out the sidebar on every action and
    preserves scroll/focus — the main "make it fast" win. A full remount happens
    only on first paint or when switching between the shop UI and the portal. */
-/* ESC = "back": close an open modal, else step a detail page back to its list. */
+/* Global keyboard:
+   - ESC = "back": close an open modal, else step a detail page back to its list.
+   - ENTER in a field = move to the next field; on the last field of a dialog,
+     trigger its Save/primary button (textareas keep normal multi-line Enter). */
 var _keysBound=false;
+function _formFields(container){
+  return Array.prototype.slice.call(container.querySelectorAll(
+    'input:not([type=hidden]):not([disabled]):not([readonly]), select:not([disabled])'
+  )).filter(function(el){ return el.type!=='button' && el.type!=='submit' && el.offsetParent!==null; });
+}
 function bindKeys(){
   if (_keysBound || typeof document==='undefined' || !document.addEventListener) return;
   _keysBound=true;
   document.addEventListener('keydown', function(e){
-    if (e.key!=='Escape' && e.keyCode!==27) return;
-    if (document.querySelector && document.querySelector('#modalRoot .modal-back')){ e.preventDefault(); closeModal(); return; }
-    var back={ job:'jobs', estimate:'estimates', vehicle:'vehicles', po:'purchaseorders' };
-    if (back[ROUTE.view]){ e.preventDefault(); go(back[ROUTE.view]); }
+    // ESC = back
+    if (e.key==='Escape' || e.keyCode===27){
+      if (document.querySelector && document.querySelector('#modalRoot .modal-back')){ e.preventDefault(); closeModal(); return; }
+      var back={ job:'jobs', estimate:'estimates', vehicle:'vehicles', po:'purchaseorders' };
+      if (back[ROUTE.view]){ e.preventDefault(); go(back[ROUTE.view]); }
+      return;
+    }
+    // ENTER = advance to next field (or submit on the last one)
+    if (e.key==='Enter' || e.keyCode===13){
+      var t=e.target; if(!t||!t.tagName) return;
+      var tag=t.tagName.toUpperCase();
+      if (tag==='TEXTAREA') return;                       // allow newlines in notes
+      if (tag!=='INPUT' && tag!=='SELECT') return;        // only form fields
+      if (t.type==='button' || t.type==='submit') return;
+      var modal=t.closest && t.closest('.modal');
+      var login=t.closest && t.closest('.login-card');
+      var container = modal || login || (t.closest && (t.closest('.card')||t.closest('.page'))) || document.getElementById('app');
+      if(!container) return;
+      var fields=_formFields(container);
+      var idx=fields.indexOf(t);
+      if(idx<0) return;
+      if(idx < fields.length-1){
+        e.preventDefault();
+        var nx=fields[idx+1]; if(nx.focus) nx.focus();
+        if(nx.select && /^(text|number|email|password|search|tel|url)$/.test(nx.type||'text')){ try{nx.select();}catch(_){} }
+      } else if (modal || login){
+        e.preventDefault();
+        var btn=(modal && (modal.querySelector('.modal-foot .btn.primary')||modal.querySelector('.btn.primary'))) ||
+                (login && login.querySelector('.btn.primary'));
+        if(btn) btn.click();
+      }
+    }
   });
 }
 
@@ -3128,8 +3164,7 @@ function renderLogin(msg, kind, connecting){
       '<label class="lg-field"><span>Username</span>'+
         '<input id="lgEmail" type="text" autocomplete="username" placeholder="your username" autocapitalize="off"></label>'+
       '<label class="lg-field"><span>Password</span>'+
-        '<input id="lgPass" type="password" autocomplete="current-password" placeholder="••••••••" '+
-        'onkeydown="if(event.key===\'Enter\')doLogin()"></label>'+
+        '<input id="lgPass" type="password" autocomplete="current-password" placeholder="••••••••"></label>'+
       '<button class="btn primary full lg-btn" onclick="doLogin()">Sign in</button>'+
       '<div class="lg-link" style="cursor:default">Forgot your password? Ask your administrator.</div>'+
       status+
