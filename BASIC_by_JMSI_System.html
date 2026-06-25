@@ -3312,6 +3312,40 @@ function setAccountAdmin(uid, isAdmin){ FB.db.collection('users').doc(uid).updat
 function setAccountActive(uid, active){ FB.db.collection('users').doc(uid).update({ active:active }).then(function(){ toast(active?'Account enabled':'Account disabled'); refreshAccounts(); }); }
 function resetAccountPassword(email){ FB.auth.sendPasswordResetEmail(email).then(function(){ toast('Reset email sent to '+email); }).catch(function(e){ toast(e.message,'err'); }); }
 
+/* Edit one staff account (name, role, admin, active) — committed on Save. */
+var acEditCtx=null;
+function editAccountDialog(uid){
+  if(!isAdminUser()){ toast('Admins only','err'); return; }
+  var u=(ACCOUNTS||[]).find(function(x){return x.uid===uid;}); if(!u) return;
+  var me = CURRENT_USER && CURRENT_USER.uid===uid;
+  openModal('Edit staff account',
+    field('Name','<input id="edName" value="'+attr(u.name||'')+'">')+
+    field('Email','<input value="'+attr(u.email||'')+'" disabled>','The email is the login and can’t be changed here.')+
+    field('Role','<select id="edRole">'+ROLE_LIST.map(function(r){return '<option value="'+r+'"'+(u.role===r?' selected':'')+'>'+esc(roleLabel(r))+'</option>';}).join('')+'</select>')+
+    '<label class="chk"><input type="checkbox" id="edAdmin" '+(u.isAdmin?'checked':'')+(me?' disabled':'')+'> Full admin access</label>'+
+    '<label class="chk"><input type="checkbox" id="edActive" '+(u.active===false?'':'checked')+(me?' disabled':'')+'> Account active (can sign in)</label>'+
+    (me?'<p class="muted small">You can’t change your own admin/active status (prevents locking yourself out).</p>':''),
+    { footer:'<button class="btn danger ghost" onclick="deleteAccountConfirm(\''+uid+'\')"'+(me?' disabled':'')+'>Remove</button>'+
+      '<span style="flex:1"></span><button class="btn ghost" onclick="closeModal()">Cancel</button>'+
+      '<button class="btn primary" onclick="saveAccount()">Save</button>' });
+  setTimeout(function(){ acEditCtx=uid; },10);
+}
+function saveAccount(){
+  var u=(ACCOUNTS||[]).find(function(x){return x.uid===acEditCtx;}); if(!u){ closeModal(); return; }
+  var me = CURRENT_USER && CURRENT_USER.uid===u.uid;
+  var data={ name:val('edName'), role:val('edRole') };
+  if(!me){ data.isAdmin=checked('edAdmin'); data.active=checked('edActive'); }
+  FB.db.collection('users').doc(u.uid).update(data)
+    .then(function(){ closeModal(); toast('Account saved'); refreshAccounts(); })
+    .catch(function(e){ toast(e.message||'Save failed','err'); });
+}
+function deleteAccountConfirm(uid){
+  var u=(ACCOUNTS||[]).find(function(x){return x.uid===uid;}); if(!u) return;
+  confirmModal('Remove access?','This removes '+esc(u.name||u.email)+'’s access (their role record is deleted; the login itself is disabled). They will no longer be able to use the app.', function(){
+    FB.db.collection('users').doc(uid).delete().then(function(){ closeModal(); toast('Access removed'); refreshAccounts(); }).catch(function(e){ toast(e.message,'err'); });
+  },'Remove access',true);
+}
+
 /* ---- Permission matrix editing (Admin) ------------------------------------ */
 /* Role-permission editing: changes are held in a draft until Save. */
 var PERM_EDIT=false, PERM_DRAFT=null;
@@ -3337,16 +3371,13 @@ VIEWS.accounts = function(){
   else if (!ACCOUNTS.length){ accHTML = '<div class="card">'+emptyState('No staff accounts yet. Add one to give a teammate their own login.')+'</div>'; }
   else {
     var rows = ACCOUNTS.map(function(u){
-      var roleSel = '<select onchange="setAccountRole(\''+u.uid+'\',this.value)"'+(u.isAdmin?' disabled':'')+'>'+
-        ROLE_LIST.map(function(r){return '<option value="'+r+'"'+(u.role===r?' selected':'')+'>'+esc(roleLabel(r))+'</option>';}).join('')+'</select>';
       var me = CURRENT_USER && CURRENT_USER.uid===u.uid;
       return '<tr><td><b>'+esc(u.name||u.email)+'</b>'+(me?' <span class="chip">you</span>':'')+'<div class="muted small">'+esc(u.email)+'</div></td>'+
-        '<td>'+(u.isAdmin?chip('Admin','gold'):roleSel)+'</td>'+
+        '<td>'+(u.isAdmin?chip('Admin','gold'):chip(roleLabel(u.role)))+'</td>'+
         '<td>'+(u.active===false?chip('Disabled'):chip('Active','ok'))+'</td>'+
         '<td class="r">'+
-          '<label class="chk small" title="Full admin access"><input type="checkbox" '+(u.isAdmin?'checked':'')+(me?' disabled':'')+' onchange="setAccountAdmin(\''+u.uid+'\',this.checked)"> admin</label> '+
-          '<button class="btn xs ghost" onclick="resetAccountPassword(\''+attr(u.email)+'\')">Reset PW</button> '+
-          (me?'':'<button class="btn xs ghost" onclick="setAccountActive(\''+u.uid+'\','+(u.active===false?'true':'false')+')">'+(u.active===false?'Enable':'Disable')+'</button>')+
+          '<button class="btn xs" onclick="editAccountDialog(\''+u.uid+'\')">✎ Edit</button> '+
+          '<button class="btn xs ghost" onclick="resetAccountPassword(\''+attr(u.email)+'\')">Reset PW</button>'+
         '</td></tr>';
     }).join('');
     accHTML = '<div class="card pad0"><table class="tbl"><thead><tr><th>Staff</th><th>Role</th><th>Status</th><th class="r">Actions</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
