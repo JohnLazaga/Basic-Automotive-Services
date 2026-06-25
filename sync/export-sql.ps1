@@ -11,6 +11,7 @@ SELECT ap.fldStockCode AS sku, p.fldPartDesc AS part_name,
 FROM tblAutoPart ap
 LEFT JOIN tblPart p ON ap.fldPartNameCode = p.fldPartNameCode
 WHERE ap.fldIsActive = 1
+ORDER BY ap.fldStockCode
 "@
 
 $cs = "Server=$server;Database=$db;Integrated Security=SSPI;TrustServerCertificate=True;Encrypt=False;Connect Timeout=15"
