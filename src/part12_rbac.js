@@ -23,7 +23,8 @@ var CAPS = [
   { key:'discounts',    label:'Apply discounts' },
   { key:'billing',      label:'Final billing / OR #' },
   { key:'receivables',  label:'Receivables (A/R)' },
-  { key:'reports',      label:'Reports / Daily Close' },
+  { key:'reports',      label:'Reports' },
+  { key:'dailyclose',   label:'Daily Close' },
   { key:'productivity', label:'Productivity & commissions' },
   { key:'parts_manage', label:'Parts / Labor / PO' },
   { key:'staff_manage', label:'Staff & accounts' },
@@ -33,7 +34,7 @@ var CAPS = [
 
 /* Default matrix (Admin always has everything via isAdmin). Admin-editable. */
 var DEFAULT_PERMS = {
-  SV:               { appointments:1, estimates:1, prices:1, part_cost:1, discounts:1, billing:1, receivables:1, reports:1, parts_manage:1 },
+  SV:               { appointments:1, estimates:1, prices:1, part_cost:1, discounts:1, billing:1, receivables:1, reports:1, dailyclose:1, parts_manage:1 },
   SA:               { appointments:1, estimates:1, prices:1, billing:1, receivables:1 },
   SM:               { estimates:1, prices:1 },
   Mechanic:         {},
@@ -252,7 +253,7 @@ function accessDenied(what){
 /* Map a route to the capability it requires (for the renderView guard). */
 var VIEW_CAP = {
   appointments:'appointments', estimates:'estimates', estimate:'estimates',
-  reports:'reports', dailyclose:'reports', productivity:'productivity', receivables:'receivables',
+  reports:'reports', dailyclose:'dailyclose', productivity:'productivity', receivables:'receivables',
   parts:'parts_manage', labor:'parts_manage', purchaseorders:'parts_manage', po:'parts_manage',
   staff:'staff_manage', accounts:'staff_manage', settings:'settings'
 };

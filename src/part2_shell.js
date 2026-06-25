@@ -29,7 +29,7 @@ var NAV = [
   ]},
   { group:'ANALYTICS', items:[
     { id:'reports', label:'Reports', icon:'▣', cap:'reports' },
-    { id:'dailyclose', label:'Daily Close', icon:'◷', cap:'reports' },
+    { id:'dailyclose', label:'Daily Close', icon:'◷', cap:'dailyclose' },
     { id:'productivity', label:'Productivity', icon:'⚙', cap:'productivity' },
     { id:'receivables', label:'Receivables', icon:'₱', cap:'receivables' }
   ]},
