@@ -101,32 +101,43 @@ function getSecondaryApp(){
   var existing = (firebase.apps||[]).filter(function(a){ return a.name==='sec'; })[0];
   return existing || firebase.initializeApp(FIREBASE_CONFIG, 'sec');
 }
+/* Staff log in with a USERNAME + a password the admin sets (no email needed).
+   Internally each username maps to a synthetic email for Firebase Auth.
+   The owner still signs in with their real email (kept for the isOwner rule). */
+var LOGIN_DOMAIN = 'basic-jmsi.local';
+function usernameToEmail(u){ return String(u||'').trim().toLowerCase().replace(/[^a-z0-9_.\-]/g,'') + '@' + LOGIN_DOMAIN; }
+function loginIdToEmail(id){ id=String(id||'').trim(); return id.indexOf('@')>=0 ? id : usernameToEmail(id); }
+function cleanUsername(u){ return String(u||'').trim().toLowerCase().replace(/[^a-z0-9_.\-]/g,''); }
+
 function addAccountDialog(){
   if (!isAdminUser()){ toast('Admins only','err'); return; }
   openModal('Add staff account',
     field('Full name','<input id="acName" placeholder="Juan Dela Cruz">')+
-    field('Email','<input id="acEmail" type="email" placeholder="staff@example.com">')+
+    '<div class="grid2">'+
+    field('Username','<input id="acUser" placeholder="e.g. junjun" autocomplete="off" oninput="this.value=this.value.toLowerCase().replace(/[^a-z0-9_.-]/g,\'\')">')+
+    field('Password','<input id="acPass" type="text" placeholder="set a password" autocomplete="off">')+
+    '</div>'+
     '<div class="grid2">'+
     field('Role','<select id="acRole">'+ROLE_LIST.map(function(r){return '<option value="'+r+'">'+esc(roleLabel(r))+'</option>';}).join('')+'</select>')+
     field('Admin?','<label class="chk"><input type="checkbox" id="acAdmin"> Full admin access</label>')+'</div>'+
-    '<p class="muted small">The staff member gets an email to set their own password. They can sign in once they do.</p>',
+    '<p class="muted small">The staff member signs in with this <b>username</b> and <b>password</b>. Share it with them; they can keep or you can change it later.</p>',
     { onOk:'createStaffAccount', okText:'Create account' });
 }
 function createStaffAccount(){
-  var name=val('acName').trim(), email=val('acEmail').trim(), role=val('acRole'), isAdmin=checked('acAdmin');
-  if(!name||!email){ toast('Name and email required','err'); return; }
+  var name=val('acName').trim(), username=cleanUsername(val('acUser')), pass=val('acPass'), role=val('acRole'), isAdmin=checked('acAdmin');
+  if(!name||!username){ toast('Name and username required','err'); return; }
+  if(!pass || pass.length<6){ toast('Password must be at least 6 characters','err'); return; }
+  var email=usernameToEmail(username);
   var btn=document.querySelector('.modal-foot .btn.primary'); if(btn){ btn.textContent='Creating…'; btn.disabled=true; }
   var sec=getSecondaryApp();
-  var tempPass='Basic-'+Math.random().toString(36).slice(2,10)+'-'+Math.floor(Math.random()*900+100);
-  sec.auth().createUserWithEmailAndPassword(email, tempPass).then(function(cred){
+  sec.auth().createUserWithEmailAndPassword(email, pass).then(function(cred){
     return FB.db.collection('users').doc(cred.user.uid).set({
-      email:email, name:name, role:role, isAdmin:isAdmin, active:true, createdAt:new Date().toISOString()
-    }).then(function(){ return sec.auth().sendPasswordResetEmail(email); })
-      .then(function(){ return sec.auth().signOut(); });
+      username:username, email:email, name:name, role:role, isAdmin:isAdmin, active:true, createdAt:new Date().toISOString()
+    }).then(function(){ return sec.auth().signOut(); });
   }).then(function(){
-    closeModal(); toast('Account created · reset email sent to '+email); refreshAccounts();
+    closeModal(); toast('Account created · username "'+username+'"'); refreshAccounts();
   }).catch(function(e){
-    var msg = (e.code||'').indexOf('email-already-in-use')>=0 ? 'That email already has an account.' : (e.message||'Could not create account');
+    var msg = (e.code||'').indexOf('email-already-in-use')>=0 ? 'That username is already taken.' : (e.message||'Could not create account');
     toast(msg,'err'); if(btn){ btn.textContent='Create account'; btn.disabled=false; }
   });
 }
@@ -143,7 +154,7 @@ function editAccountDialog(uid){
   var me = CURRENT_USER && CURRENT_USER.uid===uid;
   openModal('Edit staff account',
     field('Name','<input id="edName" value="'+attr(u.name||'')+'">')+
-    field('Email','<input value="'+attr(u.email||'')+'" disabled>','The email is the login and can’t be changed here.')+
+    field(u.username?'Username':'Email','<input value="'+attr(u.username||u.email||'')+'" disabled>','This is the login — to change it, remove the account and add a new one.')+
     field('Role','<select id="edRole">'+ROLE_LIST.map(function(r){return '<option value="'+r+'"'+(u.role===r?' selected':'')+'>'+esc(roleLabel(r))+'</option>';}).join('')+'</select>')+
     '<label class="chk"><input type="checkbox" id="edAdmin" '+(u.isAdmin?'checked':'')+(me?' disabled':'')+'> Full admin access</label>'+
     '<label class="chk"><input type="checkbox" id="edActive" '+(u.active===false?'':'checked')+(me?' disabled':'')+'> Account active (can sign in)</label>'+
@@ -195,7 +206,7 @@ VIEWS.accounts = function(){
   else {
     var rows = ACCOUNTS.map(function(u){
       var me = CURRENT_USER && CURRENT_USER.uid===u.uid;
-      return '<tr><td><b>'+esc(u.name||u.email)+'</b>'+(me?' <span class="chip">you</span>':'')+'<div class="muted small">'+esc(u.email)+'</div></td>'+
+      return '<tr><td><b>'+esc(u.name||u.username||u.email)+'</b>'+(me?' <span class="chip">you</span>':'')+'<div class="muted small">'+esc(u.username?('@'+u.username):u.email)+'</div></td>'+
         '<td>'+(u.isAdmin?chip('Admin','gold'):chip(roleLabel(u.role)))+'</td>'+
         '<td>'+(u.active===false?chip('Disabled'):chip('Active','ok'))+'</td>'+
         '<td class="r">'+

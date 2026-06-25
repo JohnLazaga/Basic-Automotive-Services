@@ -253,13 +253,13 @@ function renderLogin(msg, kind, connecting){
       '<img class="login-logo" src="'+LOGO_LOCKUP+'" alt="Basic by JMSI"/>'+
       '<div class="login-sub">Shop Operations · Staff Sign-in</div>'+
       (msg ? '<div class="lg-msg '+(kind||'err')+'">'+esc(msg)+'</div>' : '')+
-      '<label class="lg-field"><span>Email</span>'+
-        '<input id="lgEmail" type="email" autocomplete="username" placeholder="you@example.com"></label>'+
+      '<label class="lg-field"><span>Username</span>'+
+        '<input id="lgEmail" type="text" autocomplete="username" placeholder="your username" autocapitalize="off"></label>'+
       '<label class="lg-field"><span>Password</span>'+
         '<input id="lgPass" type="password" autocomplete="current-password" placeholder="••••••••" '+
         'onkeydown="if(event.key===\'Enter\')doLogin()"></label>'+
       '<button class="btn primary full lg-btn" onclick="doLogin()">Sign in</button>'+
-      '<button class="lg-link" onclick="doReset()">Forgot password?</button>'+
+      '<div class="lg-link" style="cursor:default">Forgot your password? Ask your administrator.</div>'+
       status+
     '</div></div>';
   setTimeout(function(){ var e=document.getElementById('lgEmail'); if(e&&e.focus) e.focus(); }, 30);
@@ -276,8 +276,9 @@ function renderCloudError(title, detail){
 }
 
 function doLogin(){
-  var email=(val('lgEmail')||'').trim(), pw=val('lgPass')||'';
-  if(!email||!pw){ renderLogin('Enter your email and password.','err'); return; }
+  var id=(val('lgEmail')||'').trim(), pw=val('lgPass')||'';
+  if(!id||!pw){ renderLogin('Enter your username and password.','err'); return; }
+  var email = (typeof loginIdToEmail==='function') ? loginIdToEmail(id) : id;  // username -> synthetic email; owner email kept as-is
   var btn=document.querySelector('.lg-btn'); if(btn){ btn.textContent='Signing in…'; btn.disabled=true; }
   FB.auth.signInWithEmailAndPassword(email, pw).catch(function(e){
     renderLogin(friendlyAuthError(e), 'err');
@@ -297,9 +298,9 @@ function doReset(){
 }
 function friendlyAuthError(e){
   var c=e&&e.code||'';
-  if(c.indexOf('wrong-password')>=0||c.indexOf('invalid-credential')>=0) return 'Incorrect email or password.';
-  if(c.indexOf('user-not-found')>=0) return 'No account found for that email.';
-  if(c.indexOf('invalid-email')>=0) return 'That email address looks invalid.';
+  if(c.indexOf('wrong-password')>=0||c.indexOf('invalid-credential')>=0) return 'Incorrect username or password.';
+  if(c.indexOf('user-not-found')>=0) return 'No account found for that username.';
+  if(c.indexOf('invalid-email')>=0) return 'That username looks invalid.';
   if(c.indexOf('too-many-requests')>=0) return 'Too many attempts. Please wait a moment and try again.';
   if(c.indexOf('network')>=0) return 'Network error — check your internet connection.';
   return (e&&e.message)||'Sign-in failed.';
