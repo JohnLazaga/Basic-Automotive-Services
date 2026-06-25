@@ -136,16 +136,19 @@ function setAccountActive(uid, active){ FB.db.collection('users').doc(uid).updat
 function resetAccountPassword(email){ FB.auth.sendPasswordResetEmail(email).then(function(){ toast('Reset email sent to '+email); }).catch(function(e){ toast(e.message,'err'); }); }
 
 /* ---- Permission matrix editing (Admin) ------------------------------------ */
-function togglePerm(role, cap, on){
-  var m = JSON.parse(JSON.stringify(permsMatrix()));
-  if (!m[role]) m[role]={};
-  if (on) m[role][cap]=1; else delete m[role][cap];
-  S.shop.permissions = m;
-  persist(); render();
+/* Role-permission editing: changes are held in a draft until Save. */
+var PERM_EDIT=false, PERM_DRAFT=null;
+function permEditOn(){ PERM_EDIT=true; PERM_DRAFT=JSON.parse(JSON.stringify(permsMatrix())); render(); }
+function permCancel(){ PERM_EDIT=false; PERM_DRAFT=null; render(); }
+function permSave(){ if(PERM_DRAFT) S.shop.permissions=PERM_DRAFT; persist(); PERM_EDIT=false; PERM_DRAFT=null; toast('Permissions saved'); render(); }
+function permDraftToggle(role, cap, on){
+  if(!PERM_DRAFT) return;
+  if(!PERM_DRAFT[role]) PERM_DRAFT[role]={};
+  if(on) PERM_DRAFT[role][cap]=1; else delete PERM_DRAFT[role][cap];
 }
-function resetPerms(){
-  confirmModal('Reset permissions?','Restore the default role permissions for all roles.', function(){
-    S.shop.permissions = JSON.parse(JSON.stringify(DEFAULT_PERMS)); persist(); render();
+function permResetDraft(){
+  confirmModal('Reset to defaults?','Set every role back to the default permissions (you can still Cancel before saving).', function(){
+    PERM_DRAFT=JSON.parse(JSON.stringify(DEFAULT_PERMS)); render();
   },'Reset to defaults');
 }
 
@@ -172,20 +175,26 @@ VIEWS.accounts = function(){
     accHTML = '<div class="card pad0"><table class="tbl"><thead><tr><th>Staff</th><th>Role</th><th>Status</th><th class="r">Actions</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
   }
 
-  var m = permsMatrix();
+  var m = PERM_EDIT ? PERM_DRAFT : permsMatrix();
   var head = '<tr><th>Capability</th>'+ROLE_LIST.map(function(r){return '<th class="r">'+esc(roleLabel(r))+'</th>';}).join('')+'</tr>';
   var body = CAPS.map(function(c){
     return '<tr><td>'+esc(c.label)+'</td>'+ROLE_LIST.map(function(r){
       var on=!!(m[r]&&m[r][c.key]);
-      return '<td class="r"><input type="checkbox" '+(on?'checked':'')+' onchange="togglePerm(\''+r+'\',\''+c.key+'\',this.checked)"></td>';
+      return '<td class="r"><input type="checkbox" '+(on?'checked':'')+(PERM_EDIT?'':' disabled')+' onchange="permDraftToggle(\''+r+'\',\''+c.key+'\',this.checked)"></td>';
     }).join('')+'</tr>';
   }).join('');
+  var permBtns = PERM_EDIT
+    ? '<button class="btn sm primary" onclick="permSave()">Save</button>'+
+      '<button class="btn sm ghost" onclick="permCancel()">Cancel</button>'+
+      '<button class="btn sm ghost" onclick="permResetDraft()">Reset to defaults</button>'
+    : '<button class="btn sm" onclick="permEditOn()">✎ Edit</button>';
 
   return '<div class="page"><div class="page-head"><h1>Accounts & Roles</h1>'+
     '<button class="btn primary" onclick="addAccountDialog()">＋ Add staff account</button></div>'+
     '<h2 class="sec">Staff accounts</h2>'+accHTML+
-    '<div class="row gap sec"><h2 style="margin:0">Role permissions</h2><button class="btn sm ghost" onclick="resetPerms()">Reset to defaults</button></div>'+
-    '<p class="muted small">Admins always have full access. Tick what each role can do — changes apply to everyone in that role immediately.</p>'+
+    '<div class="row gap sec" style="align-items:center"><h2 style="margin:0">Role permissions</h2>'+permBtns+
+      (PERM_EDIT?'<span class="rolebadge admin">editing</span>':'')+'</div>'+
+    '<p class="muted small">Admins always have full access. '+(PERM_EDIT?'Tick what each role can do, then <b>Save</b> (or Cancel to discard).':'Click <b>Edit</b> to change what each role can do.')+'</p>'+
     '<div class="card pad0"><table class="tbl perm"><thead>'+head+'</thead><tbody>'+body+'</tbody></table></div>'+
   '</div>';
 };
