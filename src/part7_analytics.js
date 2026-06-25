@@ -7,7 +7,11 @@ function releasedJobs(){ return S.jobs.filter(function(j){return j.stage==='Rele
 function billedJobs(){ return S.jobs.filter(function(j){return j.stage==='Final Billing'||j.stage==='Released';}); }
 
 function jobCostOfParts(j){
-  return round2((j.lines||[]).reduce(function(s,l){ if(l.type!=='part'||!l.ref) return s; var p=partById(l.ref); return s+(p?(p.cost||0)*(l.qty||0):0); },0));
+  return round2((j.lines||[]).reduce(function(s,l){
+    if(l.type!=='part') return s;
+    var unitCost = (l.netPrice!=null && l.netPrice!=='') ? Number(l.netPrice)||0 : (l.ref ? ((partById(l.ref)||{}).cost||0) : 0);
+    return s + unitCost*(Number(l.qty)||0);
+  },0));
 }
 
 /* ---- Reports & Analytics -------------------------------------------------- */

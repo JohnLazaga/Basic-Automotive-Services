@@ -86,6 +86,7 @@ async function onSignedIn(user){
   cloudSubscribe();
   render();
   updateUserChip();
+  if (typeof loadCatalog==='function') loadCatalog();   // preload parts catalog in the background
 }
 
 function renderCloudLoading(){

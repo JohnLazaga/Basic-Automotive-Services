@@ -197,7 +197,7 @@ function jobLinesPanel(j){
   var locked = j.stage==='Released';
   var rows = (j.lines||[]).map(function(l){
     return '<tr><td>'+chip(l.type==='part'?'Part':'Labor', l.type==='part'?'':'gold')+'</td>'+
-      '<td>'+esc(l.desc)+'</td><td class="r">'+num(l.qty)+'</td>'+
+      '<td>'+(l.sku?'<span class="muted small">'+esc(l.sku)+'</span> ':'')+esc(l.desc)+'</td><td class="r">'+num(l.qty)+'</td>'+
       '<td class="r">'+peso(l.price)+'</td><td class="r">'+peso(lineTotal(l))+'</td>'+
       '<td class="r">'+(locked?'':'<button class="ic" onclick="editLine(\''+j.id+'\',\''+l.id+'\')">✎</button>'+
         '<button class="ic" onclick="delLine(\''+j.id+'\',\''+l.id+'\')">✕</button>')+'</td></tr>';
@@ -207,34 +207,66 @@ function jobLinesPanel(j){
     '<table class="tbl"><thead><tr><th>Type</th><th>Description</th><th class="r">Qty</th><th class="r">Price</th><th class="r">Total</th><th></th></tr></thead>'+
     '<tbody>'+rows+'</tbody></table></div>';
 }
+/* Line editor. Part lines: Qty → SKU (auto-fills Part Name / Net Price / SRP from
+   the parts catalog, all editable) with full manual entry when no SKU is used.
+   Labor lines: pick from the labor menu or free-text. */
 function lineForm(l){
   l=l||{type:'part',qty:1,price:0,desc:''};
-  var partOpts='<option value="">— free text —</option>'+S.parts.map(function(p){return '<option value="'+p.id+'" data-price="'+p.price+'" data-name="'+attr(p.name)+'"'+(l.ref===p.id?' selected':'')+'>'+esc(p.partNo+' · '+p.name)+'</option>';}).join('');
-  var laborOpts='<option value="">— free text —</option>'+S.labor.map(function(p){return '<option value="'+p.id+'" data-price="'+p.price+'" data-name="'+attr(p.name)+'"'+(l.ref===p.id?' selected':'')+'>'+esc(p.name)+'</option>';}).join('');
   return field('Type','<select id="lnType" onchange="lineTypeSwap()"><option value="part"'+(l.type==='part'?' selected':'')+'>Part</option><option value="labor"'+(l.type==='labor'?' selected':'')+'>Labor</option></select>')+
-    '<div id="lnPick">'+ (l.type==='part'
-      ? field('From catalog','<select id="lnRef" onchange="linePick()">'+partOpts+'</select>')
-      : field('From menu','<select id="lnRef" onchange="linePick()">'+laborOpts+'</select>'))+'</div>'+
+    '<div id="lnFields">'+ (l.type==='labor' ? laborFields(l) : partFields(l)) +'</div>';
+}
+function partFields(l){
+  return '<div class="grid2">'+
+    field('Qty','<input id="lnQty" type="number" step="0.5" value="'+attr(l.qty||1)+'">')+
+    field('SKU','<input id="lnSku" value="'+attr(l.sku||'')+'" oninput="skuLookup()" placeholder="type SKU…" autocomplete="off">')+
+    '</div>'+
+    field('Part name','<input id="lnDesc" value="'+attr(l.desc||'')+'" placeholder="auto-fills from SKU, or type">')+
+    '<div class="grid2">'+
+    field('Net price','<input id="lnNet" type="number" step="0.01" value="'+attr(l.netPrice||0)+'">')+
+    field('SRP','<input id="lnPrice" type="number" step="0.01" value="'+attr(l.price||0)+'">')+
+    '</div><div id="skuMsg" class="muted small">'+catalogHint()+'</div>';
+}
+function laborFields(l){
+  var laborOpts='<option value="">— free text —</option>'+S.labor.map(function(p){return '<option value="'+p.id+'" data-price="'+p.price+'" data-name="'+attr(p.name)+'"'+(l.ref===p.id?' selected':'')+'>'+esc(p.name)+'</option>';}).join('');
+  return field('From menu','<select id="lnRef" onchange="laborPick()">'+laborOpts+'</select>')+
     field('Description','<input id="lnDesc" value="'+attr(l.desc||'')+'">')+
     '<div class="grid2">'+field('Qty','<input id="lnQty" type="number" step="0.5" value="'+attr(l.qty||1)+'">')+
-    field('Unit price','<input id="lnPrice" type="number" step="0.01" value="'+attr(l.price||0)+'">')+'</div>';
+    field('Price','<input id="lnPrice" type="number" step="0.01" value="'+attr(l.price||0)+'">')+'</div>';
 }
 function lineTypeSwap(){
-  var t=val('lnType'); var opts;
-  if(t==='part') opts='<option value="">— free text —</option>'+S.parts.map(function(p){return '<option value="'+p.id+'" data-price="'+p.price+'" data-name="'+attr(p.name)+'">'+esc(p.partNo+' · '+p.name)+'</option>';}).join('');
-  else opts='<option value="">— free text —</option>'+S.labor.map(function(p){return '<option value="'+p.id+'" data-price="'+p.price+'" data-name="'+attr(p.name)+'">'+esc(p.name)+'</option>';}).join('');
-  document.getElementById('lnPick').innerHTML=field(t==='part'?'From catalog':'From menu','<select id="lnRef" onchange="linePick()">'+opts+'</select>');
+  var t=val('lnType');
+  document.getElementById('lnFields').innerHTML = (t==='labor') ? laborFields({}) : partFields({});
 }
-function linePick(){ var sel=document.getElementById('lnRef'); var o=sel.options[sel.selectedIndex];
+function catalogHint(){
+  if (typeof CATALOG_STATE==='undefined') return '';
+  if (CATALOG_STATE==='ready') return 'Catalog ready — type a SKU to auto-fill.';
+  if (CATALOG_STATE==='loading') return 'Loading parts catalog…';
+  return '';
+}
+function skuLookup(){
+  var sku=(val('lnSku')||'').trim(); var msg=document.getElementById('skuMsg');
+  if(!sku){ if(msg) msg.textContent=catalogHint(); return; }
+  var hit = (typeof catalogLookup==='function') ? catalogLookup(sku) : null;
+  if(hit){ setVal('lnDesc',hit.name); setVal('lnNet',hit.net); setVal('lnPrice',hit.srp); if(msg){ msg.textContent='✓ '+hit.name; msg.className='ok small'; } }
+  else if(msg){ msg.textContent = (typeof CATALOG_STATE!=='undefined'&&CATALOG_STATE==='loading')?'Loading catalog…':'No match — enter the details manually.'; msg.className='muted small'; }
+}
+function laborPick(){ var sel=document.getElementById('lnRef'); var o=sel.options[sel.selectedIndex];
   if(o&&o.value){ setVal('lnDesc',o.getAttribute('data-name')); setVal('lnPrice',o.getAttribute('data-price')); } }
 function addLine(id){ openModal('Add line', lineForm(), { onOk:'saveLine', okText:'Add' }); setTimeout(function(){lineCtx={job:id,line:null};},10); }
 function editLine(id,lid){ var j=jobById(id); var l=j.lines.find(function(x){return x.id===lid;});
   openModal('Edit line', lineForm(l), { onOk:'saveLine' }); setTimeout(function(){lineCtx={job:id,line:lid};},10); }
 var lineCtx=null;
+function readLine(){
+  var type=val('lnType');
+  if(type==='labor'){
+    return { type:'labor', ref:val('lnRef')||null, sku:'', netPrice:0, desc:val('lnDesc'), qty:Number(val('lnQty'))||0, price:Number(val('lnPrice'))||0 };
+  }
+  return { type:'part', ref:null, sku:(val('lnSku')||'').trim(), desc:val('lnDesc'),
+    netPrice:Number(val('lnNet'))||0, qty:Number(val('lnQty'))||0, price:Number(val('lnPrice'))||0 };
+}
 function saveLine(){
-  var j=jobById(lineCtx.job); var ref=val('lnRef')||null;
-  var data={ type:val('lnType'), ref:ref, desc:val('lnDesc'), qty:Number(val('lnQty'))||0, price:Number(val('lnPrice'))||0 };
-  if(!data.desc){ toast('Description required','err'); return; }
+  var j=jobById(lineCtx.job); var data=readLine();
+  if(!data.desc){ toast(data.type==='part'?'Part name required':'Description required','err'); return; }
   if(lineCtx.line){ var l=j.lines.find(function(x){return x.id===lineCtx.line;}); Object.assign(l,data); }
   else { data.id=uid('ln'); j.lines.push(data); }
   persist(); closeModal(); render();

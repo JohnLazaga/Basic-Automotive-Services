@@ -65,9 +65,8 @@ function addEstLine(id){ openModal('Add line', lineForm(), { onOk:'saveEstLine',
 function editEstLine(id,lid){ var e=estById(id); var l=e.lines.find(function(x){return x.id===lid;}); openModal('Edit line', lineForm(l), { onOk:'saveEstLine' }); setTimeout(function(){estLineCtx={est:id,line:lid};},10); }
 var estLineCtx=null;
 function saveEstLine(){
-  var e=estById(estLineCtx.est); var ref=val('lnRef')||null;
-  var data={ type:val('lnType'), ref:ref, desc:val('lnDesc'), qty:Number(val('lnQty'))||0, price:Number(val('lnPrice'))||0 };
-  if(!data.desc){ toast('Description required','err'); return; }
+  var e=estById(estLineCtx.est); var data=readLine();
+  if(!data.desc){ toast(data.type==='part'?'Part name required':'Description required','err'); return; }
   if(estLineCtx.line){ var l=e.lines.find(function(x){return x.id===estLineCtx.line;}); Object.assign(l,data); }
   else { data.id=uid('ln'); e.lines.push(data); }
   persist(); closeModal(); render();

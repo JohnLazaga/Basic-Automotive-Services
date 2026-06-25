@@ -4,7 +4,7 @@ const path = require('path');
 
 const SRC = path.join(__dirname, 'src');
 const PARTS = ['logo.js','firebase-config.js','part1_core.js','part2_shell.js','part3_board.js','part4_jobs.js','part5_estimates.js',
-  'part6_records.js','part7_analytics.js','part8_settings.js','part9_print.js','part10_portal.js','part11_cloud.js','part12_rbac.js'];
+  'part6_records.js','part7_analytics.js','part8_settings.js','part9_print.js','part10_portal.js','part11_cloud.js','part12_rbac.js','part13_catalog.js'];
 
 function read(f){ return fs.readFileSync(path.join(SRC,f),'utf8'); }
 

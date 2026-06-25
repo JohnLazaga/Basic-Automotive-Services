@@ -7,3 +7,9 @@ Thumbs.db
 .DS_Store
 
 makeDiag.js
+
+# Sync secrets & data (NEVER commit)
+sync/serviceAccountKey.json
+sync/node_modules/
+sync/parts.tsv
+sync/.lastsync.json
