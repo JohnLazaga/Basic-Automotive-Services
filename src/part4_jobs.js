@@ -187,10 +187,11 @@ function saveUpdate(){
 /* ---- Lines panel ---------------------------------------------------------- */
 function runningBill(j){
   var parts=partsTotal(j.lines), labor=laborTotal(j.lines), addl=addlTotal(j);
-  var gbd=round2(parts+labor+addl);
-  var disc=discountAmount(j); var gross=round2(gbd-disc);
-  var vs=vatSplit(gross,S);
-  return { parts:parts, labor:labor, addl:addl, gbd:gbd, disc:disc, gross:gross,
+  var gbd=round2(parts+labor+addl);          // VATable base before discount
+  var disc=discountAmount(j);
+  var net=round2(gbd-disc);                   // VATable base (after discount) = SRP total
+  var vs=vatSplit(net,S);                      // exclusive: vat added on top
+  return { parts:parts, labor:labor, addl:addl, gbd:gbd, disc:disc, net:net, gross:vs.gross,
     vatable:vs.vatable, vat:vs.vat, exempt:vs.exempt, paid:jobPaid(j), balance:jobBalance(j) };
 }
 function jobLinesPanel(j){
@@ -252,7 +253,26 @@ function skuLookup(){
 }
 function laborPick(){ var sel=document.getElementById('lnRef'); var o=sel.options[sel.selectedIndex];
   if(o&&o.value){ setVal('lnDesc',o.getAttribute('data-name')); setVal('lnPrice',o.getAttribute('data-price')); } }
-function addLine(id){ openModal('Add line', lineForm(), { onOk:'saveLine', okText:'Add' }); setTimeout(function(){lineCtx={job:id,line:null};},10); }
+function addLine(id){
+  lineCtx={job:id,line:null};
+  openModal('Add lines', lineForm(), {
+    footer:'<button class="btn ghost" onclick="closeModal()">Done</button>'+
+      '<span style="flex:1"></span>'+
+      '<button class="btn primary" onclick="saveLineMore()">Add line</button>' });
+}
+/* Save the line but KEEP the dialog open, reset for the next line — so you can
+   add line after line without leaving the box. (Enter on the last field does this.) */
+function saveLineMore(){
+  var j=jobById(lineCtx.job); if(!j) return;
+  var data=readLine();
+  if(!data.desc){ toast(data.type==='part'?'Part name required':'Description required','err'); return; }
+  data.id=uid('ln'); j.lines.push(data); persist();
+  toast('Added · '+data.desc);
+  render();                                   // refresh the lines table behind the dialog
+  var body=document.querySelector('#modalRoot .modal-body');
+  if(body){ body.innerHTML=lineForm({type:data.type}); }   // fresh form, same Type for fast repeats
+  setTimeout(function(){ var f=document.querySelector('#modalRoot .modal-body input,#modalRoot .modal-body select'); if(f&&f.focus){ f.focus(); if(f.select){ try{f.select();}catch(_){} } } }, 20);
+}
 function editLine(id,lid){ var j=jobById(id); var l=j.lines.find(function(x){return x.id===lid;});
   openModal('Edit line', lineForm(l), { onOk:'saveLine' }); setTimeout(function(){lineCtx={job:id,line:lid};},10); }
 var lineCtx=null;

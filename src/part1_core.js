@@ -99,16 +99,25 @@ function discountAmount(job){
   if (d.type==='percent') return round2(base * (Number(d.value)||0)/100);
   return round2(Math.min(Number(d.value)||0, base));
 }
-function jobGross(job){ return round2(grossBeforeDiscount(job) - discountAmount(job)); }
-
-/* VAT-inclusive split. Round VAT first so vatable + vat === gross exactly. */
-function vatSplit(gross, S){
-  gross = round2(gross);
-  if (!S || !S.shop || !S.shop.vatReg) return { vatable: gross, vat:0, gross:gross, exempt:true };
+/* The VATable base = SRP/line total after discount (prices are VAT-EXCLUSIVE). */
+function jobNet(job){ return round2(grossBeforeDiscount(job) - discountAmount(job)); }
+/* Total due = VATable base + 12% VAT (or just the base when non-VAT). */
+function jobGross(job){
+  var n = jobNet(job);
+  if (!S || !S.shop || !S.shop.vatReg) return n;
   var rate = (Number(S.shop.vatRate)||12)/100;
-  var vat = round2(gross - gross/(1+rate));
-  var vatable = round2(gross - vat);
-  return { vatable:vatable, vat:vat, gross:gross, exempt:false };
+  return round2(n * (1 + rate));
+}
+
+/* VAT-EXCLUSIVE split: input is the VATable base; VAT (12%) is added on top.
+   vatable = base, vat = base × rate, gross (total due) = base + vat. */
+function vatSplit(base, S){
+  base = round2(base);
+  if (!S || !S.shop || !S.shop.vatReg) return { vatable: base, vat:0, gross:base, exempt:true };
+  var rate = (Number(S.shop.vatRate)||12)/100;
+  var vat = round2(base * rate);
+  var gross = round2(base + vat);
+  return { vatable:base, vat:vat, gross:gross, exempt:false };
 }
 
 /* Mechanic commission pool: labor × rate ÷ #mechanics, split evenly. */

@@ -91,8 +91,8 @@ function totalsBox(j,opts){
   rows+='<div class="l2"><span>Labor</span><span>'+peso(b.labor)+'</span></div>';
   if(b.addl) rows+='<div class="l2"><span>Additional work</span><span>'+peso(b.addl)+'</span></div>';
   if(opts.discount && b.disc) rows+='<div class="l2"><span>Discount</span><span>−'+peso(b.disc)+'</span></div>';
-  var gross = opts.discount? b.gross : b.gbd;
-  var vs=vatSplit(gross,S);
+  var base = opts.discount? b.net : b.gbd;   // VATable base; VAT is added on top
+  var vs=vatSplit(base,S);
   if(vs.exempt){ rows+='<div class="l2"><span>VAT-Exempt Sales</span><span>'+peso(vs.gross)+'</span></div>'; }
   else { rows+='<div class="l2"><span>VATable Sales</span><span>'+peso(vs.vatable)+'</span></div>';
     rows+='<div class="l2"><span>VAT ('+(S.shop.vatRate||12)+'%)</span><span>'+peso(vs.vat)+'</span></div>'; }
@@ -210,7 +210,7 @@ function docDailyClose(){
   var byMethod={}; txns.forEach(function(t){ byMethod[t.p.method]=round2((byMethod[t.p.method]||0)+t.p.amount); });
   var collections=round2(txns.reduce(function(s,t){return s+t.p.amount;},0));
   var billed=S.jobs.filter(function(j){return (j.billedAt||'').slice(0,10)===date;});
-  var net=round2(billed.reduce(function(s,j){return s+jobGross(j);},0));
+  var net=round2(billed.reduce(function(s,j){return s+jobNet(j);},0));   // VATable base (ex-VAT)
   var vs=vatSplit(net,S);
   var body=docHeader('End-of-Day Report · '+fmtDate(date))+
     '<div class="totbox" style="width:340px;margin:0 0 14px"><div class="l2"><span>Net sales (billed)</span><span>'+peso(net)+'</span></div>'+

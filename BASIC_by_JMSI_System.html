@@ -287,6 +287,8 @@ textarea{resize:vertical} .chk{display:flex;align-items:center;gap:8px;font-size
 .lg-status.ok b{color:#9a9a9f}
 .userchip{font-size:12px;color:var(--ink2);background:var(--canvas);padding:3px 10px;border-radius:20px;max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 [data-theme="dark"] .userchip{background:#1f1f22}
+.searchbox{max-width:280px;min-width:150px;flex:1 1 180px}
+.row.wrap{flex-wrap:wrap}
 .rolebadge{font-size:10.5px;font-weight:700;letter-spacing:.03em;color:#fff;background:#6E6E73;padding:3px 9px;border-radius:20px;white-space:nowrap}
 .rolebadge.admin{background:var(--brand)}
 .tbl.perm th,.tbl.perm td{text-align:center}.tbl.perm td:first-child,.tbl.perm th:first-child{text-align:left}
@@ -473,16 +475,25 @@ function discountAmount(job){
   if (d.type==='percent') return round2(base * (Number(d.value)||0)/100);
   return round2(Math.min(Number(d.value)||0, base));
 }
-function jobGross(job){ return round2(grossBeforeDiscount(job) - discountAmount(job)); }
-
-/* VAT-inclusive split. Round VAT first so vatable + vat === gross exactly. */
-function vatSplit(gross, S){
-  gross = round2(gross);
-  if (!S || !S.shop || !S.shop.vatReg) return { vatable: gross, vat:0, gross:gross, exempt:true };
+/* The VATable base = SRP/line total after discount (prices are VAT-EXCLUSIVE). */
+function jobNet(job){ return round2(grossBeforeDiscount(job) - discountAmount(job)); }
+/* Total due = VATable base + 12% VAT (or just the base when non-VAT). */
+function jobGross(job){
+  var n = jobNet(job);
+  if (!S || !S.shop || !S.shop.vatReg) return n;
   var rate = (Number(S.shop.vatRate)||12)/100;
-  var vat = round2(gross - gross/(1+rate));
-  var vatable = round2(gross - vat);
-  return { vatable:vatable, vat:vat, gross:gross, exempt:false };
+  return round2(n * (1 + rate));
+}
+
+/* VAT-EXCLUSIVE split: input is the VATable base; VAT (12%) is added on top.
+   vatable = base, vat = base × rate, gross (total due) = base + vat. */
+function vatSplit(base, S){
+  base = round2(base);
+  if (!S || !S.shop || !S.shop.vatReg) return { vatable: base, vat:0, gross:base, exempt:true };
+  var rate = (Number(S.shop.vatRate)||12)/100;
+  var vat = round2(base * rate);
+  var gross = round2(base + vat);
+  return { vatable:base, vat:vat, gross:gross, exempt:false };
 }
 
 /* Mechanic commission pool: labor × rate ÷ #mechanics, split evenly. */
@@ -1127,17 +1138,27 @@ function boardKPIs(){
 }
 
 /* ---- Board view ----------------------------------------------------------- */
+var BOARD_Q='';
+function boardMatch(j){
+  if(!BOARD_Q) return true; var q=BOARD_Q.toLowerCase();
+  return [j.plate,j.owner,j.contactPerson].some(function(x){ return String(x||'').toLowerCase().indexOf(q)>=0; });
+}
+function boardBody(){
+  var active = S.jobs.filter(function(j){return j.stage!=='Released';}).filter(boardMatch);
+  if(BOARD_Q && !active.length) return emptyState('No active units match “'+esc(BOARD_Q)+'”.');
+  return BOARD_MODE==='kanban'? boardKanban(active) : BOARD_MODE==='bays'? boardBays(active) : boardList(active);
+}
+function boardSearch(v){ BOARD_Q=v; var el=document.getElementById('boardBody'); if(el) el.innerHTML=boardBody(); }
 VIEWS.board = function(){
-  var active = S.jobs.filter(function(j){return j.stage!=='Released';});
   var toggle = '<div class="seg">'+
     ['kanban','list','bays'].map(function(m){
       var on=BOARD_MODE===m?' on':''; var lab={kanban:'Kanban',list:'List',bays:'Service Bays'}[m];
       return '<button class="seg-b'+on+'" onclick="setBoardMode(\''+m+'\')">'+lab+'</button>';
     }).join('')+'</div>';
-  var body = BOARD_MODE==='kanban'? boardKanban(active) : BOARD_MODE==='bays'? boardBays(active) : boardList(active);
+  var search='<input class="searchbox" id="boardSearch" value="'+attr(BOARD_Q)+'" oninput="boardSearch(this.value)" placeholder="Search plate / owner / contact…" autocomplete="off">';
   return '<div class="page">'+
-    '<div class="page-head"><h1>Operations Board</h1>'+toggle+'</div>'+
-    alertStrip()+ boardKPIs()+ body+
+    '<div class="page-head"><h1>Operations Board</h1><div class="row gap wrap">'+search+toggle+'</div></div>'+
+    alertStrip()+ boardKPIs()+ '<div id="boardBody">'+boardBody()+'</div>'+
   '</div>';
 };
 
@@ -1488,10 +1509,11 @@ function saveUpdate(){
 /* ---- Lines panel ---------------------------------------------------------- */
 function runningBill(j){
   var parts=partsTotal(j.lines), labor=laborTotal(j.lines), addl=addlTotal(j);
-  var gbd=round2(parts+labor+addl);
-  var disc=discountAmount(j); var gross=round2(gbd-disc);
-  var vs=vatSplit(gross,S);
-  return { parts:parts, labor:labor, addl:addl, gbd:gbd, disc:disc, gross:gross,
+  var gbd=round2(parts+labor+addl);          // VATable base before discount
+  var disc=discountAmount(j);
+  var net=round2(gbd-disc);                   // VATable base (after discount) = SRP total
+  var vs=vatSplit(net,S);                      // exclusive: vat added on top
+  return { parts:parts, labor:labor, addl:addl, gbd:gbd, disc:disc, net:net, gross:vs.gross,
     vatable:vs.vatable, vat:vs.vat, exempt:vs.exempt, paid:jobPaid(j), balance:jobBalance(j) };
 }
 function jobLinesPanel(j){
@@ -1553,7 +1575,26 @@ function skuLookup(){
 }
 function laborPick(){ var sel=document.getElementById('lnRef'); var o=sel.options[sel.selectedIndex];
   if(o&&o.value){ setVal('lnDesc',o.getAttribute('data-name')); setVal('lnPrice',o.getAttribute('data-price')); } }
-function addLine(id){ openModal('Add line', lineForm(), { onOk:'saveLine', okText:'Add' }); setTimeout(function(){lineCtx={job:id,line:null};},10); }
+function addLine(id){
+  lineCtx={job:id,line:null};
+  openModal('Add lines', lineForm(), {
+    footer:'<button class="btn ghost" onclick="closeModal()">Done</button>'+
+      '<span style="flex:1"></span>'+
+      '<button class="btn primary" onclick="saveLineMore()">Add line</button>' });
+}
+/* Save the line but KEEP the dialog open, reset for the next line — so you can
+   add line after line without leaving the box. (Enter on the last field does this.) */
+function saveLineMore(){
+  var j=jobById(lineCtx.job); if(!j) return;
+  var data=readLine();
+  if(!data.desc){ toast(data.type==='part'?'Part name required':'Description required','err'); return; }
+  data.id=uid('ln'); j.lines.push(data); persist();
+  toast('Added · '+data.desc);
+  render();                                   // refresh the lines table behind the dialog
+  var body=document.querySelector('#modalRoot .modal-body');
+  if(body){ body.innerHTML=lineForm({type:data.type}); }   // fresh form, same Type for fast repeats
+  setTimeout(function(){ var f=document.querySelector('#modalRoot .modal-body input,#modalRoot .modal-body select'); if(f&&f.focus){ f.focus(); if(f.select){ try{f.select();}catch(_){} } } }, 20);
+}
 function editLine(id,lid){ var j=jobById(id); var l=j.lines.find(function(x){return x.id===lid;});
   openModal('Edit line', lineForm(l), { onOk:'saveLine' }); setTimeout(function(){lineCtx={job:id,line:lid};},10); }
 var lineCtx=null;
@@ -1956,16 +1997,28 @@ function renderQR(elId, text){
 function portalLink(vid){ return (S.shop.portalUrl||'').replace(/\/+$/,'')+'/#v='+vid; }
 
 /* ---- Vehicles ------------------------------------------------------------- */
-VIEWS.vehicles = function(){
-  var rows=S.vehicles.map(function(v){
+var VEH_Q='';
+function vehMatch(v){
+  if(!VEH_Q) return true; var q=VEH_Q.toLowerCase();
+  return [v.plate,v.owner,v.contactPerson].some(function(x){ return String(x||'').toLowerCase().indexOf(q)>=0; });
+}
+function vehBodyHTML(){
+  var list=S.vehicles.filter(vehMatch);
+  if(!list.length) return emptyState(VEH_Q? 'No vehicles match “'+esc(VEH_Q)+'”.' : 'No vehicles.');
+  var rows=list.map(function(v){
     var due = v.nextServiceDate && v.nextServiceDate<=todayISO();
     var soon = v.nextServiceDate && v.nextServiceDate<=todayISO(new Date(Date.now()+14*86400000));
     return '<tr onclick="go(\'vehicle\',\''+v.id+'\')"><td><b>'+esc(v.plate)+'</b></td><td>'+esc(v.owner)+'</td>'+
       '<td>'+esc(v.year+' '+v.make+' '+v.model)+'</td><td class="r">'+num(v.odometer)+'</td>'+
       '<td>'+(v.nextServiceDate? (due?chip('Overdue','due'):soon?chip('Due soon','gold'):fmtDate(v.nextServiceDate)) : '—')+'</td></tr>';
   }).join('');
-  return '<div class="page"><div class="page-head"><h1>Vehicles</h1><button class="btn primary" onclick="editVehicle()">＋ Add vehicle</button></div>'+
-    (S.vehicles.length?'<div class="card pad0"><table class="tbl click"><thead><tr><th>Plate</th><th>Owner</th><th>Vehicle</th><th class="r">Odometer</th><th>Next service</th></tr></thead><tbody>'+rows+'</tbody></table></div>':emptyState('No vehicles.'))+'</div>';
+  return '<div class="card pad0"><table class="tbl click"><thead><tr><th>Plate</th><th>Owner</th><th>Vehicle</th><th class="r">Odometer</th><th>Next service</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+}
+function vehSearch(v){ VEH_Q=v; var el=document.getElementById('vehBody'); if(el) el.innerHTML=vehBodyHTML(); }
+VIEWS.vehicles = function(){
+  var search='<input class="searchbox" id="vehSearch" value="'+attr(VEH_Q)+'" oninput="vehSearch(this.value)" placeholder="Search plate / owner / contact…" autocomplete="off">';
+  return '<div class="page"><div class="page-head"><h1>Vehicles</h1><div class="row gap wrap">'+search+'<button class="btn primary" onclick="editVehicle()">＋ Add vehicle</button></div></div>'+
+    '<div id="vehBody">'+vehBodyHTML()+'</div></div>';
 };
 
 VIEWS.vehicle = function(id){
@@ -2356,7 +2409,7 @@ VIEWS.dailyclose = function(){
   var collections=round2(txns.reduce(function(s,t){return s+t.p.amount;},0));
   // jobs billed that day -> net sales / vat / discounts
   var billed=S.jobs.filter(function(j){return (j.billedAt||'').slice(0,10)===date;});
-  var net=round2(billed.reduce(function(s,j){return s+jobGross(j);},0));
+  var net=round2(billed.reduce(function(s,j){return s+jobNet(j);},0));   // VATable base (ex-VAT)
   var disc=round2(billed.reduce(function(s,j){return s+discountAmount(j);},0));
   var vs=vatSplit(net,S);
   var partsRev=round2(billed.reduce(function(s,j){return s+partsTotal(j.lines);},0));
@@ -2661,8 +2714,8 @@ function totalsBox(j,opts){
   rows+='<div class="l2"><span>Labor</span><span>'+peso(b.labor)+'</span></div>';
   if(b.addl) rows+='<div class="l2"><span>Additional work</span><span>'+peso(b.addl)+'</span></div>';
   if(opts.discount && b.disc) rows+='<div class="l2"><span>Discount</span><span>−'+peso(b.disc)+'</span></div>';
-  var gross = opts.discount? b.gross : b.gbd;
-  var vs=vatSplit(gross,S);
+  var base = opts.discount? b.net : b.gbd;   // VATable base; VAT is added on top
+  var vs=vatSplit(base,S);
   if(vs.exempt){ rows+='<div class="l2"><span>VAT-Exempt Sales</span><span>'+peso(vs.gross)+'</span></div>'; }
   else { rows+='<div class="l2"><span>VATable Sales</span><span>'+peso(vs.vatable)+'</span></div>';
     rows+='<div class="l2"><span>VAT ('+(S.shop.vatRate||12)+'%)</span><span>'+peso(vs.vat)+'</span></div>'; }
@@ -2780,7 +2833,7 @@ function docDailyClose(){
   var byMethod={}; txns.forEach(function(t){ byMethod[t.p.method]=round2((byMethod[t.p.method]||0)+t.p.amount); });
   var collections=round2(txns.reduce(function(s,t){return s+t.p.amount;},0));
   var billed=S.jobs.filter(function(j){return (j.billedAt||'').slice(0,10)===date;});
-  var net=round2(billed.reduce(function(s,j){return s+jobGross(j);},0));
+  var net=round2(billed.reduce(function(s,j){return s+jobNet(j);},0));   // VATable base (ex-VAT)
   var vs=vatSplit(net,S);
   var body=docHeader('End-of-Day Report · '+fmtDate(date))+
     '<div class="totbox" style="width:340px;margin:0 0 14px"><div class="l2"><span>Net sales (billed)</span><span>'+peso(net)+'</span></div>'+

@@ -61,17 +61,27 @@ function boardKPIs(){
 }
 
 /* ---- Board view ----------------------------------------------------------- */
+var BOARD_Q='';
+function boardMatch(j){
+  if(!BOARD_Q) return true; var q=BOARD_Q.toLowerCase();
+  return [j.plate,j.owner,j.contactPerson].some(function(x){ return String(x||'').toLowerCase().indexOf(q)>=0; });
+}
+function boardBody(){
+  var active = S.jobs.filter(function(j){return j.stage!=='Released';}).filter(boardMatch);
+  if(BOARD_Q && !active.length) return emptyState('No active units match “'+esc(BOARD_Q)+'”.');
+  return BOARD_MODE==='kanban'? boardKanban(active) : BOARD_MODE==='bays'? boardBays(active) : boardList(active);
+}
+function boardSearch(v){ BOARD_Q=v; var el=document.getElementById('boardBody'); if(el) el.innerHTML=boardBody(); }
 VIEWS.board = function(){
-  var active = S.jobs.filter(function(j){return j.stage!=='Released';});
   var toggle = '<div class="seg">'+
     ['kanban','list','bays'].map(function(m){
       var on=BOARD_MODE===m?' on':''; var lab={kanban:'Kanban',list:'List',bays:'Service Bays'}[m];
       return '<button class="seg-b'+on+'" onclick="setBoardMode(\''+m+'\')">'+lab+'</button>';
     }).join('')+'</div>';
-  var body = BOARD_MODE==='kanban'? boardKanban(active) : BOARD_MODE==='bays'? boardBays(active) : boardList(active);
+  var search='<input class="searchbox" id="boardSearch" value="'+attr(BOARD_Q)+'" oninput="boardSearch(this.value)" placeholder="Search plate / owner / contact…" autocomplete="off">';
   return '<div class="page">'+
-    '<div class="page-head"><h1>Operations Board</h1>'+toggle+'</div>'+
-    alertStrip()+ boardKPIs()+ body+
+    '<div class="page-head"><h1>Operations Board</h1><div class="row gap wrap">'+search+toggle+'</div></div>'+
+    alertStrip()+ boardKPIs()+ '<div id="boardBody">'+boardBody()+'</div>'+
   '</div>';
 };
 

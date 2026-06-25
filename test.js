@@ -60,14 +60,16 @@ section('3. Post Job Report: includes prices + "Approved for release by"');
 })();
 
 /* ---------------------------------------------------------------- TEST 4 */
-section('4. Final Billing: VATable Sales + VAT (12%), vatable+vat===gross');
+section('4. Final Billing: VATable Sales + VAT (12%) added on top; vatable+vat===gross');
 (function(){
   const s=fresh(); const j=s.jobs[0];
   const doc=M.docBilling(j);
   ok('Billing has "VATable Sales"', /VATable Sales/.test(doc));
   ok('Billing has "VAT (12%)"', /VAT \(12%\)/.test(doc));
-  const gross=M.jobGross(j); const vs=M.vatSplit(gross, M.getS());
-  ok('vatable + vat === gross', M.round2(vs.vatable+vs.vat)===M.round2(gross));
+  const vs=M.vatSplit(1000, M.getS());
+  ok('VATable = base (exclusive)', vs.vatable===1000);
+  ok('VAT added on top: total = base + 12%', M.round2(vs.gross)===1120 && vs.vat===120);
+  ok('vatable + vat === gross', M.round2(vs.vatable+vs.vat)===M.round2(vs.gross));
 })();
 
 /* ---------------------------------------------------------------- TEST 5 */
@@ -185,7 +187,7 @@ section('Extra invariants');
   const s=fresh();
   // VAT split to the centavo across random grosses
   let okAll=true;
-  [0.01, 100, 1234.56, 999.99, 50000].forEach(function(g){ const vs=M.vatSplit(g,s); if(M.round2(vs.vatable+vs.vat)!==M.round2(g)) okAll=false; });
+  [0.01, 100, 1234.56, 999.99, 50000].forEach(function(g){ const vs=M.vatSplit(g,s); if(vs.vatable!==M.round2(g) || M.round2(vs.vatable+vs.vat)!==M.round2(vs.gross)) okAll=false; });
   ok('VAT split exact to centavo over many values', okAll);
   // non-VAT shows exempt
   s.shop.vatReg=false; const ex=M.vatSplit(1000,s); ok('non-VAT yields exempt', ex.exempt===true && ex.vat===0);

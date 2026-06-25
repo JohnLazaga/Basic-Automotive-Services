@@ -97,7 +97,7 @@ VIEWS.dailyclose = function(){
   var collections=round2(txns.reduce(function(s,t){return s+t.p.amount;},0));
   // jobs billed that day -> net sales / vat / discounts
   var billed=S.jobs.filter(function(j){return (j.billedAt||'').slice(0,10)===date;});
-  var net=round2(billed.reduce(function(s,j){return s+jobGross(j);},0));
+  var net=round2(billed.reduce(function(s,j){return s+jobNet(j);},0));   // VATable base (ex-VAT)
   var disc=round2(billed.reduce(function(s,j){return s+discountAmount(j);},0));
   var vs=vatSplit(net,S);
   var partsRev=round2(billed.reduce(function(s,j){return s+partsTotal(j.lines);},0));

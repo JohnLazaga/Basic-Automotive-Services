@@ -26,16 +26,28 @@ function renderQR(elId, text){
 function portalLink(vid){ return (S.shop.portalUrl||'').replace(/\/+$/,'')+'/#v='+vid; }
 
 /* ---- Vehicles ------------------------------------------------------------- */
-VIEWS.vehicles = function(){
-  var rows=S.vehicles.map(function(v){
+var VEH_Q='';
+function vehMatch(v){
+  if(!VEH_Q) return true; var q=VEH_Q.toLowerCase();
+  return [v.plate,v.owner,v.contactPerson].some(function(x){ return String(x||'').toLowerCase().indexOf(q)>=0; });
+}
+function vehBodyHTML(){
+  var list=S.vehicles.filter(vehMatch);
+  if(!list.length) return emptyState(VEH_Q? 'No vehicles match “'+esc(VEH_Q)+'”.' : 'No vehicles.');
+  var rows=list.map(function(v){
     var due = v.nextServiceDate && v.nextServiceDate<=todayISO();
     var soon = v.nextServiceDate && v.nextServiceDate<=todayISO(new Date(Date.now()+14*86400000));
     return '<tr onclick="go(\'vehicle\',\''+v.id+'\')"><td><b>'+esc(v.plate)+'</b></td><td>'+esc(v.owner)+'</td>'+
       '<td>'+esc(v.year+' '+v.make+' '+v.model)+'</td><td class="r">'+num(v.odometer)+'</td>'+
       '<td>'+(v.nextServiceDate? (due?chip('Overdue','due'):soon?chip('Due soon','gold'):fmtDate(v.nextServiceDate)) : '—')+'</td></tr>';
   }).join('');
-  return '<div class="page"><div class="page-head"><h1>Vehicles</h1><button class="btn primary" onclick="editVehicle()">＋ Add vehicle</button></div>'+
-    (S.vehicles.length?'<div class="card pad0"><table class="tbl click"><thead><tr><th>Plate</th><th>Owner</th><th>Vehicle</th><th class="r">Odometer</th><th>Next service</th></tr></thead><tbody>'+rows+'</tbody></table></div>':emptyState('No vehicles.'))+'</div>';
+  return '<div class="card pad0"><table class="tbl click"><thead><tr><th>Plate</th><th>Owner</th><th>Vehicle</th><th class="r">Odometer</th><th>Next service</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+}
+function vehSearch(v){ VEH_Q=v; var el=document.getElementById('vehBody'); if(el) el.innerHTML=vehBodyHTML(); }
+VIEWS.vehicles = function(){
+  var search='<input class="searchbox" id="vehSearch" value="'+attr(VEH_Q)+'" oninput="vehSearch(this.value)" placeholder="Search plate / owner / contact…" autocomplete="off">';
+  return '<div class="page"><div class="page-head"><h1>Vehicles</h1><div class="row gap wrap">'+search+'<button class="btn primary" onclick="editVehicle()">＋ Add vehicle</button></div></div>'+
+    '<div id="vehBody">'+vehBodyHTML()+'</div></div>';
 };
 
 VIEWS.vehicle = function(id){
