@@ -144,7 +144,15 @@ function jobLaborCommissionMap(job, S){
   var map = {};
   mechs.forEach(function(m){ map[m] = round2((map[m]||0) + perMech); });
   if (job.saId && job.saId!=='TBA'){ map[job.saId] = round2(labor*rate); }  // caps the SA at one 5%
+  // Drop anyone toggled OUT of commission payout (their share is forfeited, not redistributed).
+  Object.keys(map).forEach(function(id){ if(!commissionEligible(id)) delete map[id]; });
   return map;
+}
+/* Every staff member is entitled to commission by default; an admin can switch
+   an individual off via the Staff screen toggle (sets staff.commission=false). */
+function commissionEligible(idOrStaff){
+  var s = (idOrStaff && typeof idOrStaff==='object') ? idOrStaff : staffById(idOrStaff);
+  return !!s && s.commission !== false;
 }
 
 /* ---- Payment helpers ------------------------------------------------------ */

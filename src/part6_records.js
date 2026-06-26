@@ -335,12 +335,18 @@ VIEWS.staff = function(){
   var rows=S.staff.map(function(s){
     var comm = earnsLaborCommission(s.role)? (S.shop.mechCommissionRate||5)+'% of labor (shop rate)'
       : (s.commissionBase&&s.commissionBase!=='none'? s.commissionRate+'% of '+s.commissionBase : '—');
+    var on = s.commission!==false;
+    var toggle = '<label class="switch" title="Include in commission payout"><input type="checkbox" '+(on?'checked':'')+
+      ' onchange="toggleStaffCommission(\''+s.id+'\',this.checked)"><span class="track"><span class="knob"></span></span></label>';
     return '<tr><td><b>'+esc(s.name)+'</b>'+(s.nickname?' <span class="muted small">“'+esc(s.nickname)+'”</span>':'')+'</td><td>'+chip(roleLabel(s.role))+'</td><td>'+esc(comm)+'</td>'+
+      '<td class="center">'+toggle+'</td>'+
       '<td class="r"><button class="ic" onclick="editStaff(\''+s.id+'\')">✎</button><button class="ic" onclick="delStaff(\''+s.id+'\')">✕</button></td></tr>';
   }).join('');
   return '<div class="page"><div class="page-head"><h1>Staff</h1><button class="btn primary" onclick="editStaff()">＋ Add staff</button></div>'+
-    '<div class="card pad0"><table class="tbl"><thead><tr><th>Name</th><th>Role</th><th>Commission</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+    '<p class="muted small">Every staff member is entitled to commission. Switch <b>Payout</b> off to exclude someone from the commission payout.</p>'+
+    '<div class="card pad0"><table class="tbl"><thead><tr><th>Name</th><th>Role</th><th>Commission</th><th class="center">Payout</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
 };
+function toggleStaffCommission(id,on){ var s=staffById(id); if(!s) return; s.commission=!!on; persist(); toast(on?'Included in payout':'Excluded from payout'); }
 function editStaff(id){ var s=id?staffById(id):{};
   openModal(id?'Edit staff':'Add staff',
     '<div class="grid2">'+field('Name','<input id="stName" value="'+attr(s.name||'')+'">')+

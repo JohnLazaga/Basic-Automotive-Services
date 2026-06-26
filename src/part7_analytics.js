@@ -68,6 +68,7 @@ VIEWS.reports = function(){
 function commissionTable(jobs){
   var map={};
   function add(id,amt){ if(!id||id==='TBA') return; var s=staffById(id); if(!s) return;
+    if(!commissionEligible(s)) return;                                  // toggled out of commission payout
     if(!map[id]) map[id]={ name:s.name, role:s.role, amount:0 }; map[id].amount=round2(map[id].amount+amt); }
   jobs.forEach(function(j){
     // labor commissions (mechanics + Service Adviser, de-duped to one 5% per person)

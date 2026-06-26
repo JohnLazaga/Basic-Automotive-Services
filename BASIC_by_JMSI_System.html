@@ -187,6 +187,12 @@ textarea{resize:vertical} .chk{display:flex;align-items:center;gap:8px;font-size
 .l2.disc span:last-child{color:var(--brand-dark)} .l2.tot{font-weight:800;font-size:14.5px;border-top:1px solid var(--hair);padding-top:7px;margin-top:3px}
 .bill-sep{height:1px;background:var(--hair);margin:6px 0} .estsum{margin-top:10px;border-top:1px solid var(--hair);padding-top:8px;max-width:320px;margin-left:auto}
 .lock{background:var(--canvas);border-radius:9px;padding:10px;text-align:center;font-size:12.5px;color:var(--ink2);margin:8px 0}
+.switch{position:relative;display:inline-block;width:42px;height:24px;vertical-align:middle;cursor:pointer}
+.switch input{opacity:0;width:0;height:0;position:absolute}
+.switch .track{position:absolute;inset:0;background:var(--hair);border-radius:24px;transition:background .15s}
+.switch .knob{position:absolute;top:3px;left:3px;width:18px;height:18px;background:#fff;border-radius:50%;transition:transform .15s;box-shadow:0 1px 2px rgba(0,0,0,.3)}
+.switch input:checked + .track{background:var(--brand)}
+.switch input:checked + .track .knob{transform:translateX(18px)}
 .billedit{border:1px solid var(--hair);border-radius:9px;padding:8px 10px;margin:10px 0;background:var(--canvas)}
 .billedit summary{cursor:pointer;font-weight:600;font-size:13px;color:var(--brand)}
 .billedit[open]{padding-bottom:10px}
@@ -523,7 +529,15 @@ function jobLaborCommissionMap(job, S){
   var map = {};
   mechs.forEach(function(m){ map[m] = round2((map[m]||0) + perMech); });
   if (job.saId && job.saId!=='TBA'){ map[job.saId] = round2(labor*rate); }  // caps the SA at one 5%
+  // Drop anyone toggled OUT of commission payout (their share is forfeited, not redistributed).
+  Object.keys(map).forEach(function(id){ if(!commissionEligible(id)) delete map[id]; });
   return map;
+}
+/* Every staff member is entitled to commission by default; an admin can switch
+   an individual off via the Staff screen toggle (sets staff.commission=false). */
+function commissionEligible(idOrStaff){
+  var s = (idOrStaff && typeof idOrStaff==='object') ? idOrStaff : staffById(idOrStaff);
+  return !!s && s.commission !== false;
 }
 
 /* ---- Payment helpers ------------------------------------------------------ */
@@ -2363,12 +2377,18 @@ VIEWS.staff = function(){
   var rows=S.staff.map(function(s){
     var comm = earnsLaborCommission(s.role)? (S.shop.mechCommissionRate||5)+'% of labor (shop rate)'
       : (s.commissionBase&&s.commissionBase!=='none'? s.commissionRate+'% of '+s.commissionBase : '—');
+    var on = s.commission!==false;
+    var toggle = '<label class="switch" title="Include in commission payout"><input type="checkbox" '+(on?'checked':'')+
+      ' onchange="toggleStaffCommission(\''+s.id+'\',this.checked)"><span class="track"><span class="knob"></span></span></label>';
     return '<tr><td><b>'+esc(s.name)+'</b>'+(s.nickname?' <span class="muted small">“'+esc(s.nickname)+'”</span>':'')+'</td><td>'+chip(roleLabel(s.role))+'</td><td>'+esc(comm)+'</td>'+
+      '<td class="center">'+toggle+'</td>'+
       '<td class="r"><button class="ic" onclick="editStaff(\''+s.id+'\')">✎</button><button class="ic" onclick="delStaff(\''+s.id+'\')">✕</button></td></tr>';
   }).join('');
   return '<div class="page"><div class="page-head"><h1>Staff</h1><button class="btn primary" onclick="editStaff()">＋ Add staff</button></div>'+
-    '<div class="card pad0"><table class="tbl"><thead><tr><th>Name</th><th>Role</th><th>Commission</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+    '<p class="muted small">Every staff member is entitled to commission. Switch <b>Payout</b> off to exclude someone from the commission payout.</p>'+
+    '<div class="card pad0"><table class="tbl"><thead><tr><th>Name</th><th>Role</th><th>Commission</th><th class="center">Payout</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
 };
+function toggleStaffCommission(id,on){ var s=staffById(id); if(!s) return; s.commission=!!on; persist(); toast(on?'Included in payout':'Excluded from payout'); }
 function editStaff(id){ var s=id?staffById(id):{};
   openModal(id?'Edit staff':'Add staff',
     '<div class="grid2">'+field('Name','<input id="stName" value="'+attr(s.name||'')+'">')+
@@ -2458,6 +2478,7 @@ VIEWS.reports = function(){
 function commissionTable(jobs){
   var map={};
   function add(id,amt){ if(!id||id==='TBA') return; var s=staffById(id); if(!s) return;
+    if(!commissionEligible(s)) return;                                  // toggled out of commission payout
     if(!map[id]) map[id]={ name:s.name, role:s.role, amount:0 }; map[id].amount=round2(map[id].amount+amt); }
   jobs.forEach(function(j){
     // labor commissions (mechanics + Service Adviser, de-duped to one 5% per person)
