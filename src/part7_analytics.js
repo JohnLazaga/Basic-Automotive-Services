@@ -102,7 +102,6 @@ VIEWS.dailyclose = function(){
   var vs=vatSplit(net,S);
   var partsRev=round2(billed.reduce(function(s,j){return s+partsTotal(j.lines);},0));
   var laborRev=round2(billed.reduce(function(s,j){return s+laborTotal(j.lines);},0));
-  var comm=commissionTable(billed);
 
   return '<div class="page"><div class="page-head"><h1>Daily Close</h1>'+
     '<div class="row gap"><input type="date" value="'+attr(date)+'" onchange="DC_DATE=this.value;render()">'+
@@ -116,7 +115,6 @@ VIEWS.dailyclose = function(){
     '<div class="colside">'+
       '<div class="card"><h2>Collections by method</h2>'+(Object.keys(byMethod).length?Object.keys(byMethod).map(function(m){return line2(m,peso(byMethod[m]));}).join(''):emptyState('—'))+'</div>'+
       '<div class="card"><h2>Sales mix</h2>'+line2('Parts',peso(partsRev))+line2('Labor',peso(laborRev))+'</div>'+
-      '<div class="card"><h2>Day\'s commissions</h2>'+(comm.length?comm.map(function(c){return line2(esc(c.name),peso(c.amount));}).join(''):emptyState('—'))+'</div>'+
     '</div></div></div>';
 };
 
