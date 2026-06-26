@@ -61,7 +61,7 @@ function docJobOrder(j){
         ['Vehicle', esc(j.year+' '+j.make+' '+j.model)],['Chassis', esc(j.chassis)],
         ['Service Adviser', esc(staffName(j.saId))],['Mechanic(s)', esc(mechName(j.mechanicIds))],
         ['Bay', esc(bayName(j.bayId))],['Job hours', num(j.jobHours)],
-        ['SI ref', esc(j.siRef)],['PMS ref', esc(j.pmsRef)] ])+
+        ['PMS ref', esc(j.pmsRef)] ])+
       lines+
       (j.notes?'<div class="notes"><b>Service notes:</b> '+esc(j.notes)+'</div>':'')+
       '<div class="notes"><b>Inspection:</b> Fuel '+esc((j.inspection||{}).fuel||'—')+' · Lights '+esc((j.inspection||{}).lights||'None')+' · '+esc((j.inspection||{}).condition||'')+'</div>'+
@@ -125,7 +125,7 @@ function docBilling(j){
   var body=docHeader((sh.vatReg?'VAT ':'')+'Sales Invoice / Official Receipt · '+(j.orNumber||''))+
     metaRows([['OR / Invoice #', esc(j.orNumber||'—')],['Date', fmtDate(j.billedAt)],
       ['Sold to', esc(j.owner)],['TIN', esc(j.customerTin||'—')],
-      ['Address', esc(j.address||'—')],
+      ['Address', esc(j.address||'—')],['SI reference', esc(j.siRef||'—')],
       ['Vehicle', esc(j.year+' '+j.make+' '+j.model+' · '+j.plate)],['JO #', esc(j.no)] ])+
     pricedLinesTable(j,{sku:true})+ totalsBox(j,{discount:true})+
     '<div class="sig-grid"><div class="sigline">Cashier / Authorized</div>'+

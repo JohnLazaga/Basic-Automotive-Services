@@ -22,6 +22,7 @@ var CAPS = [
   { key:'part_cost',    label:'Part cost & margin' },
   { key:'discounts',    label:'Apply discounts' },
   { key:'billing',      label:'Final billing / OR #' },
+  { key:'billing_edit', label:'Edit billing after it is done' },
   { key:'receivables',  label:'Receivables (A/R)' },
   { key:'reports',      label:'Reports' },
   { key:'dailyclose',   label:'Daily Close' },
@@ -34,7 +35,7 @@ var CAPS = [
 
 /* Default matrix (Admin always has everything via isAdmin). Admin-editable. */
 var DEFAULT_PERMS = {
-  SV:               { appointments:1, estimates:1, prices:1, part_cost:1, discounts:1, billing:1, receivables:1, reports:1, dailyclose:1, parts_manage:1 },
+  SV:               { appointments:1, estimates:1, prices:1, part_cost:1, discounts:1, billing:1, billing_edit:1, receivables:1, reports:1, dailyclose:1, parts_manage:1 },
   SA:               { appointments:1, estimates:1, prices:1, billing:1, receivables:1 },
   SM:               { estimates:1, prices:1 },
   Mechanic:         {},

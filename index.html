@@ -187,6 +187,9 @@ textarea{resize:vertical} .chk{display:flex;align-items:center;gap:8px;font-size
 .l2.disc span:last-child{color:var(--brand-dark)} .l2.tot{font-weight:800;font-size:14.5px;border-top:1px solid var(--hair);padding-top:7px;margin-top:3px}
 .bill-sep{height:1px;background:var(--hair);margin:6px 0} .estsum{margin-top:10px;border-top:1px solid var(--hair);padding-top:8px;max-width:320px;margin-left:auto}
 .lock{background:var(--canvas);border-radius:9px;padding:10px;text-align:center;font-size:12.5px;color:var(--ink2);margin:8px 0}
+.billedit{border:1px solid var(--hair);border-radius:9px;padding:8px 10px;margin:10px 0;background:var(--canvas)}
+.billedit summary{cursor:pointer;font-weight:600;font-size:13px;color:var(--brand)}
+.billedit[open]{padding-bottom:10px}
 .released{background:#e3f7ea;border-radius:10px;padding:12px;text-align:center;font-weight:700;color:#1a7a3c}
 
 /* ---- Photos ---- */
@@ -1535,7 +1538,10 @@ function runningBill(j){
     vatable:vs.vatable, vat:vs.vat, exempt:vs.exempt, paid:jobPaid(j), balance:jobBalance(j) };
 }
 function jobLinesPanel(j){
-  var locked = j.stage==='Released';
+  // Once Final Billing is issued (OR # assigned) lines lock — but a user with the
+  // 'billing_edit' permission can still edit them even after billing is done.
+  var billed = (j.stage==='Final Billing' || j.stage==='Released');
+  var locked = billed && !can('billing_edit');
   var rows = (j.lines||[]).map(function(l){
     return '<tr><td>'+chip(l.type==='part'?'Part':'Labor', l.type==='part'?'':'gold')+'</td>'+
       '<td>'+(l.sku?'<span class="muted small">'+esc(l.sku)+'</span> ':'')+esc(l.desc)+'</td><td class="r">'+num(l.qty)+'</td>'+
@@ -1840,13 +1846,34 @@ function jobStagePanel(j,b){
       '<button class="btn ghost sm" onclick="applyDiscount(\''+j.id+'\')">Apply discount</button>'+
       '<button class="btn primary full mt8" onclick="advanceBilling(\''+j.id+'\')">Create Final Billing (assign OR #) →</button>';
   } else if (j.stage==='Final Billing'){
-    html+= jobPaymentBlock(j,b);
+    html+= billingEditBlock(j) + jobPaymentBlock(j,b);
   } else {
     html+='<div class="released">✓ Released'+(j.orNumber?' · OR '+esc(j.orNumber):'')+'<div class="muted small">'+esc(fmtDateTime(j.billedAt))+'</div></div>'+
-      (j.releaseSignature?'<img class="sig-show" src="'+j.releaseSignature+'"/>':'');
+      (j.releaseSignature?'<img class="sig-show" src="'+j.releaseSignature+'"/>':'')+
+      billingEditBlock(j);
   }
   html+='</div>';
   return html;
+}
+/* Re-open billing: discount, SI reference and (via the lines panel) line items can
+   be edited even after Final Billing is issued — gated by the 'billing_edit' cap. */
+function billingEditBlock(j){
+  if(!can('billing_edit')) return '';
+  return '<details class="billedit"'+(j.stage==='Final Billing'?' open':'')+'><summary>✎ Edit billing &amp; discount</summary>'+
+    '<div class="grid2 mt8">'+
+    field('Discount type','<select id="bdType"><option value="amount"'+(j.discount.type==='amount'?' selected':'')+'>₱ Amount</option><option value="percent"'+(j.discount.type==='percent'?' selected':'')+'>% Percent</option></select>')+
+    field('Discount value','<input id="bdVal" type="number" step="0.01" value="'+attr(j.discount.value||0)+'">')+'</div>'+
+    field('SI reference #','<input id="bdSI" value="'+attr(j.siRef||'')+'" placeholder="appears on Final Billing">')+
+    '<button class="btn primary sm" onclick="saveBillingEdits(\''+j.id+'\')">Apply changes</button>'+
+    '<p class="muted small">Recomputes the Total Amount Due; the balance updates to match. Edit line items above with the ✎ buttons.</p>'+
+  '</details>';
+}
+function saveBillingEdits(id){
+  if(!can('billing_edit')){ toast('Not permitted','err'); return; }
+  var j=jobById(id);
+  j.discount={ type:val('bdType'), value:Number(val('bdVal'))||0 };
+  j.siRef=val('bdSI');
+  persist(); toast('Billing updated'); render();
 }
 function quickC3(id){ var j=jobById(id); j.status='C3'; j.statusLog.push({time:new Date().toISOString(),code:'C3',by:j.saId,note:'Release cleared, forward to billing.'}); persist(); toast('Status → C3'); render(); }
 
@@ -2735,7 +2762,7 @@ function docJobOrder(j){
         ['Vehicle', esc(j.year+' '+j.make+' '+j.model)],['Chassis', esc(j.chassis)],
         ['Service Adviser', esc(staffName(j.saId))],['Mechanic(s)', esc(mechName(j.mechanicIds))],
         ['Bay', esc(bayName(j.bayId))],['Job hours', num(j.jobHours)],
-        ['SI ref', esc(j.siRef)],['PMS ref', esc(j.pmsRef)] ])+
+        ['PMS ref', esc(j.pmsRef)] ])+
       lines+
       (j.notes?'<div class="notes"><b>Service notes:</b> '+esc(j.notes)+'</div>':'')+
       '<div class="notes"><b>Inspection:</b> Fuel '+esc((j.inspection||{}).fuel||'—')+' · Lights '+esc((j.inspection||{}).lights||'None')+' · '+esc((j.inspection||{}).condition||'')+'</div>'+
@@ -2799,7 +2826,7 @@ function docBilling(j){
   var body=docHeader((sh.vatReg?'VAT ':'')+'Sales Invoice / Official Receipt · '+(j.orNumber||''))+
     metaRows([['OR / Invoice #', esc(j.orNumber||'—')],['Date', fmtDate(j.billedAt)],
       ['Sold to', esc(j.owner)],['TIN', esc(j.customerTin||'—')],
-      ['Address', esc(j.address||'—')],
+      ['Address', esc(j.address||'—')],['SI reference', esc(j.siRef||'—')],
       ['Vehicle', esc(j.year+' '+j.make+' '+j.model+' · '+j.plate)],['JO #', esc(j.no)] ])+
     pricedLinesTable(j,{sku:true})+ totalsBox(j,{discount:true})+
     '<div class="sig-grid"><div class="sigline">Cashier / Authorized</div>'+
@@ -3365,6 +3392,7 @@ var CAPS = [
   { key:'part_cost',    label:'Part cost & margin' },
   { key:'discounts',    label:'Apply discounts' },
   { key:'billing',      label:'Final billing / OR #' },
+  { key:'billing_edit', label:'Edit billing after it is done' },
   { key:'receivables',  label:'Receivables (A/R)' },
   { key:'reports',      label:'Reports' },
   { key:'dailyclose',   label:'Daily Close' },
@@ -3377,7 +3405,7 @@ var CAPS = [
 
 /* Default matrix (Admin always has everything via isAdmin). Admin-editable. */
 var DEFAULT_PERMS = {
-  SV:               { appointments:1, estimates:1, prices:1, part_cost:1, discounts:1, billing:1, receivables:1, reports:1, dailyclose:1, parts_manage:1 },
+  SV:               { appointments:1, estimates:1, prices:1, part_cost:1, discounts:1, billing:1, billing_edit:1, receivables:1, reports:1, dailyclose:1, parts_manage:1 },
   SA:               { appointments:1, estimates:1, prices:1, billing:1, receivables:1 },
   SM:               { estimates:1, prices:1 },
   Mechanic:         {},

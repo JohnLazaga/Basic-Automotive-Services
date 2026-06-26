@@ -209,7 +209,10 @@ function runningBill(j){
     vatable:vs.vatable, vat:vs.vat, exempt:vs.exempt, paid:jobPaid(j), balance:jobBalance(j) };
 }
 function jobLinesPanel(j){
-  var locked = j.stage==='Released';
+  // Once Final Billing is issued (OR # assigned) lines lock — but a user with the
+  // 'billing_edit' permission can still edit them even after billing is done.
+  var billed = (j.stage==='Final Billing' || j.stage==='Released');
+  var locked = billed && !can('billing_edit');
   var rows = (j.lines||[]).map(function(l){
     return '<tr><td>'+chip(l.type==='part'?'Part':'Labor', l.type==='part'?'':'gold')+'</td>'+
       '<td>'+(l.sku?'<span class="muted small">'+esc(l.sku)+'</span> ':'')+esc(l.desc)+'</td><td class="r">'+num(l.qty)+'</td>'+
@@ -514,13 +517,34 @@ function jobStagePanel(j,b){
       '<button class="btn ghost sm" onclick="applyDiscount(\''+j.id+'\')">Apply discount</button>'+
       '<button class="btn primary full mt8" onclick="advanceBilling(\''+j.id+'\')">Create Final Billing (assign OR #) →</button>';
   } else if (j.stage==='Final Billing'){
-    html+= jobPaymentBlock(j,b);
+    html+= billingEditBlock(j) + jobPaymentBlock(j,b);
   } else {
     html+='<div class="released">✓ Released'+(j.orNumber?' · OR '+esc(j.orNumber):'')+'<div class="muted small">'+esc(fmtDateTime(j.billedAt))+'</div></div>'+
-      (j.releaseSignature?'<img class="sig-show" src="'+j.releaseSignature+'"/>':'');
+      (j.releaseSignature?'<img class="sig-show" src="'+j.releaseSignature+'"/>':'')+
+      billingEditBlock(j);
   }
   html+='</div>';
   return html;
+}
+/* Re-open billing: discount, SI reference and (via the lines panel) line items can
+   be edited even after Final Billing is issued — gated by the 'billing_edit' cap. */
+function billingEditBlock(j){
+  if(!can('billing_edit')) return '';
+  return '<details class="billedit"'+(j.stage==='Final Billing'?' open':'')+'><summary>✎ Edit billing &amp; discount</summary>'+
+    '<div class="grid2 mt8">'+
+    field('Discount type','<select id="bdType"><option value="amount"'+(j.discount.type==='amount'?' selected':'')+'>₱ Amount</option><option value="percent"'+(j.discount.type==='percent'?' selected':'')+'>% Percent</option></select>')+
+    field('Discount value','<input id="bdVal" type="number" step="0.01" value="'+attr(j.discount.value||0)+'">')+'</div>'+
+    field('SI reference #','<input id="bdSI" value="'+attr(j.siRef||'')+'" placeholder="appears on Final Billing">')+
+    '<button class="btn primary sm" onclick="saveBillingEdits(\''+j.id+'\')">Apply changes</button>'+
+    '<p class="muted small">Recomputes the Total Amount Due; the balance updates to match. Edit line items above with the ✎ buttons.</p>'+
+  '</details>';
+}
+function saveBillingEdits(id){
+  if(!can('billing_edit')){ toast('Not permitted','err'); return; }
+  var j=jobById(id);
+  j.discount={ type:val('bdType'), value:Number(val('bdVal'))||0 };
+  j.siRef=val('bdSI');
+  persist(); toast('Billing updated'); render();
 }
 function quickC3(id){ var j=jobById(id); j.status='C3'; j.statusLog.push({time:new Date().toISOString(),code:'C3',by:j.saId,note:'Release cleared, forward to billing.'}); persist(); toast('Status → C3'); render(); }
 
