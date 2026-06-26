@@ -2071,8 +2071,29 @@ function editVehicle(id){
     field('Next service date','<input id="vehNextDate" type="date" value="'+attr(v.nextServiceDate||'')+'">')+
     field('Next service odo','<input id="vehNextOdo" type="number" value="'+attr(v.nextServiceOdo||'')+'">')+
     '</div>'+ field('Address','<input id="vehAddr" value="'+attr(v.address||'')+'">'),
-    { onOk:'saveVehicle', width:'700px' });
-  setTimeout(function(){vehCtx=id||null;},10);
+    vehicleModalOpts(id));
+  vehCtx=id||null;
+}
+function vehicleModalOpts(id){
+  var isAdmin = (typeof isAdminUser!=='function') || isAdminUser();
+  if (id && isAdmin){
+    return { width:'700px', footer:
+      '<button class="btn danger ghost" onclick="deleteVehicleConfirm(\''+id+'\')">🗑 Delete vehicle</button>'+
+      '<span style="flex:1"></span>'+
+      '<button class="btn ghost" onclick="closeModal()">Cancel</button>'+
+      '<button class="btn primary" onclick="saveVehicle()">Save</button>' };
+  }
+  return { onOk:'saveVehicle', width:'700px' };
+}
+function deleteVehicleConfirm(id){
+  if (typeof isAdminUser==='function' && !isAdminUser()){ toast('Admins only','err'); return; }
+  var v=vehicleById(id); if(!v) return;
+  confirmModal('Delete this vehicle?',
+    'This permanently removes '+(v.plate||'this vehicle')+' ('+(v.year+' '+v.make+' '+v.model).trim()+') from your records for everyone. Existing job orders keep their own copy of the details. This cannot be undone.',
+    function(){
+      S.vehicles=S.vehicles.filter(function(x){return x.id!==id;});
+      persist(); closeModal(); toast('Vehicle deleted'); go('vehicles');
+    },'Delete vehicle', true);
 }
 var vehCtx=null;
 function saveVehicle(){
