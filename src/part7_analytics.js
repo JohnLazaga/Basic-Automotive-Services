@@ -71,16 +71,9 @@ function commissionTable(jobs){
     if(!commissionEligible(s)) return;                                  // toggled out of commission payout
     if(!map[id]) map[id]={ name:s.name, role:s.role, amount:0 }; map[id].amount=round2(map[id].amount+amt); }
   jobs.forEach(function(j){
-    // labor commissions (mechanics + Service Adviser, de-duped to one 5% per person)
+    // Shop-wide commission: labor × shop rate, split evenly among everyone assigned.
     var cm=jobLaborCommissionMap(j,S);
     Object.keys(cm).forEach(function(id){ add(id, cm[id]); });
-    // other configured commissions (assessedBy / parts salesman, if not a labor-commission role)
-    [j.assessedBy, j.partsSalesman].forEach(function(sid){
-      var s=staffById(sid); if(!s) return;
-      if(isMechanicRole(s.role) || s.role==='SA') return;               // handled by the labor map
-      if(s.commissionBase==='labor') add(sid, round2(laborTotal(j.lines)*(s.commissionRate||0)/100));
-      else if(s.commissionBase==='total') add(sid, round2(jobGross(j)*(s.commissionRate||0)/100));
-    });
   });
   return Object.keys(map).map(function(k){return map[k];}).filter(function(c){return c.amount>0;}).sort(function(a,b){return b.amount-a.amount;});
 }
@@ -171,7 +164,7 @@ VIEWS.productivity = function(){
     '<button class="btn primary" onclick="printPayout()">⎙ Payout sheet</button></div>'+
     '<div class="row gap" style="align-items:center;flex-wrap:wrap"><div class="seg">'+seg+'</div>'+custom+
       '<span class="muted small">'+esc(prodPeriodLabel())+'</span></div>'+
-    '<p class="muted small mt8">All mechanics (Senior & Junior) earn '+(S.shop.mechCommissionRate||5)+'% of labor, split evenly among those assigned to each billed job.</p>'+
+    '<p class="muted small mt8">Commission is '+(S.shop.mechCommissionRate||5)+'% of labor per billed job, split evenly among everyone assigned to it (mechanics, Service Adviser, assessor, parts salesman). This view shows the mechanics’ share; see the Payout sheet for all staff.</p>'+
     '<div class="card pad0"><table class="tbl"><thead><tr><th>Mechanic</th><th class="r">Jobs</th><th class="r">Job hrs</th><th class="r">Labor billed</th><th class="r">Avg/job</th><th class="r">Commission</th></tr></thead><tbody>'+(rows||'<tr><td colspan="6" class="muted center">No mechanics.</td></tr>')+'</tbody></table></div>'+
     '<div class="card"><h2>Commission by mechanic</h2>'+(commBars.length?bars(commBars,peso):emptyState('No commissions in this period.'))+'</div></div>';
 };

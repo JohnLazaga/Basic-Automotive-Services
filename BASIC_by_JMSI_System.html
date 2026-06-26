@@ -509,28 +509,29 @@ function vatSplit(base, S){
   return { vatable:base, vat:vat, gross:gross, exempt:false };
 }
 
-/* Mechanic commission pool: labor × rate ÷ #mechanics, split evenly. */
+/* Shop-wide commission rule (rate set on the Staff page): labor × the shop rate,
+   paid ONLY to staff assigned to the job — the mechanic(s), Service Adviser,
+   assessor and parts salesman — split evenly among everyone assigned who is
+   commission-eligible. A person assigned in two capacities still counts once. */
+function assignedCommissionIds(job){
+  var ids = [];
+  (job.mechanicIds||[]).forEach(function(x){ if(x && x!=='TBA') ids.push(x); });
+  [job.saId, job.assessedBy, job.partsSalesman].forEach(function(x){ if(x && x!=='TBA') ids.push(x); });
+  var uniq = [];
+  ids.forEach(function(id){ if(uniq.indexOf(id)<0 && commissionEligible(id)) uniq.push(id); });
+  return uniq;
+}
 function jobLaborCommission(job, S){
   var rate = (Number(S.shop.mechCommissionRate)||0)/100;
   var pool = round2(laborTotal(job.lines) * rate);
-  var n = (job.mechanicIds||[]).filter(function(x){return x && x!=='TBA';}).length;
+  var n = assignedCommissionIds(job).length;
   return { pool:pool, perMech: n>0 ? round2(pool/n) : 0, count:n };
 }
-/* Per-person labor commission for ONE job — the single source of truth.
-   Mechanics split the pool; the Service Adviser earns a full 5%. If one person
-   is BOTH the Service Adviser AND an assigned mechanic on the job, they earn
-   only ONE 5% (the adviser amount replaces their mechanic share — no stacking). */
+/* Per-person commission for ONE job — the single source of truth. */
 function jobLaborCommissionMap(job, S){
-  var rate = (Number(S.shop.mechCommissionRate)||0)/100;
-  var labor = laborTotal(job.lines);
-  var pool = round2(labor*rate);
-  var mechs = (job.mechanicIds||[]).filter(function(x){return x && x!=='TBA';});
-  var perMech = mechs.length ? round2(pool/mechs.length) : 0;
+  var c = jobLaborCommission(job, S);
   var map = {};
-  mechs.forEach(function(m){ map[m] = round2((map[m]||0) + perMech); });
-  if (job.saId && job.saId!=='TBA'){ map[job.saId] = round2(labor*rate); }  // caps the SA at one 5%
-  // Drop anyone toggled OUT of commission payout (their share is forfeited, not redistributed).
-  Object.keys(map).forEach(function(id){ if(!commissionEligible(id)) delete map[id]; });
+  assignedCommissionIds(job).forEach(function(id){ map[id] = c.perMech; });
   return map;
 }
 /* Every staff member is entitled to commission by default; an admin can switch
@@ -2374,32 +2375,37 @@ function receivePO(id){
 /* ---- Staff ---------------------------------------------------------------- */
 var ROLES=['SV','SA','SM','Mechanic','Parts Salesman','Secretary'];
 VIEWS.staff = function(){
+  var rate = (S.shop.mechCommissionRate||0);
   var rows=S.staff.map(function(s){
-    var comm = earnsLaborCommission(s.role)? (S.shop.mechCommissionRate||5)+'% of labor (shop rate)'
-      : (s.commissionBase&&s.commissionBase!=='none'? s.commissionRate+'% of '+s.commissionBase : '—');
     var on = s.commission!==false;
+    var comm = on ? rate+'% of labor (shop rule)' : '—';
     var toggle = '<label class="switch" title="Include in commission payout"><input type="checkbox" '+(on?'checked':'')+
       ' onchange="toggleStaffCommission(\''+s.id+'\',this.checked)"><span class="track"><span class="knob"></span></span></label>';
     return '<tr><td><b>'+esc(s.name)+'</b>'+(s.nickname?' <span class="muted small">“'+esc(s.nickname)+'”</span>':'')+'</td><td>'+chip(roleLabel(s.role))+'</td><td>'+esc(comm)+'</td>'+
       '<td class="center">'+toggle+'</td>'+
       '<td class="r"><button class="ic" onclick="editStaff(\''+s.id+'\')">✎</button><button class="ic" onclick="delStaff(\''+s.id+'\')">✕</button></td></tr>';
   }).join('');
+  var ruleCard = '<div class="card"><div class="card-head"><h2>Commission rule</h2></div>'+
+    '<div class="row gap" style="align-items:center">'+
+      '<input id="shopCommRate" type="number" step="0.1" min="0" value="'+attr(rate)+'" style="width:90px" onchange="setShopCommissionRate(this.value)">'+
+      '<span>% of labor, paid per billed job and <b>split evenly</b> among everyone assigned to it (mechanics, Service Adviser, assessor, parts salesman).</span>'+
+    '</div>'+
+    '<p class="muted small mt8">Applies to all staff automatically. Switch <b>Payout</b> off below to exclude an individual.</p></div>';
   return '<div class="page"><div class="page-head"><h1>Staff</h1><button class="btn primary" onclick="editStaff()">＋ Add staff</button></div>'+
-    '<p class="muted small">Every staff member is entitled to commission. Switch <b>Payout</b> off to exclude someone from the commission payout.</p>'+
+    ruleCard+
     '<div class="card pad0"><table class="tbl"><thead><tr><th>Name</th><th>Role</th><th>Commission</th><th class="center">Payout</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
 };
+function setShopCommissionRate(v){ S.shop.mechCommissionRate=Math.max(0,Number(v)||0); persist(); toast('Commission rate set to '+S.shop.mechCommissionRate+'%'); render(); }
 function toggleStaffCommission(id,on){ var s=staffById(id); if(!s) return; s.commission=!!on; persist(); toast(on?'Included in payout':'Excluded from payout'); }
 function editStaff(id){ var s=id?staffById(id):{};
   openModal(id?'Edit staff':'Add staff',
     '<div class="grid2">'+field('Name','<input id="stName" value="'+attr(s.name||'')+'">')+
     field('Nickname','<input id="stNick" value="'+attr(s.nickname||'')+'" placeholder="optional">')+'</div>'+
     field('Role','<select id="stRole">'+ROLES.map(function(r){return '<option value="'+r+'"'+(s.role===r?' selected':'')+'>'+esc(roleLabel(r))+'</option>';}).join('')+'</select>')+
-    '<div class="grid2">'+field('Commission base','<select id="stBase"><option value="none"'+(s.commissionBase==='none'||!s.commissionBase?' selected':'')+'>None</option><option value="labor"'+(s.commissionBase==='labor'?' selected':'')+'>Labor</option><option value="total"'+(s.commissionBase==='total'?' selected':'')+'>Total</option></select>')+
-    field('Commission rate %','<input id="stRate" type="number" step="0.1" value="'+attr(s.commissionRate||0)+'">')+'</div>'+
-    '<p class="muted small">Mechanics (Senior & Junior) split the shop\'s labor-commission rate per job; the Service Adviser earns the same rate on their jobs. The settings below apply only to other roles.</p>',
+    '<p class="muted small">Commission follows the shop rule shown on the Staff page — '+(S.shop.mechCommissionRate||0)+'% of labor, split evenly among everyone assigned to each billed job. Use the <b>Payout</b> switch to include or exclude this person.</p>',
     { onOk:'saveStaff' }); setTimeout(function(){stCtx=id||null;},10); }
 var stCtx=null;
-function saveStaff(){ var data={ name:val('stName'), nickname:val('stNick'), role:val('stRole'), commissionBase:val('stBase'), commissionRate:Number(val('stRate'))||0 };
+function saveStaff(){ var data={ name:val('stName'), nickname:val('stNick'), role:val('stRole') };
   if(!data.name){toast('Name required','err');return;}
   if(stCtx){ Object.assign(staffById(stCtx),data); } else { data.id=uid('st'); S.staff.push(data); }
   persist(); closeModal(); render(); }
@@ -2481,16 +2487,9 @@ function commissionTable(jobs){
     if(!commissionEligible(s)) return;                                  // toggled out of commission payout
     if(!map[id]) map[id]={ name:s.name, role:s.role, amount:0 }; map[id].amount=round2(map[id].amount+amt); }
   jobs.forEach(function(j){
-    // labor commissions (mechanics + Service Adviser, de-duped to one 5% per person)
+    // Shop-wide commission: labor × shop rate, split evenly among everyone assigned.
     var cm=jobLaborCommissionMap(j,S);
     Object.keys(cm).forEach(function(id){ add(id, cm[id]); });
-    // other configured commissions (assessedBy / parts salesman, if not a labor-commission role)
-    [j.assessedBy, j.partsSalesman].forEach(function(sid){
-      var s=staffById(sid); if(!s) return;
-      if(isMechanicRole(s.role) || s.role==='SA') return;               // handled by the labor map
-      if(s.commissionBase==='labor') add(sid, round2(laborTotal(j.lines)*(s.commissionRate||0)/100));
-      else if(s.commissionBase==='total') add(sid, round2(jobGross(j)*(s.commissionRate||0)/100));
-    });
   });
   return Object.keys(map).map(function(k){return map[k];}).filter(function(c){return c.amount>0;}).sort(function(a,b){return b.amount-a.amount;});
 }
@@ -2581,7 +2580,7 @@ VIEWS.productivity = function(){
     '<button class="btn primary" onclick="printPayout()">⎙ Payout sheet</button></div>'+
     '<div class="row gap" style="align-items:center;flex-wrap:wrap"><div class="seg">'+seg+'</div>'+custom+
       '<span class="muted small">'+esc(prodPeriodLabel())+'</span></div>'+
-    '<p class="muted small mt8">All mechanics (Senior & Junior) earn '+(S.shop.mechCommissionRate||5)+'% of labor, split evenly among those assigned to each billed job.</p>'+
+    '<p class="muted small mt8">Commission is '+(S.shop.mechCommissionRate||5)+'% of labor per billed job, split evenly among everyone assigned to it (mechanics, Service Adviser, assessor, parts salesman). This view shows the mechanics’ share; see the Payout sheet for all staff.</p>'+
     '<div class="card pad0"><table class="tbl"><thead><tr><th>Mechanic</th><th class="r">Jobs</th><th class="r">Job hrs</th><th class="r">Labor billed</th><th class="r">Avg/job</th><th class="r">Commission</th></tr></thead><tbody>'+(rows||'<tr><td colspan="6" class="muted center">No mechanics.</td></tr>')+'</tbody></table></div>'+
     '<div class="card"><h2>Commission by mechanic</h2>'+(commBars.length?bars(commBars,peso):emptyState('No commissions in this period.'))+'</div></div>';
 };
@@ -2655,8 +2654,8 @@ VIEWS.settings = function(){
       field('Portal base URL','<input id="shPortal" value="'+attr(sh.portalUrl)+'">','Vehicle QR encodes <portalUrl>/#v=<id>. Host this file there for scans to resolve.')+
       '<button class="btn ghost" onclick="saveShop()">Save</button></div>'+
 
-    '<div class="card"><h2>Mechanic commission</h2>'+
-      field('Rate % of labor','<input id="shComm" type="number" step="0.1" value="'+attr(sh.mechCommissionRate)+'">','Split evenly among mechanics assigned to a job.')+
+    '<div class="card"><h2>Commission rule</h2>'+
+      field('Rate % of labor','<input id="shComm" type="number" step="0.1" value="'+attr(sh.mechCommissionRate)+'">','Split evenly among everyone assigned to a job (mechanics, Service Adviser, assessor, parts salesman). Also editable on the Staff page.')+
       '<button class="btn ghost" onclick="saveShop()">Save</button></div>'+
 
     '<div class="card"><h2>Parts Database (server)</h2>'+
@@ -2910,17 +2909,19 @@ function printStatement(encName){ printDoc(docStatement(decodeURIComponent(encNa
 /* ---- Payout sheet --------------------------------------------------------- */
 function docPayout(){
   var jobs=jobsInProdPeriod(billedJobs());
-  var byId={}; mechanicStaff().forEach(function(m){byId[m.id]={name:m.name,role:m.role,jobs:0,labor:0,commission:0};});
-  jobs.forEach(function(j){ var cm=jobLaborCommissionMap(j,S); var lab=laborTotal(j.lines);
-    var as=(j.mechanicIds||[]).filter(function(x){return x&&x!=='TBA';});
-    as.forEach(function(mid){ var r=byId[mid]; if(!r) return; r.jobs++; r.labor=round2(r.labor+lab/as.length); r.commission=round2(r.commission+(cm[mid]||0)); }); });
+  var byId={};
+  jobs.forEach(function(j){ var cm=jobLaborCommissionMap(j,S);
+    Object.keys(cm).forEach(function(id){ var s=staffById(id); if(!s) return;
+      if(!byId[id]) byId[id]={name:s.name,role:s.role,jobs:0,commission:0};
+      byId[id].jobs++; byId[id].commission=round2(byId[id].commission+cm[id]); }); });
   var rows=Object.keys(byId).map(function(k){var r=byId[k];
-    return '<tr><td>'+esc(r.name)+' ('+esc(roleLabel(r.role))+')</td><td class="r">'+r.jobs+'</td><td class="r">'+peso(r.labor)+'</td><td class="r">'+peso(r.commission)+'</td><td class="sigline" style="margin-top:18px"></td></tr>';}).join('');
+    return '<tr><td>'+esc(r.name)+' ('+esc(roleLabel(r.role))+')</td><td class="r">'+r.jobs+'</td><td class="r">'+peso(r.commission)+'</td><td class="sigline" style="margin-top:18px"></td></tr>';}).join('')
+    || '<tr><td colspan="4" class="r">No commissions in this period.</td></tr>';
   var tot=Object.keys(byId).reduce(function(s,k){return s+byId[k].commission;},0);
-  var body=docHeader('Mechanic Commission Payout · '+esc(prodPeriodLabel()))+
-    '<table><thead><tr><th>Mechanic</th><th class="r">Jobs</th><th class="r">Labor billed</th><th class="r">Commission</th><th>Signature</th></tr></thead><tbody>'+rows+'</tbody></table>'+
+  var body=docHeader('Commission Payout · '+esc(prodPeriodLabel()))+
+    '<table><thead><tr><th>Staff</th><th class="r">Jobs</th><th class="r">Commission</th><th>Signature</th></tr></thead><tbody>'+rows+'</tbody></table>'+
     '<div class="totbox"><div class="l2 grand"><span>Total payout</span><span>'+peso(tot)+'</span></div></div>'+
-    '<div class="foot">Commission = labor × '+(S.shop.mechCommissionRate||5)+'% split evenly among assigned mechanics.</div>';
+    '<div class="foot">Commission = labor × '+(S.shop.mechCommissionRate||5)+'% per billed job, split evenly among everyone assigned (mechanic, Service Adviser, assessor, parts salesman).</div>';
   return docShell('Payout sheet', body);
 }
 function printPayout(){ printDoc(docPayout()); }

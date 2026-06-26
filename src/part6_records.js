@@ -332,32 +332,37 @@ function receivePO(id){
 /* ---- Staff ---------------------------------------------------------------- */
 var ROLES=['SV','SA','SM','Mechanic','Parts Salesman','Secretary'];
 VIEWS.staff = function(){
+  var rate = (S.shop.mechCommissionRate||0);
   var rows=S.staff.map(function(s){
-    var comm = earnsLaborCommission(s.role)? (S.shop.mechCommissionRate||5)+'% of labor (shop rate)'
-      : (s.commissionBase&&s.commissionBase!=='none'? s.commissionRate+'% of '+s.commissionBase : '—');
     var on = s.commission!==false;
+    var comm = on ? rate+'% of labor (shop rule)' : '—';
     var toggle = '<label class="switch" title="Include in commission payout"><input type="checkbox" '+(on?'checked':'')+
       ' onchange="toggleStaffCommission(\''+s.id+'\',this.checked)"><span class="track"><span class="knob"></span></span></label>';
     return '<tr><td><b>'+esc(s.name)+'</b>'+(s.nickname?' <span class="muted small">“'+esc(s.nickname)+'”</span>':'')+'</td><td>'+chip(roleLabel(s.role))+'</td><td>'+esc(comm)+'</td>'+
       '<td class="center">'+toggle+'</td>'+
       '<td class="r"><button class="ic" onclick="editStaff(\''+s.id+'\')">✎</button><button class="ic" onclick="delStaff(\''+s.id+'\')">✕</button></td></tr>';
   }).join('');
+  var ruleCard = '<div class="card"><div class="card-head"><h2>Commission rule</h2></div>'+
+    '<div class="row gap" style="align-items:center">'+
+      '<input id="shopCommRate" type="number" step="0.1" min="0" value="'+attr(rate)+'" style="width:90px" onchange="setShopCommissionRate(this.value)">'+
+      '<span>% of labor, paid per billed job and <b>split evenly</b> among everyone assigned to it (mechanics, Service Adviser, assessor, parts salesman).</span>'+
+    '</div>'+
+    '<p class="muted small mt8">Applies to all staff automatically. Switch <b>Payout</b> off below to exclude an individual.</p></div>';
   return '<div class="page"><div class="page-head"><h1>Staff</h1><button class="btn primary" onclick="editStaff()">＋ Add staff</button></div>'+
-    '<p class="muted small">Every staff member is entitled to commission. Switch <b>Payout</b> off to exclude someone from the commission payout.</p>'+
+    ruleCard+
     '<div class="card pad0"><table class="tbl"><thead><tr><th>Name</th><th>Role</th><th>Commission</th><th class="center">Payout</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
 };
+function setShopCommissionRate(v){ S.shop.mechCommissionRate=Math.max(0,Number(v)||0); persist(); toast('Commission rate set to '+S.shop.mechCommissionRate+'%'); render(); }
 function toggleStaffCommission(id,on){ var s=staffById(id); if(!s) return; s.commission=!!on; persist(); toast(on?'Included in payout':'Excluded from payout'); }
 function editStaff(id){ var s=id?staffById(id):{};
   openModal(id?'Edit staff':'Add staff',
     '<div class="grid2">'+field('Name','<input id="stName" value="'+attr(s.name||'')+'">')+
     field('Nickname','<input id="stNick" value="'+attr(s.nickname||'')+'" placeholder="optional">')+'</div>'+
     field('Role','<select id="stRole">'+ROLES.map(function(r){return '<option value="'+r+'"'+(s.role===r?' selected':'')+'>'+esc(roleLabel(r))+'</option>';}).join('')+'</select>')+
-    '<div class="grid2">'+field('Commission base','<select id="stBase"><option value="none"'+(s.commissionBase==='none'||!s.commissionBase?' selected':'')+'>None</option><option value="labor"'+(s.commissionBase==='labor'?' selected':'')+'>Labor</option><option value="total"'+(s.commissionBase==='total'?' selected':'')+'>Total</option></select>')+
-    field('Commission rate %','<input id="stRate" type="number" step="0.1" value="'+attr(s.commissionRate||0)+'">')+'</div>'+
-    '<p class="muted small">Mechanics (Senior & Junior) split the shop\'s labor-commission rate per job; the Service Adviser earns the same rate on their jobs. The settings below apply only to other roles.</p>',
+    '<p class="muted small">Commission follows the shop rule shown on the Staff page — '+(S.shop.mechCommissionRate||0)+'% of labor, split evenly among everyone assigned to each billed job. Use the <b>Payout</b> switch to include or exclude this person.</p>',
     { onOk:'saveStaff' }); setTimeout(function(){stCtx=id||null;},10); }
 var stCtx=null;
-function saveStaff(){ var data={ name:val('stName'), nickname:val('stNick'), role:val('stRole'), commissionBase:val('stBase'), commissionRate:Number(val('stRate'))||0 };
+function saveStaff(){ var data={ name:val('stName'), nickname:val('stNick'), role:val('stRole') };
   if(!data.name){toast('Name required','err');return;}
   if(stCtx){ Object.assign(staffById(stCtx),data); } else { data.id=uid('st'); S.staff.push(data); }
   persist(); closeModal(); render(); }

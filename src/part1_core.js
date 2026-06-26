@@ -124,28 +124,29 @@ function vatSplit(base, S){
   return { vatable:base, vat:vat, gross:gross, exempt:false };
 }
 
-/* Mechanic commission pool: labor × rate ÷ #mechanics, split evenly. */
+/* Shop-wide commission rule (rate set on the Staff page): labor × the shop rate,
+   paid ONLY to staff assigned to the job — the mechanic(s), Service Adviser,
+   assessor and parts salesman — split evenly among everyone assigned who is
+   commission-eligible. A person assigned in two capacities still counts once. */
+function assignedCommissionIds(job){
+  var ids = [];
+  (job.mechanicIds||[]).forEach(function(x){ if(x && x!=='TBA') ids.push(x); });
+  [job.saId, job.assessedBy, job.partsSalesman].forEach(function(x){ if(x && x!=='TBA') ids.push(x); });
+  var uniq = [];
+  ids.forEach(function(id){ if(uniq.indexOf(id)<0 && commissionEligible(id)) uniq.push(id); });
+  return uniq;
+}
 function jobLaborCommission(job, S){
   var rate = (Number(S.shop.mechCommissionRate)||0)/100;
   var pool = round2(laborTotal(job.lines) * rate);
-  var n = (job.mechanicIds||[]).filter(function(x){return x && x!=='TBA';}).length;
+  var n = assignedCommissionIds(job).length;
   return { pool:pool, perMech: n>0 ? round2(pool/n) : 0, count:n };
 }
-/* Per-person labor commission for ONE job — the single source of truth.
-   Mechanics split the pool; the Service Adviser earns a full 5%. If one person
-   is BOTH the Service Adviser AND an assigned mechanic on the job, they earn
-   only ONE 5% (the adviser amount replaces their mechanic share — no stacking). */
+/* Per-person commission for ONE job — the single source of truth. */
 function jobLaborCommissionMap(job, S){
-  var rate = (Number(S.shop.mechCommissionRate)||0)/100;
-  var labor = laborTotal(job.lines);
-  var pool = round2(labor*rate);
-  var mechs = (job.mechanicIds||[]).filter(function(x){return x && x!=='TBA';});
-  var perMech = mechs.length ? round2(pool/mechs.length) : 0;
+  var c = jobLaborCommission(job, S);
   var map = {};
-  mechs.forEach(function(m){ map[m] = round2((map[m]||0) + perMech); });
-  if (job.saId && job.saId!=='TBA'){ map[job.saId] = round2(labor*rate); }  // caps the SA at one 5%
-  // Drop anyone toggled OUT of commission payout (their share is forfeited, not redistributed).
-  Object.keys(map).forEach(function(id){ if(!commissionEligible(id)) delete map[id]; });
+  assignedCommissionIds(job).forEach(function(id){ map[id] = c.perMech; });
   return map;
 }
 /* Every staff member is entitled to commission by default; an admin can switch

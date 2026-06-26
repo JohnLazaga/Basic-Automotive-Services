@@ -73,33 +73,40 @@ section('4. Final Billing: VATable Sales + VAT (12%) added on top; vatable+vat==
 })();
 
 /* ---------------------------------------------------------------- TEST 5 */
-section('5. Commission: 1 mech on ₱500 labor = ₱25.00; 2 mechs = ₱12.50 each');
+section('5. Commission: shop rule = % of labor, split evenly among everyone assigned');
 (function(){
   const s=fresh();
   const mech=s.staff.filter(x=>x.role==='Mechanic');
   const job={ lines:[{type:'labor',ref:null,desc:'L',qty:1,price:500}], mechanicIds:[mech[0].id] };
   const c1=M.jobLaborCommission(job, s);
-  ok('1 mechanic earns 25.00', c1.perMech===25);
+  ok('1 assignee earns the full pool 25.00', c1.perMech===25);
   job.mechanicIds=[mech[0].id, mech[1].id];
   const c2=M.jobLaborCommission(job, s);
-  ok('2 mechanics earn 12.50 each', c2.perMech===12.5);
+  ok('2 assignees split the pool: 12.50 each', c2.perMech===12.5);
   ok('commission pool is 25', c2.pool===25);
-  // Service Adviser earns its own 5% of labor (not split); Senior Mechanic also earns.
+  // Everyone assigned shares ONE pool: mechanic + Service Adviser + assessor = 3 ways.
   const sa=s.staff.find(x=>x.role==='SA'), sm=s.staff.find(x=>x.role==='SM');
   const job2={ id:'j2', no:'JO-X', stage:'Released', lines:[{type:'labor',ref:null,desc:'L',qty:1,price:500}],
     mechanicIds:[mech[0].id], saId:sa.id, assessedBy:sm.id, partsSalesman:'', discount:{type:'amount',value:0}, payments:[], addlWork:[] };
   s.jobs=[job2];
   const ct=M.commissionTable([job2]);
-  const saRow=ct.find(r=>r.name===sa.name), mRow=ct.find(r=>r.name===mech[0].name);
-  ok('Service Adviser earns 25.00 (5% labor)', saRow && saRow.amount===25);
-  ok('assigned mechanic still earns 25.00', mRow && mRow.amount===25);
-  // Dual role: same person is Service Adviser AND assigned mechanic -> only ONE 5%
+  const saRow=ct.find(r=>r.name===sa.name), mRow=ct.find(r=>r.name===mech[0].name), smRow=ct.find(r=>r.name===sm.name);
+  ok('3 assignees each earn 8.33 (25/3): Service Adviser', saRow && saRow.amount===8.33);
+  ok('3 assignees each earn 8.33: mechanic', mRow && mRow.amount===8.33);
+  ok('3 assignees each earn 8.33: assessor', smRow && smRow.amount===8.33);
+  ok('commission table has exactly 3 rows', ct.length===3);
+  // Same person assigned in two capacities (SA AND mechanic) counts ONCE -> full pool.
   const dual={ id:'j3', no:'JO-Y', stage:'Released', lines:[{type:'labor',ref:null,desc:'L',qty:1,price:500}],
     mechanicIds:[mech[0].id], saId:mech[0].id, assessedBy:'', partsSalesman:'', discount:{type:'amount',value:0}, payments:[], addlWork:[] };
   const cmap=M.jobLaborCommissionMap(dual, s);
-  ok('SA+mechanic same person earns single 5% (25.00, not 50)', cmap[mech[0].id]===25);
+  ok('dual-capacity person counts once, earns full 25.00', cmap[mech[0].id]===25);
   const dualCt=M.commissionTable([dual]);
-  ok('commission table shows one 25.00 row for dual-role person', dualCt.length===1 && dualCt[0].amount===25);
+  ok('commission table shows one 25.00 row for dual-capacity person', dualCt.length===1 && dualCt[0].amount===25);
+  // Payout toggle off -> excluded; the pool then splits among the remaining eligible.
+  mech[0].commission=false;
+  const cmap2=M.jobLaborCommissionMap(job2, s);
+  ok('excluded assignee earns nothing', cmap2[mech[0].id]===undefined);
+  ok('pool now splits 2 ways: 12.50 each', cmap2[sa.id]===12.5 && cmap2[sm.id]===12.5);
 })();
 
 /* ---------------------------------------------------------------- TEST 6 */

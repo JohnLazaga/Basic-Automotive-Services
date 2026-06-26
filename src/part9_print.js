@@ -190,17 +190,19 @@ function printStatement(encName){ printDoc(docStatement(decodeURIComponent(encNa
 /* ---- Payout sheet --------------------------------------------------------- */
 function docPayout(){
   var jobs=jobsInProdPeriod(billedJobs());
-  var byId={}; mechanicStaff().forEach(function(m){byId[m.id]={name:m.name,role:m.role,jobs:0,labor:0,commission:0};});
-  jobs.forEach(function(j){ var cm=jobLaborCommissionMap(j,S); var lab=laborTotal(j.lines);
-    var as=(j.mechanicIds||[]).filter(function(x){return x&&x!=='TBA';});
-    as.forEach(function(mid){ var r=byId[mid]; if(!r) return; r.jobs++; r.labor=round2(r.labor+lab/as.length); r.commission=round2(r.commission+(cm[mid]||0)); }); });
+  var byId={};
+  jobs.forEach(function(j){ var cm=jobLaborCommissionMap(j,S);
+    Object.keys(cm).forEach(function(id){ var s=staffById(id); if(!s) return;
+      if(!byId[id]) byId[id]={name:s.name,role:s.role,jobs:0,commission:0};
+      byId[id].jobs++; byId[id].commission=round2(byId[id].commission+cm[id]); }); });
   var rows=Object.keys(byId).map(function(k){var r=byId[k];
-    return '<tr><td>'+esc(r.name)+' ('+esc(roleLabel(r.role))+')</td><td class="r">'+r.jobs+'</td><td class="r">'+peso(r.labor)+'</td><td class="r">'+peso(r.commission)+'</td><td class="sigline" style="margin-top:18px"></td></tr>';}).join('');
+    return '<tr><td>'+esc(r.name)+' ('+esc(roleLabel(r.role))+')</td><td class="r">'+r.jobs+'</td><td class="r">'+peso(r.commission)+'</td><td class="sigline" style="margin-top:18px"></td></tr>';}).join('')
+    || '<tr><td colspan="4" class="r">No commissions in this period.</td></tr>';
   var tot=Object.keys(byId).reduce(function(s,k){return s+byId[k].commission;},0);
-  var body=docHeader('Mechanic Commission Payout · '+esc(prodPeriodLabel()))+
-    '<table><thead><tr><th>Mechanic</th><th class="r">Jobs</th><th class="r">Labor billed</th><th class="r">Commission</th><th>Signature</th></tr></thead><tbody>'+rows+'</tbody></table>'+
+  var body=docHeader('Commission Payout · '+esc(prodPeriodLabel()))+
+    '<table><thead><tr><th>Staff</th><th class="r">Jobs</th><th class="r">Commission</th><th>Signature</th></tr></thead><tbody>'+rows+'</tbody></table>'+
     '<div class="totbox"><div class="l2 grand"><span>Total payout</span><span>'+peso(tot)+'</span></div></div>'+
-    '<div class="foot">Commission = labor × '+(S.shop.mechCommissionRate||5)+'% split evenly among assigned mechanics.</div>';
+    '<div class="foot">Commission = labor × '+(S.shop.mechCommissionRate||5)+'% per billed job, split evenly among everyone assigned (mechanic, Service Adviser, assessor, parts salesman).</div>';
   return docShell('Payout sheet', body);
 }
 function printPayout(){ printDoc(docPayout()); }
