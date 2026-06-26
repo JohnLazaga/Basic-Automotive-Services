@@ -138,21 +138,32 @@ function prodPeriodLabel(){
   var r=prodRange(); return fmtDate(r.from)+' – '+fmtDate(r.to);
 }
 
+/* KPI listing order — every staff member shown, sorted by role rank. Roles not
+   listed (e.g. Parts Salesman) sort last but are still included. */
+var KPI_ROLE_ORDER=['SV','Secretary','SA','SM','Mechanic'];
+function kpiRoleRank(role){ var i=KPI_ROLE_ORDER.indexOf(role); return i<0?KPI_ROLE_ORDER.length:i; }
 VIEWS.productivity = function(){
   var jobs=jobsInProdPeriod(billedJobs());
-  var mechs=mechanicStaff().map(function(m){ return { id:m.id, name:m.name, role:m.role, jobs:0, hours:0, labor:0, commission:0 }; });
-  var byId={}; mechs.forEach(function(m){byId[m.id]=m;});
+  var staff=(S.staff||[]).slice().sort(function(a,b){ return kpiRoleRank(a.role)-kpiRoleRank(b.role) || String(a.name||'').localeCompare(String(b.name||'')); });
+  var byId={};
+  var list=staff.map(function(s){ var r={ id:s.id, name:s.name, role:s.role, on:(s.commission!==false), jobs:0, hours:0, labor:0, commission:0 }; byId[s.id]=r; return r; });
   jobs.forEach(function(j){
     var cm=jobLaborCommissionMap(j,S); var lab=laborTotal(j.lines);
-    var assigned=(j.mechanicIds||[]).filter(function(x){return x&&x!=='TBA';});
-    assigned.forEach(function(mid){ var r=byId[mid]; if(!r) return; r.jobs++; r.hours=round2(r.hours+(Number(j.jobHours)||0)/assigned.length);
-      r.labor=round2(r.labor+lab/assigned.length); r.commission=round2(r.commission+(cm[mid]||0)); });
+    var mechs=(j.mechanicIds||[]).filter(function(x){return x&&x!=='TBA';});
+    // every distinct staff assigned in ANY capacity (regardless of payout toggle) — job count
+    var assigned=[]; mechs.concat([j.saId,j.assessedBy,j.partsSalesman]).forEach(function(x){ if(x&&x!=='TBA'&&assigned.indexOf(x)<0) assigned.push(x); });
+    assigned.forEach(function(id){ var r=byId[id]; if(r) r.jobs++; });
+    // job hours & labor billed are mechanic productivity metrics — split among mechanics
+    mechs.forEach(function(mid){ var r=byId[mid]; if(!r) return; r.hours=round2(r.hours+(Number(j.jobHours)||0)/mechs.length); r.labor=round2(r.labor+lab/mechs.length); });
+    Object.keys(cm).forEach(function(id){ var r=byId[id]; if(r) r.commission=round2(r.commission+cm[id]); });
   });
-  var rows=mechs.map(function(m){
+  var rows=list.map(function(m){
+    var toggle='<label class="switch" title="Include in commission payout"><input type="checkbox" '+(m.on?'checked':'')+
+      ' onchange="toggleStaffCommission(\''+m.id+'\',this.checked)"><span class="track"><span class="knob"></span></span></label>';
     return '<tr><td><b>'+esc(m.name)+'</b> <span class="muted small">'+esc(roleLabel(m.role))+'</span></td><td class="r">'+m.jobs+'</td><td class="r">'+num(m.hours)+'</td>'+
-      '<td class="r">'+peso(m.labor)+'</td><td class="r">'+peso(m.jobs?round2(m.labor/m.jobs):0)+'</td><td class="r"><b>'+peso(m.commission)+'</b></td></tr>';
+      '<td class="r">'+peso(m.labor)+'</td><td class="r">'+peso(m.jobs?round2(m.labor/m.jobs):0)+'</td><td class="r"><b>'+peso(m.on?m.commission:0)+'</b></td><td class="center">'+toggle+'</td></tr>';
   }).join('');
-  var commBars=mechs.filter(function(m){return m.commission>0;}).map(function(m){return {label:m.name,value:m.commission};});
+  var commBars=list.filter(function(m){return m.on&&m.commission>0;}).map(function(m){return {label:m.name,value:m.commission};});
   var seg=['all','today','week','month','custom'].map(function(p){
     var lab={all:'All time',today:'Today',week:'This week',month:'This month',custom:'Custom'}[p];
     return '<button class="seg-b'+(PROD_PERIOD===p?' on':'')+'" onclick="setProd(\''+p+'\')">'+lab+'</button>';
@@ -160,13 +171,13 @@ VIEWS.productivity = function(){
   var custom = PROD_PERIOD==='custom' ? '<div class="row gap" style="align-items:center">'+
     '<input type="date" value="'+attr(PROD_FROM)+'" onchange="PROD_FROM=this.value;render()"> <span class="muted">to</span> '+
     '<input type="date" value="'+attr(PROD_TO)+'" onchange="PROD_TO=this.value;render()"></div>' : '';
-  return '<div class="page"><div class="page-head"><h1>Mechanic Productivity</h1>'+
+  return '<div class="page"><div class="page-head"><h1>Staff Productivity</h1>'+
     '<button class="btn primary" onclick="printPayout()">⎙ Payout sheet</button></div>'+
     '<div class="row gap" style="align-items:center;flex-wrap:wrap"><div class="seg">'+seg+'</div>'+custom+
       '<span class="muted small">'+esc(prodPeriodLabel())+'</span></div>'+
-    '<p class="muted small mt8">Commission is '+(S.shop.mechCommissionRate||5)+'% of labor per billed job, split evenly among everyone assigned to it (mechanics, Service Adviser, assessor, parts salesman). This view shows the mechanics’ share; see the Payout sheet for all staff.</p>'+
-    '<div class="card pad0"><table class="tbl"><thead><tr><th>Mechanic</th><th class="r">Jobs</th><th class="r">Job hrs</th><th class="r">Labor billed</th><th class="r">Avg/job</th><th class="r">Commission</th></tr></thead><tbody>'+(rows||'<tr><td colspan="6" class="muted center">No mechanics.</td></tr>')+'</tbody></table></div>'+
-    '<div class="card"><h2>Commission by mechanic</h2>'+(commBars.length?bars(commBars,peso):emptyState('No commissions in this period.'))+'</div></div>';
+    '<p class="muted small mt8">Commission is '+(S.shop.mechCommissionRate||5)+'% of labor per billed job, split evenly among everyone assigned. All staff are listed for KPI; the <b>Payout</b> switch (beside Commission) controls who is paid — the Payout sheet includes only staff switched on.</p>'+
+    '<div class="card pad0"><table class="tbl"><thead><tr><th>Staff</th><th class="r">Jobs</th><th class="r">Job hrs</th><th class="r">Labor billed</th><th class="r">Avg/job</th><th class="r">Commission</th><th class="center">Payout</th></tr></thead><tbody>'+(rows||'<tr><td colspan="7" class="muted center">No staff.</td></tr>')+'</tbody></table></div>'+
+    '<div class="card"><h2>Commission by staff</h2>'+(commBars.length?bars(commBars,peso):emptyState('No commissions in this period.'))+'</div></div>';
 };
 
 /* ---- Receivables (A/R) ---------------------------------------------------- */

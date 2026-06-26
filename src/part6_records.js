@@ -334,12 +334,7 @@ var ROLES=['SV','SA','SM','Mechanic','Parts Salesman','Secretary'];
 VIEWS.staff = function(){
   var rate = (S.shop.mechCommissionRate||0);
   var rows=S.staff.map(function(s){
-    var on = s.commission!==false;
-    var comm = on ? rate+'% of labor (shop rule)' : '—';
-    var toggle = '<label class="switch" title="Include in commission payout"><input type="checkbox" '+(on?'checked':'')+
-      ' onchange="toggleStaffCommission(\''+s.id+'\',this.checked)"><span class="track"><span class="knob"></span></span></label>';
-    return '<tr><td><b>'+esc(s.name)+'</b>'+(s.nickname?' <span class="muted small">“'+esc(s.nickname)+'”</span>':'')+'</td><td>'+chip(roleLabel(s.role))+'</td><td>'+esc(comm)+'</td>'+
-      '<td class="center">'+toggle+'</td>'+
+    return '<tr><td><b>'+esc(s.name)+'</b>'+(s.nickname?' <span class="muted small">“'+esc(s.nickname)+'”</span>':'')+'</td><td>'+chip(roleLabel(s.role))+'</td><td>'+esc(rate+'% of labor (shop rule)')+'</td>'+
       '<td class="r"><button class="ic" onclick="editStaff(\''+s.id+'\')">✎</button><button class="ic" onclick="delStaff(\''+s.id+'\')">✕</button></td></tr>';
   }).join('');
   var ruleCard = '<div class="card"><div class="card-head"><h2>Commission rule</h2></div>'+
@@ -347,13 +342,13 @@ VIEWS.staff = function(){
       '<input id="shopCommRate" type="number" step="0.1" min="0" value="'+attr(rate)+'" style="width:90px" onchange="setShopCommissionRate(this.value)">'+
       '<span>% of labor, paid per billed job and <b>split evenly</b> among everyone assigned to it (mechanics, Service Adviser, assessor, parts salesman).</span>'+
     '</div>'+
-    '<p class="muted small mt8">Applies to all staff automatically. Switch <b>Payout</b> off below to exclude an individual.</p></div>';
+    '<p class="muted small mt8">Applies to all staff automatically. Include or exclude an individual from payout with the <b>Payout</b> switch in Staff Productivity.</p></div>';
   return '<div class="page"><div class="page-head"><h1>Staff</h1><button class="btn primary" onclick="editStaff()">＋ Add staff</button></div>'+
     ruleCard+
-    '<div class="card pad0"><table class="tbl"><thead><tr><th>Name</th><th>Role</th><th>Commission</th><th class="center">Payout</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+    '<div class="card pad0"><table class="tbl"><thead><tr><th>Name</th><th>Role</th><th>Commission</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
 };
 function setShopCommissionRate(v){ S.shop.mechCommissionRate=Math.max(0,Number(v)||0); persist(); toast('Commission rate set to '+S.shop.mechCommissionRate+'%'); render(); }
-function toggleStaffCommission(id,on){ var s=staffById(id); if(!s) return; s.commission=!!on; persist(); toast(on?'Included in payout':'Excluded from payout'); }
+function toggleStaffCommission(id,on){ var s=staffById(id); if(!s) return; s.commission=!!on; persist(); toast(on?'Included in payout':'Excluded from payout'); render(); }
 function editStaff(id){ var s=id?staffById(id):{};
   openModal(id?'Edit staff':'Add staff',
     '<div class="grid2">'+field('Name','<input id="stName" value="'+attr(s.name||'')+'">')+
