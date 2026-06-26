@@ -87,8 +87,14 @@ function intakeSubmit(kind){
 }
 
 /* ---- Job Orders list ------------------------------------------------------ */
-VIEWS.jobs = function(){
-  var jobs = S.jobs.slice();
+var JOB_Q='';
+function jobMatch(j){
+  if(!JOB_Q) return true; var q=JOB_Q.toLowerCase();
+  return [j.no,j.plate,j.owner,j.contactPerson,j.make+' '+j.model,j.siRef,j.pmsRef].some(function(x){ return String(x||'').toLowerCase().indexOf(q)>=0; });
+}
+function jobsBodyHTML(){
+  var jobs=S.jobs.filter(jobMatch);
+  if(!jobs.length) return emptyState(JOB_Q? 'No job orders match “'+esc(JOB_Q)+'”.' : 'No job orders yet. Click New Intake.');
   var rows = jobs.map(function(j){
     return '<tr onclick="go(\'job\',\''+j.id+'\')">'+
       '<td><b>'+esc(j.no)+'</b></td><td>'+esc(j.plate)+'</td>'+
@@ -99,11 +105,16 @@ VIEWS.jobs = function(){
       '<td class="r">'+peso(jobGross(j))+'</td>'+
       '<td class="r">'+(jobBalance(j)>0?'<span class="amber">'+peso(jobBalance(j))+'</span>':'—')+'</td></tr>';
   }).join('');
-  return '<div class="page"><div class="page-head"><h1>Job Orders</h1>'+
-    '<button class="btn primary" onclick="openIntake()">＋ New Intake</button></div>'+
-    (jobs.length? '<div class="card pad0"><table class="tbl click"><thead><tr>'+
-      '<th>JO #</th><th>Plate</th><th>Vehicle</th><th>Stage</th><th>Status</th><th>Date in</th><th class="r">Bill</th><th class="r">Balance</th>'+
-      '</tr></thead><tbody>'+rows+'</tbody></table></div>' : emptyState('No job orders yet. Click New Intake.'))+
+  return '<div class="card pad0"><table class="tbl click"><thead><tr>'+
+    '<th>JO #</th><th>Plate</th><th>Vehicle</th><th>Stage</th><th>Status</th><th>Date in</th><th class="r">Bill</th><th class="r">Balance</th>'+
+    '</tr></thead><tbody>'+rows+'</tbody></table></div>';
+}
+function jobsSearch(v){ JOB_Q=v; var el=document.getElementById('jobsBody'); if(el) el.innerHTML=jobsBodyHTML(); }
+VIEWS.jobs = function(){
+  var search='<input class="searchbox" id="jobsSearch" value="'+attr(JOB_Q)+'" oninput="jobsSearch(this.value)" placeholder="Search JO# / plate / owner / contact…" autocomplete="off">';
+  return '<div class="page"><div class="page-head"><h1>Job Orders</h1><div class="row gap wrap">'+search+
+    '<button class="btn primary" onclick="openIntake()">＋ New Intake</button></div></div>'+
+    '<div id="jobsBody">'+jobsBodyHTML()+'</div>'+
   '</div>';
 };
 
@@ -189,11 +200,12 @@ function saveUpdate(){
 /* ---- Lines panel ---------------------------------------------------------- */
 function runningBill(j){
   var parts=partsTotal(j.lines), labor=laborTotal(j.lines), addl=addlTotal(j);
-  var gbd=round2(parts+labor+addl);          // VATable base before discount
-  var disc=discountAmount(j);
-  var net=round2(gbd-disc);                   // VATable base (after discount) = SRP total
-  var vs=vatSplit(net,S);                      // exclusive: vat added on top
-  return { parts:parts, labor:labor, addl:addl, gbd:gbd, disc:disc, net:net, gross:vs.gross,
+  var base=round2(parts+labor+addl);          // VATable base = SRP total
+  var vs=vatSplit(base,S);                      // exclusive: vat added on top
+  var subtotal=vs.gross;                        // VATable + VAT (before discount)
+  var disc=discountAmount(j);                    // taken off the total
+  var gross=round2(subtotal-disc);              // Total Amount Due
+  return { parts:parts, labor:labor, addl:addl, base:base, subtotal:subtotal, disc:disc, gross:gross,
     vatable:vs.vatable, vat:vs.vat, exempt:vs.exempt, paid:jobPaid(j), balance:jobBalance(j) };
 }
 function jobLinesPanel(j){
@@ -410,10 +422,10 @@ function jobBillPanel(j,b){
   return '<div class="card billcard"><h2>Running Bill</h2>'+
     line2('Parts', peso(b.parts))+ line2('Labor', peso(b.labor))+
     (b.addl?line2('Additional work', peso(b.addl)):'')+
-    (b.disc?line2('Discount', '−'+peso(b.disc), 'disc'):'')+
     '<div class="bill-sep"></div>'+
-    (b.exempt? line2('VAT-Exempt Sales', peso(b.gross))
+    (b.exempt? line2('VAT-Exempt Sales', peso(b.vatable))
       : line2('VATable Sales', peso(b.vatable))+line2('VAT ('+(S.shop.vatRate||12)+'%)', peso(b.vat)))+
+    (b.disc?line2('Discount', '−'+peso(b.disc), 'disc'):'')+
     line2('<b>Total due</b>', '<b>'+peso(b.gross)+'</b>','tot')+
     (b.paid? line2('Paid', peso(b.paid))+line2('<b>Balance</b>','<b>'+peso(b.balance)+'</b>','tot'):'')+
     '<div class="muted small mt8">Prices are visible in-app only. The Job Order print carries no prices.</div>'+

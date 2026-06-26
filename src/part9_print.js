@@ -90,13 +90,12 @@ function totalsBox(j,opts){
   rows+='<div class="l2"><span>Parts</span><span>'+peso(b.parts)+'</span></div>';
   rows+='<div class="l2"><span>Labor</span><span>'+peso(b.labor)+'</span></div>';
   if(b.addl) rows+='<div class="l2"><span>Additional work</span><span>'+peso(b.addl)+'</span></div>';
+  if(b.exempt){ rows+='<div class="l2"><span>VAT-Exempt Sales</span><span>'+peso(b.vatable)+'</span></div>'; }
+  else { rows+='<div class="l2"><span>VATable Sales</span><span>'+peso(b.vatable)+'</span></div>';
+    rows+='<div class="l2"><span>VAT ('+(S.shop.vatRate||12)+'%)</span><span>'+peso(b.vat)+'</span></div>'; }
   if(opts.discount && b.disc) rows+='<div class="l2"><span>Discount</span><span>−'+peso(b.disc)+'</span></div>';
-  var base = opts.discount? b.net : b.gbd;   // VATable base; VAT is added on top
-  var vs=vatSplit(base,S);
-  if(vs.exempt){ rows+='<div class="l2"><span>VAT-Exempt Sales</span><span>'+peso(vs.gross)+'</span></div>'; }
-  else { rows+='<div class="l2"><span>VATable Sales</span><span>'+peso(vs.vatable)+'</span></div>';
-    rows+='<div class="l2"><span>VAT ('+(S.shop.vatRate||12)+'%)</span><span>'+peso(vs.vat)+'</span></div>'; }
-  rows+='<div class="l2 grand"><span>Total Amount Due</span><span>'+peso(vs.gross)+'</span></div>';
+  var total = opts.discount ? b.gross : b.subtotal;   // discount comes off the total
+  rows+='<div class="l2 grand"><span>Total Amount Due</span><span>'+peso(total)+'</span></div>';
   return '<div class="totbox">'+rows+'</div>';
 }
 

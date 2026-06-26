@@ -93,21 +93,25 @@ function addlTotal(job){
 function grossBeforeDiscount(job){
   return round2(sumLines(job.lines) + addlTotal(job));
 }
-function discountAmount(job){
-  var d = job.discount || { type:'amount', value:0 };
-  var base = grossBeforeDiscount(job);
-  if (d.type==='percent') return round2(base * (Number(d.value)||0)/100);
-  return round2(Math.min(Number(d.value)||0, base));
-}
-/* The VATable base = SRP/line total after discount (prices are VAT-EXCLUSIVE). */
-function jobNet(job){ return round2(grossBeforeDiscount(job) - discountAmount(job)); }
-/* Total due = VATable base + 12% VAT (or just the base when non-VAT). */
-function jobGross(job){
+/* VATable base = SRP/line total (prices are VAT-EXCLUSIVE; NO discount here —
+   the discount is applied to the Total Amount Due, after VAT). */
+function jobNet(job){ return grossBeforeDiscount(job); }
+/* Subtotal = VATable + 12% VAT, before discount. */
+function jobSubtotal(job){
   var n = jobNet(job);
   if (!S || !S.shop || !S.shop.vatReg) return n;
   var rate = (Number(S.shop.vatRate)||12)/100;
   return round2(n * (1 + rate));
 }
+/* Discount is taken off the (VAT-inclusive) Total Amount Due. */
+function discountAmount(job){
+  var d = job.discount || { type:'amount', value:0 };
+  var base = jobSubtotal(job);
+  if (d.type==='percent') return round2(base * (Number(d.value)||0)/100);
+  return round2(Math.min(Number(d.value)||0, base));
+}
+/* Total Amount Due = subtotal (VATable + VAT) − discount. */
+function jobGross(job){ return round2(jobSubtotal(job) - discountAmount(job)); }
 
 /* VAT-EXCLUSIVE split: input is the VATable base; VAT (12%) is added on top.
    vatable = base, vat = base × rate, gross (total due) = base + vat. */
