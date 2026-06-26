@@ -77,11 +77,14 @@ function docJobOrder(j){
 function printJobOrder(id){ printDoc(docJobOrder(jobById(id))); }
 
 /* ---- Priced lines table (shared by Post Job & Billing) -------------------- */
-function pricedLinesTable(j){
-  return '<table><thead><tr><th>#</th><th>Type</th><th>Description</th><th class="r">Qty</th><th class="r">Unit</th><th class="r">Amount</th></tr></thead><tbody>'+
-    (j.lines||[]).map(function(l,i){return '<tr><td>'+(i+1)+'</td><td>'+(l.type==='part'?'Part':'Labor')+'</td><td>'+esc(l.desc)+'</td>'+
+function pricedLinesTable(j,opts){
+  opts=opts||{}; var sku=!!opts.sku;
+  var skuHead = sku ? '<th>SKU</th>' : '';
+  var skuCell = function(l){ return sku ? '<td>'+esc((l&&l.type==='part'&&l.sku)?l.sku:'—')+'</td>' : ''; };
+  return '<table><thead><tr><th>#</th><th>Type</th>'+skuHead+'<th>Description</th><th class="r">Qty</th><th class="r">Unit</th><th class="r">Amount</th></tr></thead><tbody>'+
+    (j.lines||[]).map(function(l,i){return '<tr><td>'+(i+1)+'</td><td>'+(l.type==='part'?'Part':'Labor')+'</td>'+skuCell(l)+'<td>'+esc(l.desc)+'</td>'+
       '<td class="r">'+num(l.qty)+'</td><td class="r">'+peso(l.price)+'</td><td class="r">'+peso(lineTotal(l))+'</td></tr>';}).join('')+
-    (j.addlWork||[]).filter(function(a){return a.approved;}).map(function(a){return '<tr><td></td><td>Add\'l</td><td>'+esc(a.desc)+'</td><td class="r">1</td><td class="r">'+peso(a.amount)+'</td><td class="r">'+peso(a.amount)+'</td></tr>';}).join('')+
+    (j.addlWork||[]).filter(function(a){return a.approved;}).map(function(a){return '<tr><td></td><td>Add\'l</td>'+(sku?'<td>—</td>':'')+'<td>'+esc(a.desc)+'</td><td class="r">1</td><td class="r">'+peso(a.amount)+'</td><td class="r">'+peso(a.amount)+'</td></tr>';}).join('')+
     '</tbody></table>';
 }
 function totalsBox(j,opts){
@@ -122,13 +125,13 @@ function docBilling(j){
   var body=docHeader((sh.vatReg?'VAT ':'')+'Sales Invoice / Official Receipt · '+(j.orNumber||''))+
     metaRows([['OR / Invoice #', esc(j.orNumber||'—')],['Date', fmtDate(j.billedAt)],
       ['Sold to', esc(j.owner)],['TIN', esc(j.customerTin||'—')],
-      ['Address', esc(j.address||'—')],['Business style', esc(sh.businessStyle||'')],
+      ['Address', esc(j.address||'—')],
       ['Vehicle', esc(j.year+' '+j.make+' '+j.model+' · '+j.plate)],['JO #', esc(j.no)] ])+
-    pricedLinesTable(j)+ totalsBox(j,{discount:true})+
+    pricedLinesTable(j,{sku:true})+ totalsBox(j,{discount:true})+
     '<div class="sig-grid"><div class="sigline">Cashier / Authorized</div>'+
       '<div class="sigline">Received by'+(j.releaseSignature?'<br><img class="sigimg" src="'+j.releaseSignature+'"/>':'')+'</div>'+
       '<div class="sigline">'+esc(j.owner)+'</div></div>'+
-    '<div class="foot">'+(sh.vatReg?'Prices are VAT-inclusive. ':'')+'THIS DOCUMENT IS A BIR-REGISTERED SALES INVOICE / OFFICIAL RECEIPT.<br>'+
+    '<div class="foot">THIS DOCUMENT IS NOT VALID FOR CLAIM OF INPUT TAX<br>'+
       esc(sh.name)+' · TIN '+esc(sh.tin)+' · '+esc(sh.address)+'</div>';
   return docShell('Billing '+(j.orNumber||j.no), body);
 }
