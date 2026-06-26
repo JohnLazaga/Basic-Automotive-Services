@@ -430,8 +430,7 @@ var STATUS_GROUP_NAME = { A:'Diagnosis', B:'In Progress', C:'Release' };
 /* ---- Utilities ------------------------------------------------------------ */
 var PHP = new Intl.NumberFormat('en-PH', { style:'currency', currency:'PHP' });
 function peso(n){ return PHP.format(Number(n)||0); }
-/* Always show 2 decimals on every numeric amount/quantity (e.g. 1 → "1.00"). */
-function num(n){ return (Number(n)||0).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function num(n){ return (Number(n)||0).toLocaleString('en-PH'); }
 function round2(n){ return Math.round((Number(n)||0)*100)/100; }
 
 function esc(s){
