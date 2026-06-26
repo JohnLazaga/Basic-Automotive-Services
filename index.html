@@ -1446,7 +1446,9 @@ VIEWS.job = function(id){
   return '<div class="page">'+
     '<div class="page-head"><div><a class="back" onclick="go(\'jobs\')">‹ Job Orders</a>'+
       '<h1>'+esc(j.no)+' · '+esc(j.plate)+' '+statusBadge(j.status)+'</h1></div>'+
-      '<div class="row gap">'+jobPrintButtons(j)+'</div></div>'+
+      '<div class="row gap">'+jobPrintButtons(j)+
+        (((typeof isAdminUser!=='function')||isAdminUser())?'<button class="btn danger ghost" onclick="deleteJobConfirm(\''+j.id+'\')">🗑 Delete</button>':'')+
+      '</div></div>'+
     stageStep(j)+
     '<div class="cols">'+
       '<div class="colmain">'+
@@ -1614,6 +1616,18 @@ function saveLine(){
   persist(); closeModal(); render();
 }
 function delLine(id,lid){ var j=jobById(id); j.lines=j.lines.filter(function(x){return x.id!==lid;}); persist(); render(); }
+
+/* Admin-only: delete an entire job order (with warning). */
+function deleteJobConfirm(id){
+  if (typeof isAdminUser==='function' && !isAdminUser()){ toast('Admins only','err'); return; }
+  var j=jobById(id); if(!j) return;
+  confirmModal('Delete this job order?',
+    'This permanently deletes '+(j.no||'')+' ('+(j.plate||'')+') and everything in it — line items, status log, billing, payments and photos. This cannot be undone.',
+    function(){
+      S.jobs=S.jobs.filter(function(x){return x.id!==id;});
+      persist(); closeModal(); toast('Job order deleted'); go('jobs');
+    },'Delete job order', true);
+}
 
 /* ---- Additional work panel ------------------------------------------------ */
 function jobAddlPanel(j){
