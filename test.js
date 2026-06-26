@@ -107,6 +107,10 @@ section('5. Commission: shop rule = % of labor, split evenly among everyone assi
   const cmap2=M.jobLaborCommissionMap(job2, s);
   ok('excluded assignee earns nothing', cmap2[mech[0].id]===undefined);
   ok('pool now splits 2 ways: 12.50 each', cmap2[sa.id]===12.5 && cmap2[sm.id]===12.5);
+  // Evaluation map ignores the toggle: still 3 ways, excluded person shown at 8.33.
+  const cmapAll=M.jobLaborCommissionMapAll(job2, s);
+  ok('evaluation map shows excluded person their would-earn 8.33', cmapAll[mech[0].id]===8.33);
+  ok('evaluation map keeps all three at 8.33', cmapAll[sa.id]===8.33 && cmapAll[sm.id]===8.33);
 })();
 
 /* ---------------------------------------------------------------- TEST 6 */

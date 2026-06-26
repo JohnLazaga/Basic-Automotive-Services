@@ -84,7 +84,7 @@ if (typeof module!=='undefined' && module.exports){
     LOGO_URI:function(){ return LOGO_URI; }, LOGO_LOCKUP:function(){ return LOGO_LOCKUP; },
     arJobs:arJobs, jobByNo:jobByNo, vehicleByPlate:vehicleByPlate, partById:partById,
     can:can, routeAllowed:routeAllowed, setCurrentUser:function(u){ CURRENT_USER=u; },
-    commissionTable:commissionTable, jobLaborCommission:jobLaborCommission, jobLaborCommissionMap:jobLaborCommissionMap, laborTotal:laborTotal,
+    commissionTable:commissionTable, jobLaborCommission:jobLaborCommission, jobLaborCommissionMap:jobLaborCommissionMap, jobLaborCommissionMapAll:jobLaborCommissionMapAll, laborTotal:laborTotal,
     advancePostJob:null
   };
 }

@@ -148,9 +148,10 @@ VIEWS.productivity = function(){
   var byId={};
   var list=staff.map(function(s){ var r={ id:s.id, name:s.name, role:s.role, on:(s.commission!==false), jobs:0, hours:0, labor:0, commission:0 }; byId[s.id]=r; return r; });
   jobs.forEach(function(j){
-    var cm=jobLaborCommissionMap(j,S); var lab=laborTotal(j.lines);
+    // Evaluation figure: pool split among EVERYONE assigned, ignoring the payout toggle.
+    var cm=jobLaborCommissionMapAll(j,S); var lab=laborTotal(j.lines);
     var mechs=(j.mechanicIds||[]).filter(function(x){return x&&x!=='TBA';});
-    // every distinct staff assigned in ANY capacity (regardless of payout toggle) — job count
+    // every distinct staff assigned in ANY capacity — job count
     var assigned=[]; mechs.concat([j.saId,j.assessedBy,j.partsSalesman]).forEach(function(x){ if(x&&x!=='TBA'&&assigned.indexOf(x)<0) assigned.push(x); });
     assigned.forEach(function(id){ var r=byId[id]; if(r) r.jobs++; });
     // job hours & labor billed are mechanic productivity metrics — split among mechanics
@@ -160,10 +161,12 @@ VIEWS.productivity = function(){
   var rows=list.map(function(m){
     var toggle='<label class="switch" title="Include in commission payout"><input type="checkbox" '+(m.on?'checked':'')+
       ' onchange="toggleStaffCommission(\''+m.id+'\',this.checked)"><span class="track"><span class="knob"></span></span></label>';
+    var commCell = m.on ? '<b>'+peso(m.commission)+'</b>'
+      : '<span class="muted" title="Evaluation only — excluded from payout">'+peso(m.commission)+'</span>';
     return '<tr><td><b>'+esc(m.name)+'</b> <span class="muted small">'+esc(roleLabel(m.role))+'</span></td><td class="r">'+m.jobs+'</td><td class="r">'+num(m.hours)+'</td>'+
-      '<td class="r">'+peso(m.labor)+'</td><td class="r">'+peso(m.jobs?round2(m.labor/m.jobs):0)+'</td><td class="r"><b>'+peso(m.on?m.commission:0)+'</b></td><td class="center">'+toggle+'</td></tr>';
+      '<td class="r">'+peso(m.labor)+'</td><td class="r">'+peso(m.jobs?round2(m.labor/m.jobs):0)+'</td><td class="r">'+commCell+'</td><td class="center">'+toggle+'</td></tr>';
   }).join('');
-  var commBars=list.filter(function(m){return m.on&&m.commission>0;}).map(function(m){return {label:m.name,value:m.commission};});
+  var commBars=list.filter(function(m){return m.commission>0;}).map(function(m){return {label:m.name,value:m.commission};});
   var seg=['all','today','week','month','custom'].map(function(p){
     var lab={all:'All time',today:'Today',week:'This week',month:'This month',custom:'Custom'}[p];
     return '<button class="seg-b'+(PROD_PERIOD===p?' on':'')+'" onclick="setProd(\''+p+'\')">'+lab+'</button>';
@@ -175,7 +178,7 @@ VIEWS.productivity = function(){
     '<button class="btn primary" onclick="printPayout()">⎙ Payout sheet</button></div>'+
     '<div class="row gap" style="align-items:center;flex-wrap:wrap"><div class="seg">'+seg+'</div>'+custom+
       '<span class="muted small">'+esc(prodPeriodLabel())+'</span></div>'+
-    '<p class="muted small mt8">Commission is '+(S.shop.mechCommissionRate||5)+'% of labor per billed job, split evenly among everyone assigned. All staff are listed for KPI; the <b>Payout</b> switch (beside Commission) controls who is paid — the Payout sheet includes only staff switched on.</p>'+
+    '<p class="muted small mt8">Commission is '+(S.shop.mechCommissionRate||5)+'% of labor per billed job, split evenly among everyone assigned. The Commission column is the <b>evaluation</b> figure — each person’s share counting everyone assigned, shown even for staff switched off (greyed). The <b>Payout sheet</b> pays only staff with <b>Payout</b> on, where the pool re-splits among them.</p>'+
     '<div class="card pad0"><table class="tbl"><thead><tr><th>Staff</th><th class="r">Jobs</th><th class="r">Job hrs</th><th class="r">Labor billed</th><th class="r">Avg/job</th><th class="r">Commission</th><th class="center">Payout</th></tr></thead><tbody>'+(rows||'<tr><td colspan="7" class="muted center">No staff.</td></tr>')+'</tbody></table></div>'+
     '<div class="card"><h2>Commission by staff</h2>'+(commBars.length?bars(commBars,peso):emptyState('No commissions in this period.'))+'</div></div>';
 };

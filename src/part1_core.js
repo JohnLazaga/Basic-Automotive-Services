@@ -128,12 +128,15 @@ function vatSplit(base, S){
    paid ONLY to staff assigned to the job — the mechanic(s), Service Adviser,
    assessor and parts salesman — split evenly among everyone assigned who is
    commission-eligible. A person assigned in two capacities still counts once. */
-function assignedCommissionIds(job){
+/* The distinct staff assigned to a job. includeAll=true returns EVERYONE assigned
+   (ignoring the payout toggle) — used for the evaluation/KPI figure. Default
+   returns only commission-eligible (toggle-on) staff — used for actual payout. */
+function assignedCommissionIds(job, includeAll){
   var ids = [];
   (job.mechanicIds||[]).forEach(function(x){ if(x && x!=='TBA') ids.push(x); });
   [job.saId, job.assessedBy, job.partsSalesman].forEach(function(x){ if(x && x!=='TBA') ids.push(x); });
   var uniq = [];
-  ids.forEach(function(id){ if(uniq.indexOf(id)<0 && commissionEligible(id)) uniq.push(id); });
+  ids.forEach(function(id){ if(uniq.indexOf(id)<0 && (includeAll || commissionEligible(id))) uniq.push(id); });
   return uniq;
 }
 function jobLaborCommission(job, S){
@@ -142,11 +145,22 @@ function jobLaborCommission(job, S){
   var n = assignedCommissionIds(job).length;
   return { pool:pool, perMech: n>0 ? round2(pool/n) : 0, count:n };
 }
-/* Per-person commission for ONE job — the single source of truth. */
+/* Actual payout map — only toggle-on staff; the pool splits among them. */
 function jobLaborCommissionMap(job, S){
   var c = jobLaborCommission(job, S);
   var map = {};
   assignedCommissionIds(job).forEach(function(id){ map[id] = c.perMech; });
+  return map;
+}
+/* Evaluation map — what each assignee WOULD earn if no one were excluded: the
+   pool split evenly among everyone assigned, regardless of the payout toggle. */
+function jobLaborCommissionMapAll(job, S){
+  var rate = (Number(S.shop.mechCommissionRate)||0)/100;
+  var pool = round2(laborTotal(job.lines) * rate);
+  var ids = assignedCommissionIds(job, true);
+  var per = ids.length ? round2(pool/ids.length) : 0;
+  var map = {};
+  ids.forEach(function(id){ map[id] = per; });
   return map;
 }
 /* Every staff member is entitled to commission by default; an admin can switch
