@@ -17,7 +17,6 @@ VIEWS.settings = function(){
       field('Address','<input id="shAddr" value="'+attr(sh.address)+'">')+
       field('Contact','<input id="shContact" value="'+attr(sh.contact)+'">')+
       field('TIN','<input id="shTin" value="'+attr(sh.tin)+'">')+
-      field('Next OR number','<input id="shOR" type="number" value="'+attr(sh.orNext)+'">')+
       field('VAT rate %','<input id="shVatRate" type="number" value="'+attr(sh.vatRate)+'">')+
       field('VAT registered','<label class="chk"><input type="checkbox" id="shVatReg" '+(sh.vatReg?'checked':'')+'> Prices are VAT-inclusive</label>')+
     '</div><button class="btn primary" onclick="saveShop()">Save shop details</button></div>'+
@@ -54,7 +53,7 @@ VIEWS.settings = function(){
 function saveShop(){
   var sh=S.shop;
   if(document.getElementById('shName')){ sh.name=val('shName'); sh.businessStyle=val('shStyle'); sh.address=val('shAddr');
-    sh.contact=val('shContact'); sh.tin=val('shTin'); sh.orNext=Number(val('shOR'))||sh.orNext;
+    sh.contact=val('shContact'); sh.tin=val('shTin');
     sh.vatRate=Number(val('shVatRate'))||12; sh.vatReg=checked('shVatReg'); }
   if(document.getElementById('shPortal')) sh.portalUrl=val('shPortal');
   if(document.getElementById('shComm')) sh.mechCommissionRate=Number(val('shComm'))||0;
