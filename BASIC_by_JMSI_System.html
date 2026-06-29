@@ -1382,7 +1382,7 @@ function blankJob(){
   return { id:uid('job'), no:nextNo('jo','JO-',4), stage:'Job Order',
     plate:'', vehicleId:null, owner:'', address:'', contactPerson:'', contactNumber:'', chassis:'',
     year:'', make:'', model:'', variant:'', customerTin:'',
-    dateIn:todayISO(), etd:'', odometer:0, jobHours:0,
+    dateIn:todayISO(), etd:'', odometer:0, lastServiceOdo:'', jobHours:0,
     assessedBy:'', saId:'', mechanicIds:[], bayId:'TBA',
     lines:[], partsSalesman:'', siRef:'', pmsRef:'', notes:'',
     inspection:{ odometer:0, fuel:'', lights:'', condition:'', testDrive:'' },
@@ -1424,22 +1424,26 @@ function openIntake(){
 function intakeForm(d){
   return '<div class="grid2">'+
     field('Plate','<input id="inPlate" value="'+attr(d.plate||'')+'" oninput="intakeLookup()" placeholder="ABC 1234">')+
+    field('Registered owner','<input id="inOwner" value="'+attr(d.owner||'')+'">')+
     field('Contact person','<input id="inCP" value="'+attr(d.contactPerson||'')+'">')+
     field('Contact #','<input id="inContact" value="'+attr(d.contactNumber||'')+'">')+
-    field('Registered owner','<input id="inOwner" value="'+attr(d.owner||'')+'">')+
+    field('Address','<input id="inAddr" value="'+attr(d.address||'')+'">')+
+    field('Chassis #','<input id="inChassis" value="'+attr(d.chassis||'')+'">')+
     field('Year','<input id="inYear" type="number" value="'+attr(d.year||'')+'">')+
     field('Make','<input id="inMake" value="'+attr(d.make||'')+'">')+
     field('Model','<input id="inModel" value="'+attr(d.model||'')+'">')+
-    field('Odometer','<input id="inOdo" type="number" value="'+attr(d.odometer||'')+'">')+
+    field('Variant','<input id="inVariant" value="'+attr(d.variant||'')+'">')+
+    field('Ingress odometer','<input id="inOdo" type="number" value="'+attr(d.odometer||'')+'">')+
     '</div>'+
     field('Concerns / reported issues','<textarea id="inNotes" rows="3">'+esc(d.notes||'')+'</textarea>');
 }
 function intakeLookup(){ var v=vehicleByPlate(val('inPlate')); if(v){ setVal('inCP',v.contactPerson); setVal('inContact',v.contactNumber);
-  setVal('inOwner',v.owner); setVal('inYear',v.year); setVal('inMake',v.make); setVal('inModel',v.model); setVal('inOdo',v.odometer);
+  setVal('inOwner',v.owner); setVal('inAddr',v.address); setVal('inChassis',v.chassis); setVal('inYear',v.year); setVal('inMake',v.make); setVal('inModel',v.model); setVal('inVariant',v.variant); setVal('inOdo',v.odometer);
   toast('Existing vehicle found — prefilled'); } }
 function intakeSubmit(kind){
   var base={ plate:val('inPlate'), contactPerson:val('inCP'), contactNumber:val('inContact'), owner:val('inOwner'),
-    year:val('inYear'), make:val('inMake'), model:val('inModel'), odometer:Number(val('inOdo'))||0, notes:val('inNotes') };
+    address:val('inAddr'), chassis:val('inChassis'), year:val('inYear'), make:val('inMake'), model:val('inModel'), variant:val('inVariant'),
+    odometer:Number(val('inOdo'))||0, notes:val('inNotes') };
   if (!base.plate){ toast('Plate is required','err'); return; }
   closeModal();
   if (kind==='estimate'){ var e=createEstimateFrom(base); go('estimate', e.id); }
@@ -1821,7 +1825,8 @@ function jobDetailsPanel(j){
       kv('Owner', esc(j.owner))+ kv('Contact', esc(j.contactPerson+' · '+j.contactNumber))+
       kv('Vehicle', esc((j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:'')))+ kv('Chassis #', esc(j.chassis||'—'))+
       kv('Date in', fmtDate(j.dateIn))+ kv('ETD', fmtDate(j.etd))+
-      kv('Odometer', num(j.odometer)+' km')+ kv('Job hours', num(j.jobHours))+
+      kv('Ingress odometer', num(j.odometer)+' km')+ kv('Job hours', num(j.jobHours))+
+      (j.lastServiceOdo? kv('Last service odometer', num(j.lastServiceOdo)+' km') : '')+
       kv('Assessed by', esc(staffName(j.assessedBy)))+
       kv('SI ref', esc(j.siRef||'—'))+ kv('PMS ref', esc(j.pmsRef||'—'))+
     '</div>'+
@@ -1841,7 +1846,8 @@ function editJobDetails(id){
     field('Variant','<input id="jdVariant" value="'+attr(j.variant||'')+'">')+
     field('Date in','<input id="jdDateIn" type="date" value="'+attr(j.dateIn)+'">')+
     field('ETD','<input id="jdEtd" type="date" value="'+attr(j.etd)+'">')+
-    field('Odometer','<input id="jdOdo" type="number" value="'+attr(j.odometer)+'">')+
+    field('Ingress odometer','<input id="jdOdo" type="number" value="'+attr(j.odometer)+'">')+
+    field('Last service odometer','<input id="jdLastOdo" type="number" value="'+attr(j.lastServiceOdo||'')+'" placeholder="set on release">')+
     field('Job hours','<input id="jdHours" type="number" step="0.5" value="'+attr(j.jobHours)+'">')+
     field('Assessed by (Senior Mechanic)','<select id="jdAssess">'+optionList(staffByRole('SM'),j.assessedBy,true)+'</select>')+
     field('SI reference #','<input id="jdSI" value="'+attr(j.siRef||'')+'">')+
@@ -1855,7 +1861,7 @@ function saveJobDetails(){
   var j=jobById(jdCtx);
   j.owner=val('jdOwner'); j.address=val('jdAddr'); j.contactPerson=val('jdCP'); j.contactNumber=val('jdContact');
   j.customerTin=val('jdTin'); j.chassis=val('jdChassis'); j.variant=val('jdVariant'); j.dateIn=val('jdDateIn'); j.etd=val('jdEtd');
-  j.odometer=Number(val('jdOdo'))||0; j.jobHours=Number(val('jdHours'))||0; j.assessedBy=val('jdAssess');
+  j.odometer=Number(val('jdOdo'))||0; j.lastServiceOdo=val('jdLastOdo')===''?'':Number(val('jdLastOdo'))||0; j.jobHours=Number(val('jdHours'))||0; j.assessedBy=val('jdAssess');
   j.siRef=val('jdSI'); j.pmsRef=val('jdPMS'); j.notes=val('jdNotes');
   persist(); closeModal(); render();
 }
@@ -1939,6 +1945,7 @@ function jobPaymentBlock(j,b){
     (paid? '' : '<div class="grid2 mt8">'+field('Amount','<input id="pyAmt" type="number" step="0.01" value="'+attr(b.balance)+'">')+
       field('Method','<select id="pyMethod"><option>Cash</option><option>GCash</option><option>Card</option><option>Bank transfer</option><option>Charge account</option></select>')+'</div>'+
       '<button class="btn sm" onclick="recordPayment(\''+j.id+'\')">Record payment</button>')+
+    field('Last service odometer','<input id="relOdo" type="number" value="'+attr(j.lastServiceOdo||j.odometer||'')+'" placeholder="reading at release">','Recorded on release; updates the vehicle’s last service odometer.')+
     '<div class="fld mt8"><span class="fld-l">Release signature</span><canvas id="relSig" class="sigpad" width="420" height="140"></canvas>'+
       '<div class="row gap"><button class="btn xs ghost" onclick="clearSignature(\'relSig\')">Clear</button></div></div>'+
     '<button class="btn primary full mt8" '+(paid?'':'disabled title="Balance must be fully paid"')+' onclick="releaseJob(\''+j.id+'\')">Release vehicle →</button>'+
@@ -1952,10 +1959,12 @@ function recordPayment(id){
 function releaseJob(id){
   var j=jobById(id);
   if (jobBalance(j)>0.001){ toast('Balance must be fully paid','err'); return; }
+  var lso=Number(val('relOdo'))||0; if(lso) j.lastServiceOdo=lso;   // odometer reading at release
   var sig=getSignature('relSig'); if(sig) j.releaseSignature=sig;
   j.stage='Released';
-  // bump vehicle next-service
-  var v=vehicleById(j.vehicleId); if(v){ v.odometer=Math.max(v.odometer||0, j.inspection&&j.inspection.odometer||j.odometer);
+  // record the last service odometer on the vehicle and schedule next service
+  var v=vehicleById(j.vehicleId); if(v){ var reading=Number(j.lastServiceOdo)||(j.inspection&&j.inspection.odometer)||j.odometer||0;
+    v.odometer=Math.max(v.odometer||0, reading);
     var nd=new Date(); nd.setMonth(nd.getMonth()+6); v.nextServiceDate=todayISO(nd); v.nextServiceOdo=(v.odometer||0)+5000; }
   persist(); toast('Vehicle released ✓'); render();
 }
@@ -2816,7 +2825,7 @@ function docJobOrder(j){
     return '<div class="copy-tag">'+tag+'</div>'+ docHeader('Job Order · '+j.no)+
       metaRows([['Plate', esc(j.plate)],['Date in', fmtDate(j.dateIn)],
         ['Owner', esc(j.owner)],['ETD', fmtDate(j.etd)],
-        ['Contact', esc(j.contactPerson+' · '+j.contactNumber)],['Odometer', num(j.odometer)+' km'],
+        ['Contact', esc(j.contactPerson+' · '+j.contactNumber)],['Ingress odometer', num(j.odometer)+' km'],
         ['Vehicle', esc((j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:''))],['Chassis #', esc(j.chassis)],
         ['Service Adviser', esc(staffName(j.saId))],['Mechanic(s)', esc(mechName(j.mechanicIds))],
         ['Bay', esc(bayName(j.bayId))],['Job hours', num(j.jobHours)],
@@ -2865,9 +2874,10 @@ function totalsBox(j,opts){
 function docPostJob(j){
   var body=docHeader('Post Job Report · '+j.no)+
     metaRows([['Plate', esc(j.plate)],['Date in', fmtDate(j.dateIn)],
-      ['Owner', esc(j.owner)],['Odometer', num(j.odometer)+' km'],
+      ['Owner', esc(j.owner)],['Ingress odometer', num(j.odometer)+' km'],
       ['Vehicle', esc((j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:''))],['Service Adviser', esc(staffName(j.saId))],
-      ['Mechanic(s)', esc(mechName(j.mechanicIds))],['Bay', esc(bayName(j.bayId))] ])+
+      ['Mechanic(s)', esc(mechName(j.mechanicIds))],['Bay', esc(bayName(j.bayId))] ]
+      .concat(j.lastServiceOdo?[['Last service odometer', num(j.lastServiceOdo)+' km']]:[]))+
     pricedLinesTable(j)+ totalsBox(j,{discount:false})+
     (j.notes?'<div class="notes"><b>Service notes:</b> '+esc(j.notes)+'</div>':'')+
     '<div class="sig-grid"><div class="sigline">Service Adviser<br>'+esc(staffName(j.saId))+'</div>'+
@@ -2885,7 +2895,8 @@ function docBilling(j){
     metaRows([['OR / Invoice #', esc(j.orNumber||'—')],['Date', fmtDate(j.billedAt)],
       ['Sold to', esc(j.owner)],['TIN', esc(j.customerTin||'—')],
       ['Address', esc(j.address||'—')],['SI reference', esc(j.siRef||'—')],
-      ['Vehicle', esc((j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:'')+' · '+j.plate)],['JO #', esc(j.no)] ])+
+      ['Vehicle', esc((j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:'')+' · '+j.plate)],['JO #', esc(j.no)],
+      ['Ingress odometer', num(j.odometer)+' km'],['Last service odometer', j.lastServiceOdo?num(j.lastServiceOdo)+' km':'—'] ])+
     pricedLinesTable(j,{sku:true})+ totalsBox(j,{discount:true})+
     '<div class="sig-grid"><div class="sigline">Cashier / Authorized</div>'+
       '<div class="sigline">Received by'+(j.releaseSignature?'<br><img class="sigimg" src="'+j.releaseSignature+'"/>':'')+'</div>'+
