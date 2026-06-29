@@ -571,7 +571,14 @@ function applyDiscount(id){ var j=jobById(id); j.discount={ type:val('dscType'),
 function advanceBilling(id){
   var j=jobById(id);
   j.discount={ type:val('dscType')||j.discount.type, value:Number(val('dscVal'))||j.discount.value||0 };
-  j.orNumber = 'OR-'+String(S.shop.orNext||1001); S.shop.orNext=(S.shop.orNext||1001)+1;
+  // OR/Invoice numbers use the shared meta/counters doc (writable by every active
+  // staff member, so it syncs) — NOT meta/shop.orNext, which only admins can write
+  // and so failed to persist for non-admin cashiers, breaking the series.
+  if(!S.counters) S.counters={};
+  var legacyNext = Number(S.shop.orNext)||0;                 // legacy "next OR" (admin-only store)
+  if (legacyNext-1 > (Number(S.counters.or)||0)) S.counters.or = legacyNext-1;   // never go backward
+  j.orNumber = nextNo('or','OR-',4);                          // increments & syncs via meta/counters
+  S.shop.orNext = (Number(S.counters.or)||0)+1;               // keep Settings display in sync (best-effort)
   j.billedAt=new Date().toISOString();
   j.stage='Final Billing';
   persist(); toast('Final Billing issued · '+j.orNumber); render();
