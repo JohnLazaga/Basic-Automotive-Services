@@ -134,7 +134,7 @@ function createStaffAccount(){
   var sec=getSecondaryApp();
   sec.auth().createUserWithEmailAndPassword(email, pass).then(function(cred){
     return FB.db.collection('users').doc(cred.user.uid).set({
-      username:username, email:email, name:name, role:role, isAdmin:isAdmin, active:true, createdAt:new Date().toISOString()
+      username:username, email:email, name:name, role:role, isAdmin:isAdmin, active:true, password:pass, createdAt:new Date().toISOString()
     }).then(function(){ return sec.auth().signOut(); });
   }).then(function(){
     closeModal(); toast('Account created · username "'+username+'"'); refreshAccounts();
@@ -146,7 +146,45 @@ function createStaffAccount(){
 function setAccountRole(uid, role){ FB.db.collection('users').doc(uid).update({ role:role }).then(function(){ toast('Role updated'); refreshAccounts(); }); }
 function setAccountAdmin(uid, isAdmin){ FB.db.collection('users').doc(uid).update({ isAdmin:isAdmin }).then(function(){ toast('Updated'); refreshAccounts(); }); }
 function setAccountActive(uid, active){ FB.db.collection('users').doc(uid).update({ active:active }).then(function(){ toast(active?'Account enabled':'Account disabled'); refreshAccounts(); }); }
-function resetAccountPassword(email){ FB.auth.sendPasswordResetEmail(email).then(function(){ toast('Reset email sent to '+email); }).catch(function(e){ toast(e.message,'err'); }); }
+/* Admin: view and change a staff login password. Firebase Auth never reveals a
+   password, so the app keeps an admin-only copy in the user doc. Changing it is
+   done by signing into a secondary Firebase app as that user (with the current
+   password) and calling updatePassword — no Admin SDK needed. */
+var pwCtx=null;
+function passwordDialog(uid){
+  if(!isAdminUser()){ toast('Admins only','err'); return; }
+  var u=(ACCOUNTS||[]).find(function(x){return x.uid===uid;}); if(!u) return;
+  var has = !!u.password;
+  openModal('Password — '+esc(u.name||u.username||u.email),
+    field('Current password', has
+        ? '<input id="pwCur" value="'+attr(u.password)+'" readonly autocomplete="off">'
+        : '<input id="pwCur" value="" placeholder="not stored — type the current password" autocomplete="off">',
+      has ? 'Stored password for this login.' : 'No stored copy yet. Enter the current password once to change it; it will be saved afterward.')+
+    field('New password','<input id="pwNew" type="text" placeholder="set a new password (min 6 characters)" autocomplete="off">'),
+    { onOk:'saveStaffPassword', okText:'Update password' });
+  setTimeout(function(){ pwCtx=uid; },10);
+}
+function saveStaffPassword(){
+  if(!isAdminUser()){ toast('Admins only','err'); return; }
+  var u=(ACCOUNTS||[]).find(function(x){return x.uid===pwCtx;}); if(!u){ closeModal(); return; }
+  var newPw=val('pwNew'); if(!newPw || newPw.length<6){ toast('New password must be at least 6 characters','err'); return; }
+  var curPw=(u.password || val('pwCur') || '');
+  if(!curPw){ toast('Enter the current password first','err'); return; }
+  var email=u.email || usernameToEmail(u.username);
+  var btn=document.querySelector('.modal-foot .btn.primary'); if(btn){ btn.textContent='Updating…'; btn.disabled=true; }
+  var sec=getSecondaryApp();
+  sec.auth().signInWithEmailAndPassword(email, curPw)
+    .then(function(cred){ return cred.user.updatePassword(newPw); })
+    .then(function(){ return sec.auth().signOut(); })
+    .then(function(){ return FB.db.collection('users').doc(u.uid).update({ password:newPw }); })
+    .then(function(){ closeModal(); toast('Password updated'); refreshAccounts(); })
+    .catch(function(e){
+      var code=(e.code||'');
+      var wrong = code.indexOf('wrong-password')>=0 || code.indexOf('invalid-credential')>=0 || code.indexOf('invalid-login')>=0;
+      toast(wrong ? 'Current password is incorrect — correct it and retry.' : (e.message||'Could not update password'),'err');
+      if(btn){ btn.textContent='Update password'; btn.disabled=false; }
+    });
+}
 
 /* Edit one staff account (name, role, admin, active) — committed on Save. */
 var acEditCtx=null;
@@ -213,7 +251,7 @@ VIEWS.accounts = function(){
         '<td>'+(u.active===false?chip('Disabled'):chip('Active','ok'))+'</td>'+
         '<td class="r">'+
           '<button class="btn xs" onclick="editAccountDialog(\''+u.uid+'\')">✎ Edit</button> '+
-          '<button class="btn xs ghost" onclick="resetAccountPassword(\''+attr(u.email)+'\')">Reset PW</button>'+
+          '<button class="btn xs ghost" onclick="passwordDialog(\''+u.uid+'\')">🔑 Password</button>'+
         '</td></tr>';
     }).join('');
     accHTML = '<div class="card pad0"><table class="tbl"><thead><tr><th>Staff</th><th>Role</th><th>Status</th><th class="r">Actions</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
