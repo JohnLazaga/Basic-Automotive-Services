@@ -178,7 +178,7 @@ VIEWS.productivity = function(){
     '<button class="btn primary" onclick="printPayout()">⎙ Payout sheet</button></div>'+
     '<div class="row gap" style="align-items:center;flex-wrap:wrap"><div class="seg">'+seg+'</div>'+custom+
       '<span class="muted small">'+esc(prodPeriodLabel())+'</span></div>'+
-    '<p class="muted small mt8">Commission is '+(S.shop.mechCommissionRate||5)+'% of labor per billed job, split evenly among everyone assigned. The Commission column is the <b>evaluation</b> figure — each person’s share counting everyone assigned, shown even for staff switched off (greyed). The <b>Payout sheet</b> pays only staff with <b>Payout</b> on, where the pool re-splits among them.</p>'+
+    '<p class="muted small mt8">Commission is each staff member’s own admin-set rate × the job’s labor (set per person on the Staff page). The Commission column is the <b>evaluation</b> figure — shown even for staff switched off (greyed). The <b>Payout sheet</b> pays only staff with <b>Payout</b> on.</p>'+
     '<div class="card pad0"><table class="tbl"><thead><tr><th>Staff</th><th class="r">Jobs</th><th class="r">Job hrs</th><th class="r">Labor billed</th><th class="r">Avg/job</th><th class="r">Commission</th><th class="center">Payout</th></tr></thead><tbody>'+(rows||'<tr><td colspan="7" class="muted center">No staff.</td></tr>')+'</tbody></table></div>'+
     '<div class="card"><h2>Commission by staff</h2>'+(commBars.length?bars(commBars,peso):emptyState('No commissions in this period.'))+'</div></div>';
 };

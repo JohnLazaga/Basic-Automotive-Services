@@ -332,33 +332,45 @@ function receivePO(id){
 /* ---- Staff ---------------------------------------------------------------- */
 var ROLES=['SV','SA','SM','Mechanic','Parts Salesman','Secretary'];
 VIEWS.staff = function(){
-  var rate = (S.shop.mechCommissionRate||0);
+  var dflt = (S.shop.mechCommissionRate||0);
+  var admin = (typeof isAdminUser!=='function') || isAdminUser();
   var rows=S.staff.map(function(s){
-    return '<tr><td><b>'+esc(s.name)+'</b>'+(s.nickname?' <span class="muted small">“'+esc(s.nickname)+'”</span>':'')+'</td><td>'+chip(roleLabel(s.role))+'</td><td>'+esc(rate+'% of labor (shop rule)')+'</td>'+
+    var hasOwn = !(s.commissionRate===undefined||s.commissionRate===null||s.commissionRate==='');
+    var eff = hasOwn ? Number(s.commissionRate)||0 : dflt;
+    var rateCell = admin
+      ? '<input type="number" step="0.1" min="0" value="'+attr(eff)+'" style="width:72px" onchange="setStaffCommissionRate(\''+s.id+'\',this.value)">% '+(hasOwn?'':'<span class="muted small">(default)</span>')
+      : esc(eff+'% of labor'+(hasOwn?'':' (default)'));
+    return '<tr><td><b>'+esc(s.name)+'</b>'+(s.nickname?' <span class="muted small">“'+esc(s.nickname)+'”</span>':'')+'</td><td>'+chip(roleLabel(s.role))+'</td><td>'+rateCell+'</td>'+
       '<td class="r"><button class="ic" onclick="editStaff(\''+s.id+'\')">✎</button><button class="ic" onclick="delStaff(\''+s.id+'\')">✕</button></td></tr>';
   }).join('');
-  var ruleCard = '<div class="card"><div class="card-head"><h2>Commission rule</h2></div>'+
+  var ruleCard = '<div class="card"><div class="card-head"><h2>Commission</h2></div>'+
+    '<p class="muted small">Commission is set <b>per staff member</b> below — each earns their own rate × the job\'s labor on jobs they\'re assigned to. '+(admin?'Only admins can change rates.':'Rates are set by an admin.')+'</p>'+
     '<div class="row gap" style="align-items:center">'+
-      '<input id="shopCommRate" type="number" step="0.1" min="0" value="'+attr(rate)+'" style="width:90px" onchange="setShopCommissionRate(this.value)">'+
-      '<span>% of labor, paid per billed job and <b>split evenly</b> among everyone assigned to it (mechanics, Service Adviser, assessor, parts salesman).</span>'+
-    '</div>'+
-    '<p class="muted small mt8">Applies to all staff automatically. Include or exclude an individual from payout with the <b>Payout</b> switch in Staff Productivity.</p></div>';
+      '<span>Default rate for staff with no rate set:</span>'+
+      (admin? '<input id="shopCommRate" type="number" step="0.1" min="0" value="'+attr(dflt)+'" style="width:90px" onchange="setShopCommissionRate(this.value)">%'
+            : '<b>'+esc(dflt)+'%</b>')+
+    '</div></div>';
   return '<div class="page"><div class="page-head"><h1>Staff</h1><button class="btn primary" onclick="editStaff()">＋ Add staff</button></div>'+
     ruleCard+
-    '<div class="card pad0"><table class="tbl"><thead><tr><th>Name</th><th>Role</th><th>Commission</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+    '<div class="card pad0"><table class="tbl"><thead><tr><th>Name</th><th>Role</th><th>Commission rate</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
 };
-function setShopCommissionRate(v){ S.shop.mechCommissionRate=Math.max(0,Number(v)||0); persist(); toast('Commission rate set to '+S.shop.mechCommissionRate+'%'); render(); }
+function setShopCommissionRate(v){ if(typeof isAdminUser==='function'&&!isAdminUser()){toast('Admins only','err');return;} S.shop.mechCommissionRate=Math.max(0,Number(v)||0); persist(); toast('Default rate set to '+S.shop.mechCommissionRate+'%'); render(); }
+function setStaffCommissionRate(id,v){ if(typeof isAdminUser==='function'&&!isAdminUser()){toast('Admins only','err');return;} var s=staffById(id); if(!s) return; s.commissionRate=Math.max(0,Number(v)||0); persist(); toast(esc(s.name)+' → '+s.commissionRate+'%'); render(); }
 function toggleStaffCommission(id,on){ var s=staffById(id); if(!s) return; s.commission=!!on; persist(); toast(on?'Included in payout':'Excluded from payout'); render(); }
 function editStaff(id){ var s=id?staffById(id):{};
+  var admin = (typeof isAdminUser!=='function') || isAdminUser();
+  var rateField = admin ? field('Commission rate % of labor','<input id="stRate" type="number" step="0.1" min="0" value="'+attr(s.commissionRate!==undefined&&s.commissionRate!==''?s.commissionRate:'')+'" placeholder="leave blank for default ('+(S.shop.mechCommissionRate||0)+'%)">','Admin-set. Each person earns this rate × labor on jobs they\'re assigned to.') : '';
   openModal(id?'Edit staff':'Add staff',
     '<div class="grid2">'+field('Name','<input id="stName" value="'+attr(s.name||'')+'">')+
     field('Nickname','<input id="stNick" value="'+attr(s.nickname||'')+'" placeholder="optional">')+'</div>'+
     field('Role','<select id="stRole">'+ROLES.map(function(r){return '<option value="'+r+'"'+(s.role===r?' selected':'')+'>'+esc(roleLabel(r))+'</option>';}).join('')+'</select>')+
-    '<p class="muted small">Commission follows the shop rule shown on the Staff page — '+(S.shop.mechCommissionRate||0)+'% of labor, split evenly among everyone assigned to each billed job. Use the <b>Payout</b> switch to include or exclude this person.</p>',
+    rateField,
     { onOk:'saveStaff' }); setTimeout(function(){stCtx=id||null;},10); }
 var stCtx=null;
 function saveStaff(){ var data={ name:val('stName'), nickname:val('stNick'), role:val('stRole') };
   if(!data.name){toast('Name required','err');return;}
+  var admin = (typeof isAdminUser!=='function') || isAdminUser();
+  if(admin && document.getElementById('stRate')){ var rv=val('stRate'); data.commissionRate = (rv===''||rv===null||rv===undefined) ? '' : Math.max(0,Number(rv)||0); }
   if(stCtx){ Object.assign(staffById(stCtx),data); } else { data.id=uid('st'); S.staff.push(data); }
   persist(); closeModal(); render(); }
 function delStaff(id){ S.staff=S.staff.filter(function(s){return s.id!==id;}); persist(); render(); }

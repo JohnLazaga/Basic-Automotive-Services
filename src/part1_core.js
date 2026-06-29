@@ -124,10 +124,17 @@ function vatSplit(base, S){
   return { vatable:base, vat:vat, gross:gross, exempt:false };
 }
 
-/* Shop-wide commission rule (rate set on the Staff page): labor × the shop rate,
-   paid ONLY to staff assigned to the job — the mechanic(s), Service Adviser,
-   assessor and parts salesman — split evenly among everyone assigned who is
-   commission-eligible. A person assigned in two capacities still counts once. */
+/* Commission is admin-controlled per staff: each person has their OWN rate
+   (% of labor), set by an admin on the Staff page — not a single fixed rate.
+   On a job, every assigned person earns their own rate × the job's labor
+   (no shared pool). If a person has no rate set, the shop default applies. */
+function staffCommissionRate(idOrStaff){
+  var s = (idOrStaff && typeof idOrStaff==='object') ? idOrStaff : staffById(idOrStaff);
+  if(!s) return 0;
+  var r = s.commissionRate;
+  if(r===undefined || r===null || r==='') return Number(S.shop.mechCommissionRate)||0;  // fallback default
+  return Number(r)||0;
+}
 /* The distinct staff assigned to a job. includeAll=true returns EVERYONE assigned
    (ignoring the payout toggle) — used for the evaluation/KPI figure. Default
    returns only commission-eligible (toggle-on) staff — used for actual payout. */
@@ -139,32 +146,27 @@ function assignedCommissionIds(job, includeAll){
   ids.forEach(function(id){ if(uniq.indexOf(id)<0 && (includeAll || commissionEligible(id))) uniq.push(id); });
   return uniq;
 }
-function jobLaborCommission(job, S){
-  var rate = (Number(S.shop.mechCommissionRate)||0)/100;
-  var pool = round2(laborTotal(job.lines) * rate);
-  var n = assignedCommissionIds(job).length;
-  return { pool:pool, perMech: n>0 ? round2(pool/n) : 0, count:n };
-}
-/* Actual payout map — only toggle-on staff; the pool splits among them. */
+/* Actual payout map — each assigned, toggle-on person earns their own rate × labor. */
 function jobLaborCommissionMap(job, S){
-  var c = jobLaborCommission(job, S);
-  var map = {};
-  assignedCommissionIds(job).forEach(function(id){ map[id] = c.perMech; });
+  var labor = laborTotal(job.lines); var map = {};
+  assignedCommissionIds(job).forEach(function(id){ map[id] = round2(labor * staffCommissionRate(id)/100); });
   return map;
 }
-/* Evaluation map — what each assignee WOULD earn if no one were excluded: the
-   pool split evenly among everyone assigned, regardless of the payout toggle. */
+/* Evaluation map — same per-person rates but ignoring the payout toggle, so an
+   excluded person still shows the commission they WOULD earn. */
 function jobLaborCommissionMapAll(job, S){
-  var rate = (Number(S.shop.mechCommissionRate)||0)/100;
-  var pool = round2(laborTotal(job.lines) * rate);
-  var ids = assignedCommissionIds(job, true);
-  var per = ids.length ? round2(pool/ids.length) : 0;
-  var map = {};
-  ids.forEach(function(id){ map[id] = per; });
+  var labor = laborTotal(job.lines); var map = {};
+  assignedCommissionIds(job, true).forEach(function(id){ map[id] = round2(labor * staffCommissionRate(id)/100); });
   return map;
+}
+/* Total labor-commission cost of a job (toggle-on staff) and the assignee count. */
+function jobLaborCommission(job, S){
+  var m = jobLaborCommissionMap(job, S); var ids = Object.keys(m);
+  var pool = round2(ids.reduce(function(t,id){ return t + m[id]; }, 0));
+  return { pool:pool, count:ids.length, map:m };
 }
 /* Every staff member is entitled to commission by default; an admin can switch
-   an individual off via the Staff screen toggle (sets staff.commission=false). */
+   an individual off via the Staff Productivity toggle (sets staff.commission=false). */
 function commissionEligible(idOrStaff){
   var s = (idOrStaff && typeof idOrStaff==='object') ? idOrStaff : staffById(idOrStaff);
   return !!s && s.commission !== false;

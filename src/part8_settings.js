@@ -26,8 +26,8 @@ VIEWS.settings = function(){
       field('Portal base URL','<input id="shPortal" value="'+attr(sh.portalUrl)+'">','Vehicle QR encodes <portalUrl>/#v=<id>. Host this file there for scans to resolve.')+
       '<button class="btn ghost" onclick="saveShop()">Save</button></div>'+
 
-    '<div class="card"><h2>Commission rule</h2>'+
-      field('Rate % of labor','<input id="shComm" type="number" step="0.1" value="'+attr(sh.mechCommissionRate)+'">','Split evenly among everyone assigned to a job (mechanics, Service Adviser, assessor, parts salesman). Also editable on the Staff page.')+
+    '<div class="card"><h2>Commission</h2>'+
+      field('Default rate % of labor','<input id="shComm" type="number" step="0.1" value="'+attr(sh.mechCommissionRate)+'">','Fallback rate for staff with no individual rate. Set per-staff rates (admin only) on the Staff page.')+
       '<button class="btn ghost" onclick="saveShop()">Save</button></div>'+
 
     '<div class="card"><h2>Parts Database (server)</h2>'+

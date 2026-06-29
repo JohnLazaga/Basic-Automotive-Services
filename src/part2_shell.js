@@ -227,7 +227,7 @@ function openModal(title, bodyHTML, opts){
     '<button class="btn ghost" onclick="closeModal()">Cancel</button>'+
     (opts.onOk? '<button class="btn primary" onclick="('+opts.onOk+')()">'+(opts.okText||'Save')+'</button>':'');
   root.innerHTML =
-    '<div class="modal-back" onclick="if(event.target===this)closeModal()">'+
+    '<div class="modal-back">'+
       '<div class="modal" style="max-width:'+(opts.width||'620px')+'">'+
         '<div class="modal-head"><h3>'+esc(title)+'</h3><button class="x" onclick="closeModal()">✕</button></div>'+
         '<div class="modal-body">'+bodyHTML+'</div>'+

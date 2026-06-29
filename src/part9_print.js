@@ -202,7 +202,7 @@ function docPayout(){
   var body=docHeader('Commission Payout · '+esc(prodPeriodLabel()))+
     '<table><thead><tr><th>Staff</th><th class="r">Jobs</th><th class="r">Commission</th><th>Signature</th></tr></thead><tbody>'+rows+'</tbody></table>'+
     '<div class="totbox"><div class="l2 grand"><span>Total payout</span><span>'+peso(tot)+'</span></div></div>'+
-    '<div class="foot">Commission = labor × '+(S.shop.mechCommissionRate||5)+'% per billed job, split evenly among everyone assigned (mechanic, Service Adviser, assessor, parts salesman).</div>';
+    '<div class="foot">Commission = each staff member’s own rate × the job’s labor, on jobs they were assigned to. Includes only staff switched on for payout.</div>';
   return docShell('Payout sheet', body);
 }
 function printPayout(){ printDoc(docPayout()); }
