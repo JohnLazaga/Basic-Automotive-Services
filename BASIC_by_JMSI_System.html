@@ -1729,7 +1729,7 @@ function jobInspectionPanel(j){
   return '<div class="card"><div class="card-head"><h2>Vehicle Check-in</h2>'+
     '<button class="btn sm" onclick="editInspection(\''+j.id+'\')">Edit check-in</button></div>'+
     '<div class="grid2 ksmall">'+
-      kv('Odometer', num(insp.odometer)+' km')+ kv('Fuel level', insp.fuel||'—')+
+      kv('Ingress odometer', num(insp.odometer)+' km')+ kv('Fuel level', insp.fuel||'—')+
       kv('Dash lights / DTC', insp.lights||'None')+ kv('Condition', insp.condition||'—')+
     '</div>'+
     (cl.created? '<div class="checklist"><div class="cl-title">Items left in vehicle '+(cl.leaveUnit?'':'(unit not left)')+'</div>'+
@@ -1744,7 +1744,7 @@ function editInspection(id){
   var items=CHECKLIST_ITEMS.map(function(it){ var on=cl.items&&cl.items[it];
     return '<label class="chk small"><input type="checkbox" id="ck_'+btoa(it).replace(/=/g,'')+'" '+(on?'checked':'')+'> '+esc(it)+'</label>'; }).join('');
   openModal('Vehicle check-in inspection',
-    '<div class="grid2">'+field('Odometer','<input id="isOdo" type="number" value="'+attr(insp.odometer||j.odometer)+'">')+
+    '<div class="grid2">'+field('Ingress odometer','<input id="isOdo" type="number" value="'+attr(insp.odometer||j.odometer)+'">')+
     field('Fuel level','<input id="isFuel" value="'+attr(insp.fuel||'')+'" placeholder="e.g. 1/2">')+
     field('Dash lights / DTC','<input id="isLights" value="'+attr(insp.lights||'')+'">')+
     field('General condition','<input id="isCond" value="'+attr(insp.condition||'')+'">')+'</div>'+
