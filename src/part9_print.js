@@ -58,7 +58,7 @@ function docJobOrder(j){
       metaRows([['Plate', esc(j.plate)],['Date in', fmtDate(j.dateIn)],
         ['Owner', esc(j.owner)],['ETD', fmtDate(j.etd)],
         ['Contact', esc(j.contactPerson+' · '+j.contactNumber)],['Odometer', num(j.odometer)+' km'],
-        ['Vehicle', esc(j.year+' '+j.make+' '+j.model)],['Chassis', esc(j.chassis)],
+        ['Vehicle', esc((j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:''))],['Chassis #', esc(j.chassis)],
         ['Service Adviser', esc(staffName(j.saId))],['Mechanic(s)', esc(mechName(j.mechanicIds))],
         ['Bay', esc(bayName(j.bayId))],['Job hours', num(j.jobHours)],
         ['PMS ref', esc(j.pmsRef)] ])+
@@ -107,7 +107,7 @@ function docPostJob(j){
   var body=docHeader('Post Job Report · '+j.no)+
     metaRows([['Plate', esc(j.plate)],['Date in', fmtDate(j.dateIn)],
       ['Owner', esc(j.owner)],['Odometer', num(j.odometer)+' km'],
-      ['Vehicle', esc(j.year+' '+j.make+' '+j.model)],['Service Adviser', esc(staffName(j.saId))],
+      ['Vehicle', esc((j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:''))],['Service Adviser', esc(staffName(j.saId))],
       ['Mechanic(s)', esc(mechName(j.mechanicIds))],['Bay', esc(bayName(j.bayId))] ])+
     pricedLinesTable(j)+ totalsBox(j,{discount:false})+
     (j.notes?'<div class="notes"><b>Service notes:</b> '+esc(j.notes)+'</div>':'')+
@@ -126,7 +126,7 @@ function docBilling(j){
     metaRows([['OR / Invoice #', esc(j.orNumber||'—')],['Date', fmtDate(j.billedAt)],
       ['Sold to', esc(j.owner)],['TIN', esc(j.customerTin||'—')],
       ['Address', esc(j.address||'—')],['SI reference', esc(j.siRef||'—')],
-      ['Vehicle', esc(j.year+' '+j.make+' '+j.model+' · '+j.plate)],['JO #', esc(j.no)] ])+
+      ['Vehicle', esc((j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:'')+' · '+j.plate)],['JO #', esc(j.no)] ])+
     pricedLinesTable(j,{sku:true})+ totalsBox(j,{discount:true})+
     '<div class="sig-grid"><div class="sigline">Cashier / Authorized</div>'+
       '<div class="sigline">Received by'+(j.releaseSignature?'<br><img class="sigimg" src="'+j.releaseSignature+'"/>':'')+'</div>'+

@@ -38,7 +38,7 @@ function vehBodyHTML(){
     var due = v.nextServiceDate && v.nextServiceDate<=todayISO();
     var soon = v.nextServiceDate && v.nextServiceDate<=todayISO(new Date(Date.now()+14*86400000));
     return '<tr onclick="go(\'vehicle\',\''+v.id+'\')"><td><b>'+esc(v.plate)+'</b></td><td>'+esc(v.owner)+'</td>'+
-      '<td>'+esc(v.year+' '+v.make+' '+v.model)+'</td><td class="r">'+num(v.odometer)+'</td>'+
+      '<td>'+esc((v.year+' '+v.make+' '+v.model).trim()+(v.variant?' '+v.variant:''))+'</td><td class="r">'+num(v.odometer)+'</td>'+
       '<td>'+(v.nextServiceDate? (due?chip('Overdue','due'):soon?chip('Due soon','gold'):fmtDate(v.nextServiceDate)) : '—')+'</td></tr>';
   }).join('');
   return '<div class="card pad0"><table class="tbl click"><thead><tr><th>Plate</th><th>Owner</th><th>Vehicle</th><th class="r">Odometer</th><th>Next service</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
@@ -73,7 +73,7 @@ VIEWS.vehicle = function(id){
         '<div class="muted small mt8">Scans resolve once hosted at:<br><code class="qr-url">'+esc(portalLink(v.id))+'</code></div></div>'+
       '<div class="card"><h2>Owner / Vehicle</h2><div class="ksmall">'+
         kv('Owner',esc(v.owner))+kv('Address',esc(v.address||'—'))+kv('Contact',esc(v.contactPerson+' · '+v.contactNumber))+
-        kv('Chassis',esc(v.chassis||'—'))+kv('Year/Make/Model',esc(v.year+' '+v.make+' '+v.model))+kv('Odometer',num(v.odometer)+' km')+'</div></div>'+
+        kv('Chassis #',esc(v.chassis||'—'))+kv('Year/Make/Model',esc(v.year+' '+v.make+' '+v.model))+kv('Variant',esc(v.variant||'—'))+kv('Last service odo',num(v.odometer)+' km')+'</div></div>'+
     '</div></div></div>';
 };
 

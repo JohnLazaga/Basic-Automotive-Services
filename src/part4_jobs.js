@@ -12,7 +12,7 @@ function ensureVehicle(snap){
   }
   v = { id:uid('vh'), plate:(snap.plate||'').trim().toUpperCase(), owner:snap.owner||snap.contactPerson||'',
     address:snap.address||'', contactPerson:snap.contactPerson||'', contactNumber:snap.contactNumber||'',
-    chassis:snap.chassis||'', year:snap.year||'', make:snap.make||'', model:snap.model||'',
+    chassis:snap.chassis||'', year:snap.year||'', make:snap.make||'', model:snap.model||'', variant:snap.variant||'',
     odometer:snap.odometer||0, nextServiceDate:'', nextServiceOdo:'' };
   S.vehicles.push(v);
   return v;
@@ -21,7 +21,7 @@ function ensureVehicle(snap){
 function blankJob(){
   return { id:uid('job'), no:nextNo('jo','JO-',4), stage:'Job Order',
     plate:'', vehicleId:null, owner:'', address:'', contactPerson:'', contactNumber:'', chassis:'',
-    year:'', make:'', model:'', customerTin:'',
+    year:'', make:'', model:'', variant:'', customerTin:'',
     dateIn:todayISO(), etd:'', odometer:0, jobHours:0,
     assessedBy:'', saId:'', mechanicIds:[], bayId:'TBA',
     lines:[], partsSalesman:'', siRef:'', pmsRef:'', notes:'',
@@ -37,7 +37,7 @@ function createJob(base){
   if (!j.statusLog.length) j.statusLog=[{ time:new Date().toISOString(), code:j.status||'A1', by:j.saId||'', note:'Job Order created.' }];
   var v = ensureVehicle(j);
   j.vehicleId = v.id;
-  ['owner','address','contactPerson','contactNumber','chassis','year','make','model'].forEach(function(k){
+  ['owner','address','contactPerson','contactNumber','chassis','year','make','model','variant'].forEach(function(k){
     if(!j[k]) j[k]=v[k];
   });
   S.jobs.unshift(j); persist();
@@ -459,7 +459,7 @@ function jobDetailsPanel(j){
   return '<div class="card"><div class="card-head"><h2>Job Details</h2><button class="btn sm" onclick="editJobDetails(\''+j.id+'\')">Edit</button></div>'+
     '<div class="ksmall">'+
       kv('Owner', esc(j.owner))+ kv('Contact', esc(j.contactPerson+' · '+j.contactNumber))+
-      kv('Vehicle', esc(j.year+' '+j.make+' '+j.model))+ kv('Chassis', esc(j.chassis||'—'))+
+      kv('Vehicle', esc((j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:'')))+ kv('Chassis #', esc(j.chassis||'—'))+
       kv('Date in', fmtDate(j.dateIn))+ kv('ETD', fmtDate(j.etd))+
       kv('Odometer', num(j.odometer)+' km')+ kv('Job hours', num(j.jobHours))+
       kv('Assessed by', esc(staffName(j.assessedBy)))+
@@ -477,7 +477,8 @@ function editJobDetails(id){
     field('Contact person','<input id="jdCP" value="'+attr(j.contactPerson)+'">')+
     field('Contact #','<input id="jdContact" value="'+attr(j.contactNumber)+'">')+
     field('Customer TIN','<input id="jdTin" value="'+attr(j.customerTin||'')+'">')+
-    field('Chassis','<input id="jdChassis" value="'+attr(j.chassis)+'">')+
+    field('Chassis #','<input id="jdChassis" value="'+attr(j.chassis)+'">')+
+    field('Variant','<input id="jdVariant" value="'+attr(j.variant||'')+'">')+
     field('Date in','<input id="jdDateIn" type="date" value="'+attr(j.dateIn)+'">')+
     field('ETD','<input id="jdEtd" type="date" value="'+attr(j.etd)+'">')+
     field('Odometer','<input id="jdOdo" type="number" value="'+attr(j.odometer)+'">')+
@@ -493,7 +494,7 @@ var jdCtx=null;
 function saveJobDetails(){
   var j=jobById(jdCtx);
   j.owner=val('jdOwner'); j.address=val('jdAddr'); j.contactPerson=val('jdCP'); j.contactNumber=val('jdContact');
-  j.customerTin=val('jdTin'); j.chassis=val('jdChassis'); j.dateIn=val('jdDateIn'); j.etd=val('jdEtd');
+  j.customerTin=val('jdTin'); j.chassis=val('jdChassis'); j.variant=val('jdVariant'); j.dateIn=val('jdDateIn'); j.etd=val('jdEtd');
   j.odometer=Number(val('jdOdo'))||0; j.jobHours=Number(val('jdHours'))||0; j.assessedBy=val('jdAssess');
   j.siRef=val('jdSI'); j.pmsRef=val('jdPMS'); j.notes=val('jdNotes');
   persist(); closeModal(); render();
