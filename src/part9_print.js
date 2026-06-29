@@ -123,7 +123,7 @@ function printPostJob(id){ printDoc(docPostJob(jobById(id))); }
 /* ---- Final Billing: BIR VAT invoice --------------------------------------- */
 function docBilling(j){
   var sh=S.shop;
-  var body=docHeader((sh.vatReg?'VAT ':'')+'Sales Invoice / Official Receipt · '+(j.orNumber||''))+
+  var body=docHeader('FINAL BILLING RECEIPT · '+(j.orNumber||''))+
     metaRows([['OR / Invoice #', esc(j.orNumber||'—')],['Date', fmtDate(j.billedAt)],
       ['Sold to', esc(j.owner)],['TIN', esc(j.customerTin||'—')],
       ['Address', esc(j.address||'—')],['SI reference', esc(j.siRef||'—')],
