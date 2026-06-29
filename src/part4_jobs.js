@@ -265,19 +265,11 @@ function catalogHint(){
   if (CATALOG_STATE==='loading') return 'Loading parts catalog…';
   return '';
 }
-/* Catalog SRP is VAT-INCLUSIVE (from SQL). Billing is VAT-exclusive (12% added on
-   top), so auto-fill the line with the VAT-EXCLUSIVE SRP = inclusive ÷ (1+rate). */
-function srpExc(srpInc){
-  var v=Number(srpInc)||0;
-  if(!S||!S.shop||!S.shop.vatReg) return round2(v);
-  var rate=(Number(S.shop.vatRate)||12)/100;
-  return round2(v/(1+rate));
-}
 function skuLookup(){
   var sku=(val('lnSku')||'').trim(); var msg=document.getElementById('skuMsg');
   if(!sku){ if(msg) msg.textContent=catalogHint(); return; }
   var hit = (typeof catalogLookup==='function') ? catalogLookup(sku) : null;
-  if(hit){ setVal('lnDesc',hit.name); setVal('lnNet',hit.net); setVal('lnPrice',srpExc(hit.srp)); if(msg){ msg.textContent='✓ '+hit.name; msg.className='ok small'; } }
+  if(hit){ setVal('lnDesc',hit.name); setVal('lnNet',hit.net); setVal('lnPrice',hit.srp); if(msg){ msg.textContent='✓ '+hit.name; msg.className='ok small'; } }
   else if(msg){ msg.textContent = (typeof CATALOG_STATE!=='undefined'&&CATALOG_STATE==='loading')?'Loading catalog…':'No match — enter the details manually.'; msg.className='muted small'; }
 }
 function laborPick(){ var sel=document.getElementById('lnRef'); var o=sel.options[sel.selectedIndex];

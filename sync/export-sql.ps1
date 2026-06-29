@@ -1,5 +1,7 @@
-# Export the active parts catalog (SKU, Part Name, Net Price, SRP) from SQL Server
-# to a tab-separated file. Streams rows (fast, low memory) for the 100k+ catalog.
+# Export the active parts catalog (SKU, Part Name, Net Price, SRP-exclusive) from
+# SQL Server to a tab-separated file. The app bills VAT-exclusive (adds 12% on top),
+# so we export fldSRPExc (the VAT-exclusive SRP), not fldSRP (VAT-inclusive).
+# Streams rows (fast, low memory) for the 100k+ catalog.
 $ErrorActionPreference = 'Stop'
 $server = 'localhost\MSSQLSERVER01'
 $db     = 'jasRegaladoDB'
@@ -7,7 +9,7 @@ $out    = Join-Path $PSScriptRoot 'parts.tsv'
 
 $sql = @"
 SELECT ap.fldStockCode AS sku, p.fldPartDesc AS part_name,
-       ap.fldNetPrice AS net_price, ap.fldSRP AS srp
+       ap.fldNetPrice AS net_price, ap.fldSRPExc AS srp
 FROM tblAutoPart ap
 LEFT JOIN tblPart p ON ap.fldPartNameCode = p.fldPartNameCode
 WHERE ap.fldIsActive = 1
