@@ -92,14 +92,16 @@ function editVehicle(id){
     field('Registered owner','<input id="vehOwner" value="'+attr(v.owner||'')+'">')+
     field('Contact person','<input id="vehCP" value="'+attr(v.contactPerson||'')+'">')+
     field('Contact #','<input id="vehContact" value="'+attr(v.contactNumber||'')+'">')+
-    field('Chassis','<input id="vehChassis" value="'+attr(v.chassis||'')+'">')+
+    field('Address','<input id="vehAddr" value="'+attr(v.address||'')+'">')+
+    field('Chassis #','<input id="vehChassis" value="'+attr(v.chassis||'')+'">')+
     field('Year','<input id="vehYear" type="number" value="'+attr(v.year||'')+'">')+
     field('Make','<input id="vehMake" value="'+attr(v.make||'')+'">')+
     field('Model','<input id="vehModel" value="'+attr(v.model||'')+'">')+
-    field('Odometer','<input id="vehOdo" type="number" value="'+attr(v.odometer||0)+'">')+
+    field('Variant','<input id="vehVariant" value="'+attr(v.variant||'')+'">')+
+    field('Last service odometer','<input id="vehOdo" type="number" value="'+attr(v.odometer||0)+'">')+
+    field('Next service odometer','<input id="vehNextOdo" type="number" value="'+attr(v.nextServiceOdo||'')+'">')+
     field('Next service date','<input id="vehNextDate" type="date" value="'+attr(v.nextServiceDate||'')+'">')+
-    field('Next service odo','<input id="vehNextOdo" type="number" value="'+attr(v.nextServiceOdo||'')+'">')+
-    '</div>'+ field('Address','<input id="vehAddr" value="'+attr(v.address||'')+'">'),
+    '</div>',
     vehicleModalOpts(id));
   vehCtx=id||null;
 }
@@ -127,7 +129,7 @@ function deleteVehicleConfirm(id){
 var vehCtx=null;
 function saveVehicle(){
   var data={ plate:(val('vehPlate')||'').toUpperCase(), owner:val('vehOwner'), contactPerson:val('vehCP'), contactNumber:val('vehContact'),
-    chassis:val('vehChassis'), year:val('vehYear'), make:val('vehMake'), model:val('vehModel'),
+    chassis:val('vehChassis'), year:val('vehYear'), make:val('vehMake'), model:val('vehModel'), variant:val('vehVariant'),
     odometer:Number(val('vehOdo'))||0, nextServiceDate:val('vehNextDate'), nextServiceOdo:Number(val('vehNextOdo'))||'', address:val('vehAddr') };
   if(vehCtx){ Object.assign(vehicleById(vehCtx),data); } else { data.id=uid('vh'); S.vehicles.push(data); }
   persist(); closeModal(); toast('Vehicle saved'); render();
