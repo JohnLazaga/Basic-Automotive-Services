@@ -438,6 +438,10 @@ var PHP = new Intl.NumberFormat('en-PH', { style:'currency', currency:'PHP' });
 function peso(n){ return PHP.format(Number(n)||0); }
 function num(n){ return (Number(n)||0).toLocaleString('en-PH'); }
 function round2(n){ return Math.round((Number(n)||0)*100)/100; }
+/* Odometer reading: thousands comma + " km". */
+function odo(n){ return num(Number(n)||0)+' km'; }
+/* Fuel level as a percentage. Numeric -> "n%"; legacy free-text shown as-is; blank -> "—". */
+function fmtFuel(f){ if(f===''||f===null||f===undefined) return '—'; return isFinite(f)? (Number(f)+'%') : String(f); }
 
 function esc(s){
   if (s===null || s===undefined) return '';
@@ -672,7 +676,7 @@ function seedState(){
 
   var v1 = { id:uid('vh'), plate:'ABC 1234', owner:'Maria Dela Cruz', address:'12 Mapagkawanggawa St., Fairview, QC',
              contactPerson:'Maria Dela Cruz', contactNumber:'0917 555 1234', chassis:'MHFXX1234X0012345',
-             year:2019, make:'Toyota', model:'Vios', odometer:48250, nextServiceDate:'2026-09-01', nextServiceOdo:53000 };
+             year:2019, make:'Toyota', model:'Vios', variant:'1.3 E', odometer:48250, nextServiceDate:'2026-09-01', nextServiceOdo:53000 };
   var v2 = { id:uid('vh'), plate:'XYZ 8899', owner:'Jowil Motor Sales Inc.', address:'Commonwealth Ave., Fairview, QC',
              contactPerson:'Fleet Desk', contactNumber:'0998 222 1010', chassis:'JN1XX8899X0098765',
              year:2021, make:'Mitsubishi', model:'Montero Sport', odometer:31200, nextServiceDate:'2026-07-05', nextServiceOdo:35000 };
@@ -682,7 +686,7 @@ function seedState(){
     id:uid('job'), no:'JO-0001', stage:'Job Order',
     plate:v1.plate, vehicleId:v1.id, owner:v1.owner, address:v1.address,
     contactPerson:v1.contactPerson, contactNumber:v1.contactNumber, chassis:v1.chassis,
-    year:v1.year, make:v1.make, model:v1.model, customerTin:'',
+    year:v1.year, make:v1.make, model:v1.model, variant:v1.variant, customerTin:'',
     dateIn:todayISO(now), etd:todayISO(new Date(now.getTime()+86400000)), odometer:48250, jobHours:3,
     assessedBy:sm.id, saId:sa.id, mechanicIds:[m1.id], bayId:bayA.id,
     lines:[
@@ -693,7 +697,7 @@ function seedState(){
     ],
     partsSalesman:ps.id, siRef:'SI-2026-0456', pmsRef:'PMS-7781',
     notes:'Customer reports ticking noise on cold start. Check oil level & filter.',
-    inspection:{ odometer:48250, fuel:'1/2', lights:'None', condition:'Good, minor scratches RR door', testDrive:'' },
+    inspection:{ odometer:48250, fuel:50, lights:'None', condition:'Good, minor scratches RR door', testDrive:'' },
     checklist:{ created:true, leaveUnit:true, items:{ 'Spare tire':true,'Jack & wrench':true,'Floor mats':true,'Stereo':true,'OR/CR':false,'Valuables':false }, bodyNotes:'Scratch on rear right door logged.' },
     status:'B2', statusLog:[
       { time:new Date(now.getTime()-7200000).toISOString(), code:'A1', by:sa.id, note:'Unit received at front desk.' },
@@ -1220,7 +1224,7 @@ function boardKanban(active){
   }).join('')+'</div>';
 }
 function boardList(active){
-  if(!active.length) return emptyState('No active units. Create a Job Order from Appointments or Intake.');
+  if(!active.length) return emptyState('No active units. Create a Job Order from Appointments or Ingress.');
   var rows = active.map(function(j){
     var due=isUpdateDue(j);
     return '<tr onclick="go(\'job\',\''+j.id+'\')">'+
@@ -1414,9 +1418,24 @@ function createJobFromAppt(a){
   });
 }
 
-/* ---- Intake --------------------------------------------------------------- */
-function openIntake(){
-  openModal('Intake — front desk', intakeForm({}), {
+/* ---- Ingress (front-desk intake) ------------------------------------------ */
+/* Fields that must be filled for a complete ingress. The Job Order can be created
+   with gaps (finish later), but a Post Job Report can NOT be created until these
+   are all complete. */
+var INGRESS_REQUIRED = [
+  ['plate','Plate'],['owner','Registered owner'],['contactPerson','Contact person'],
+  ['contactNumber','Contact #'],['address','Address'],['chassis','Chassis #'],
+  ['year','Year'],['make','Make'],['model','Model'],['variant','Variant'],
+  ['odometer','Ingress odometer'] ];
+function jobMissingFields(j){
+  return INGRESS_REQUIRED.filter(function(f){
+    var v=j[f[0]];
+    if(f[0]==='odometer') return !(Number(v)>0);
+    return !String(v==null?'':v).trim();
+  }).map(function(f){ return f[1]; });
+}
+function openIntake(draft){
+  openModal('Ingress — front desk', intakeForm(draft||{}), {
     footer:'<button class="btn ghost" onclick="closeModal()">Cancel</button>'+
       '<button class="btn ghost" onclick="intakeSubmit(\'estimate\')">Create Estimate</button>'+
       '<button class="btn primary" onclick="intakeSubmit(\'job\')">Create Job Order</button>', width:'680px' });
@@ -1445,10 +1464,25 @@ function intakeSubmit(kind){
     address:val('inAddr'), chassis:val('inChassis'), year:val('inYear'), make:val('inMake'), model:val('inModel'), variant:val('inVariant'),
     odometer:Number(val('inOdo'))||0, notes:val('inNotes') };
   if (!base.plate){ toast('Plate is required','err'); return; }
-  closeModal();
-  if (kind==='estimate'){ var e=createEstimateFrom(base); go('estimate', e.id); }
-  else { var j=createJob(base); toast('Job Order '+j.no+' created'); go('job', j.id); }
+  if (kind==='estimate'){ closeModal(); var e=createEstimateFrom(base); go('estimate', e.id); return; }
+  // Job Order: if ingress is incomplete, prompt to finish now or proceed and complete later.
+  var missing = jobMissingFields(base);
+  if (missing.length){ _ingressDraft=base; promptIncompleteIngress(missing); return; }
+  closeModal(); var j=createJob(base); toast('Job Order '+j.no+' created'); go('job', j.id);
 }
+var _ingressDraft=null;
+function promptIncompleteIngress(missing){
+  openModal('Complete ingress details?',
+    '<p class="muted small">These fields are still blank:</p>'+
+    '<p><b>'+missing.map(esc).join(', ')+'</b></p>'+
+    '<p class="muted small">You can create the Job Order now and finish them later in Job Details — '+
+    'but the <b>Post Job Report cannot be created</b> until every field is complete.</p>',
+    { footer:'<button class="btn ghost" onclick="reopenIngress()">‹ Go back &amp; complete</button>'+
+      '<span style="flex:1"></span>'+
+      '<button class="btn primary" onclick="createJobAnyway()">Create, finish later</button>', width:'520px' });
+}
+function reopenIngress(){ openIntake(_ingressDraft||{}); }
+function createJobAnyway(){ var b=_ingressDraft||{}; _ingressDraft=null; closeModal(); var j=createJob(b); toast('Job Order '+j.no+' created — complete the remaining details later'); go('job', j.id); }
 
 /* ---- Job Orders list ------------------------------------------------------ */
 var JOB_Q='';
@@ -1458,7 +1492,7 @@ function jobMatch(j){
 }
 function jobsBodyHTML(){
   var jobs=S.jobs.filter(jobMatch);
-  if(!jobs.length) return emptyState(JOB_Q? 'No job orders match “'+esc(JOB_Q)+'”.' : 'No job orders yet. Click New Intake.');
+  if(!jobs.length) return emptyState(JOB_Q? 'No job orders match “'+esc(JOB_Q)+'”.' : 'No job orders yet. Click New Ingress.');
   var rows = jobs.map(function(j){
     return '<tr onclick="go(\'job\',\''+j.id+'\')">'+
       '<td><b>'+esc(j.no)+'</b></td><td>'+esc(j.plate)+'</td>'+
@@ -1477,7 +1511,7 @@ function jobsSearch(v){ JOB_Q=v; var el=document.getElementById('jobsBody'); if(
 VIEWS.jobs = function(){
   var search='<input class="searchbox" id="jobsSearch" value="'+attr(JOB_Q)+'" oninput="jobsSearch(this.value)" placeholder="Search JO# / plate / owner / contact…" autocomplete="off">';
   return '<div class="page"><div class="page-head"><h1>Job Orders</h1><div class="row gap wrap">'+search+
-    '<button class="btn primary" onclick="openIntake()">＋ New Intake</button></div></div>'+
+    '<button class="btn primary" onclick="openIntake()">＋ New Ingress</button></div></div>'+
     '<div id="jobsBody">'+jobsBodyHTML()+'</div>'+
   '</div>';
 };
@@ -1729,7 +1763,7 @@ function jobInspectionPanel(j){
   return '<div class="card"><div class="card-head"><h2>Vehicle Check-in</h2>'+
     '<button class="btn sm" onclick="editInspection(\''+j.id+'\')">Edit check-in</button></div>'+
     '<div class="grid2 ksmall">'+
-      kv('Ingress odometer', num(insp.odometer)+' km')+ kv('Fuel level', insp.fuel||'—')+
+      kv('Ingress odometer', odo(insp.odometer))+ kv('Fuel level', fmtFuel(insp.fuel))+
       kv('Dash lights / DTC', insp.lights||'None')+ kv('Condition', insp.condition||'—')+
     '</div>'+
     (cl.created? '<div class="checklist"><div class="cl-title">Items left in vehicle '+(cl.leaveUnit?'':'(unit not left)')+'</div>'+
@@ -1745,7 +1779,7 @@ function editInspection(id){
     return '<label class="chk small"><input type="checkbox" id="ck_'+btoa(it).replace(/=/g,'')+'" '+(on?'checked':'')+'> '+esc(it)+'</label>'; }).join('');
   openModal('Vehicle check-in inspection',
     '<div class="grid2">'+field('Ingress odometer','<input id="isOdo" type="number" value="'+attr(insp.odometer||j.odometer)+'">')+
-    field('Fuel level','<input id="isFuel" value="'+attr(insp.fuel||'')+'" placeholder="e.g. 1/2">')+
+    field('Fuel level %','<input id="isFuel" type="number" min="0" max="100" value="'+attr(isFinite(insp.fuel)?insp.fuel:'')+'" placeholder="e.g. 50">')+
     field('Dash lights / DTC','<input id="isLights" value="'+attr(insp.lights||'')+'">')+
     field('General condition','<input id="isCond" value="'+attr(insp.condition||'')+'">')+'</div>'+
     '<label class="chk"><input type="checkbox" id="isLeave" '+(cl.leaveUnit?'checked':'')+'> Customer is leaving the unit (create items checklist)</label>'+
@@ -1757,7 +1791,7 @@ function editInspection(id){
 var isCtx=null;
 function saveInspection(){
   var j=jobById(isCtx);
-  j.inspection={ odometer:Number(val('isOdo'))||0, fuel:val('isFuel'), lights:val('isLights'), condition:val('isCond'), testDrive:j.inspection&&j.inspection.testDrive||'' };
+  j.inspection={ odometer:Number(val('isOdo'))||0, fuel:(val('isFuel')===''?'':Number(val('isFuel'))||0), lights:val('isLights'), condition:val('isCond'), testDrive:j.inspection&&j.inspection.testDrive||'' };
   var leave=checked('isLeave'); var items={};
   CHECKLIST_ITEMS.forEach(function(it){ items[it]=checked('ck_'+btoa(it).replace(/=/g,'')); });
   j.checklist={ created:leave, leaveUnit:leave, items:items, bodyNotes:val('isBody') };
@@ -1812,25 +1846,43 @@ function jobAssignPanel(j){
       '<label class="chk small"><input type="checkbox" '+((j.mechanicIds||[]).indexOf('TBA')>=0?'checked':'')+' onchange="toggleMech(\''+j.id+'\',\'TBA\')"> TBA</label></div></div>'+
     field('Service Bay','<select onchange="setJobField(\''+j.id+'\',\'bayId\',this.value)">'+optionList(S.bays,j.bayId,true)+'</select>')+
     field('Parts Salesman','<select onchange="setJobField(\''+j.id+'\',\'partsSalesman\',this.value)">'+optionList(staffByRole('Parts Salesman'),j.partsSalesman,true)+'</select>')+
+    field('Job hours','<input type="number" step="0.5" min="0" value="'+attr(j.jobHours||0)+'" onchange="setJobField(\''+j.id+'\',\'jobHours\',Number(this.value)||0)">')+
   '</div>';
 }
 function toggleMech(id,mid){ var j=jobById(id); var arr=j.mechanicIds||[]; var i=arr.indexOf(mid);
   if(i>=0) arr.splice(i,1); else arr.push(mid); j.mechanicIds=arr.filter(function(x){return x;}); persist(); render(); }
 function setJobField(id,f,v){ var j=jobById(id); j[f]=v; persist(); }
 
-/* ---- Job details / notes panel -------------------------------------------- */
+/* ---- Job details / notes panel --------------------------------------------
+   Auto-filled summary — every value is sourced from the Ingress form, the
+   Vehicle Check-in and the Assignment tab; nothing is entered here directly
+   (Edit is available for corrections). Missing required ingress fields are
+   flagged so staff know what still blocks the Post Job Report. */
 function jobDetailsPanel(j){
+  var insp=j.inspection||{};
+  var missing=jobMissingFields(j);
+  var banner = missing.length
+    ? '<div class="due-banner"><span class="amber">⚑ Incomplete ingress — finish before Post Job Report: '+missing.map(esc).join(', ')+'</span></div>'
+    : '';
   return '<div class="card"><div class="card-head"><h2>Job Details</h2><button class="btn sm" onclick="editJobDetails(\''+j.id+'\')">Edit</button></div>'+
+    banner+
     '<div class="ksmall">'+
-      kv('Owner', esc(j.owner))+ kv('Contact', esc(j.contactPerson+' · '+j.contactNumber))+
-      kv('Vehicle', esc((j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:'')))+ kv('Chassis #', esc(j.chassis||'—'))+
+      /* from Ingress */
+      kv('Owner', esc(j.owner||'—'))+ kv('Contact', esc((j.contactPerson||'')+' · '+(j.contactNumber||'')))+
+      kv('Address', esc(j.address||'—'))+ kv('Chassis #', esc(j.chassis||'—'))+
+      kv('Vehicle', esc((j.year+' '+j.make+' '+j.model).trim()||'—'))+ kv('Variant', esc(j.variant||'—'))+
       kv('Date in', fmtDate(j.dateIn))+ kv('ETD', fmtDate(j.etd))+
-      kv('Ingress odometer', num(j.odometer)+' km')+ kv('Job hours', num(j.jobHours))+
-      (j.lastServiceOdo? kv('Last service odometer', num(j.lastServiceOdo)+' km') : '')+
-      kv('Assessed by', esc(staffName(j.assessedBy)))+
+      kv('Ingress odometer', odo(j.odometer))+
+      (j.lastServiceOdo? kv('Last service odometer', odo(j.lastServiceOdo)) : '')+
+      /* from Vehicle Check-in */
+      kv('Fuel level', fmtFuel(insp.fuel))+ kv('Condition', esc(insp.condition||'—'))+
+      /* from Assignment */
+      kv('Service Adviser', esc(staffName(j.saId)))+ kv('Mechanic(s)', esc(mechName(j.mechanicIds)))+
+      kv('Service Bay', esc(bayName(j.bayId)))+ kv('Parts Salesman', esc(staffName(j.partsSalesman)))+
+      kv('Job hours', num(j.jobHours))+ kv('Assessed by', esc(staffName(j.assessedBy)))+
       kv('SI ref', esc(j.siRef||'—'))+ kv('PMS ref', esc(j.pmsRef||'—'))+
     '</div>'+
-    (j.notes? '<div class="notes"><b>Service notes</b><p>'+esc(j.notes)+'</p></div>':'')+
+    (j.notes? '<div class="notes"><b>Concerns / reported issues</b><p>'+esc(j.notes)+'</p></div>':'')+
   '</div>';
 }
 function editJobDetails(id){
@@ -1843,6 +1895,9 @@ function editJobDetails(id){
     field('Contact #','<input id="jdContact" value="'+attr(j.contactNumber)+'">')+
     field('Customer TIN','<input id="jdTin" value="'+attr(j.customerTin||'')+'">')+
     field('Chassis #','<input id="jdChassis" value="'+attr(j.chassis)+'">')+
+    field('Year','<input id="jdYear" type="number" value="'+attr(j.year||'')+'">')+
+    field('Make','<input id="jdMake" value="'+attr(j.make||'')+'">')+
+    field('Model','<input id="jdModel" value="'+attr(j.model||'')+'">')+
     field('Variant','<input id="jdVariant" value="'+attr(j.variant||'')+'">')+
     field('Date in','<input id="jdDateIn" type="date" value="'+attr(j.dateIn)+'">')+
     field('ETD','<input id="jdEtd" type="date" value="'+attr(j.etd)+'">')+
@@ -1860,7 +1915,7 @@ var jdCtx=null;
 function saveJobDetails(){
   var j=jobById(jdCtx);
   j.owner=val('jdOwner'); j.address=val('jdAddr'); j.contactPerson=val('jdCP'); j.contactNumber=val('jdContact');
-  j.customerTin=val('jdTin'); j.chassis=val('jdChassis'); j.variant=val('jdVariant'); j.dateIn=val('jdDateIn'); j.etd=val('jdEtd');
+  j.customerTin=val('jdTin'); j.chassis=val('jdChassis'); j.year=val('jdYear'); j.make=val('jdMake'); j.model=val('jdModel'); j.variant=val('jdVariant'); j.dateIn=val('jdDateIn'); j.etd=val('jdEtd');
   j.odometer=Number(val('jdOdo'))||0; j.lastServiceOdo=val('jdLastOdo')===''?'':Number(val('jdLastOdo'))||0; j.jobHours=Number(val('jdHours'))||0; j.assessedBy=val('jdAssess');
   j.siRef=val('jdSI'); j.pmsRef=val('jdPMS'); j.notes=val('jdNotes');
   persist(); closeModal(); render();
@@ -1917,6 +1972,16 @@ function quickC3(id){ var j=jobById(id); j.status='C3'; j.statusLog.push({time:n
 
 function advancePostJob(id){
   var j=jobById(id);
+  var missing=jobMissingFields(j);
+  if(missing.length){
+    openModal('Complete ingress first',
+      '<p class="muted small">The Post Job Report can’t be created until every ingress field is complete. Still missing:</p>'+
+      '<p><b>'+missing.map(esc).join(', ')+'</b></p>'+
+      '<p class="muted small">Fill these in <b>Job Details → Edit</b> (or Check-in / Assignment), then try again.</p>',
+      { footer:'<button class="btn ghost" onclick="closeModal()">Close</button>'+
+        '<button class="btn primary" onclick="closeModal();editJobDetails(\''+j.id+'\')">Edit Job Details</button>', width:'520px' });
+    return;
+  }
   j.approvedReleaseBy = val('apvRel') || j.saId;
   deductInventory(j);
   j.stage='Post Job Report';
@@ -2001,16 +2066,27 @@ function createEstimateFrom(base){
   return e;
 }
 
-VIEWS.estimates = function(){
-  var rows = S.estimates.map(function(e){
+var EST_Q='';
+function estMatch(e){
+  if(!EST_Q) return true; var q=EST_Q.toLowerCase();
+  return [e.no,e.plate,e.owner,e.contactPerson,e.contactNumber,e.make+' '+e.model].some(function(x){ return String(x||'').toLowerCase().indexOf(q)>=0; });
+}
+function estimatesBodyHTML(){
+  var list=S.estimates.filter(estMatch);
+  if(!list.length) return emptyState(EST_Q? 'No estimates match “'+esc(EST_Q)+'”.' : 'No estimates. Create one from Ingress.');
+  var rows = list.map(function(e){
     return '<tr onclick="go(\'estimate\',\''+e.id+'\')"><td><b>'+esc(e.no)+'</b></td><td>'+esc(e.plate)+'</td>'+
       '<td>'+esc(e.make+' '+e.model)+'</td><td>'+chip(e.status, e.status==='Converted'?'ok':'')+'</td>'+
       '<td>'+esc(fmtDate(e.date))+'</td><td class="r">'+peso(estTotal(e))+'</td></tr>';
   }).join('');
-  return '<div class="page"><div class="page-head"><h1>Estimates</h1>'+
-    '<button class="btn primary" onclick="openIntake()">＋ New (via Intake)</button></div>'+
-    (S.estimates.length? '<div class="card pad0"><table class="tbl click"><thead><tr><th>EST #</th><th>Plate</th><th>Vehicle</th><th>Status</th><th>Date</th><th class="r">Total</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
-      : emptyState('No estimates. Create one from Intake.'))+'</div>';
+  return '<div class="card pad0"><table class="tbl click"><thead><tr><th>EST #</th><th>Plate</th><th>Vehicle</th><th>Status</th><th>Date</th><th class="r">Total</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+}
+function estimatesSearch(v){ EST_Q=v; var el=document.getElementById('estBody'); if(el) el.innerHTML=estimatesBodyHTML(); }
+VIEWS.estimates = function(){
+  var search='<input class="searchbox" id="estSearch" value="'+attr(EST_Q)+'" oninput="estimatesSearch(this.value)" placeholder="Search EST# / plate / owner / contact…" autocomplete="off">';
+  return '<div class="page"><div class="page-head"><h1>Estimates</h1><div class="row gap wrap">'+search+
+    '<button class="btn primary" onclick="openIntake()">＋ New (via Ingress)</button></div></div>'+
+    '<div id="estBody">'+estimatesBodyHTML()+'</div></div>';
 };
 
 function estTotal(e){ return sumLines(e.lines); }
@@ -2114,7 +2190,7 @@ function vehBodyHTML(){
     var due = v.nextServiceDate && v.nextServiceDate<=todayISO();
     var soon = v.nextServiceDate && v.nextServiceDate<=todayISO(new Date(Date.now()+14*86400000));
     return '<tr onclick="go(\'vehicle\',\''+v.id+'\')"><td><b>'+esc(v.plate)+'</b></td><td>'+esc(v.owner)+'</td>'+
-      '<td>'+esc((v.year+' '+v.make+' '+v.model).trim()+(v.variant?' '+v.variant:''))+'</td><td class="r">'+num(v.odometer)+'</td>'+
+      '<td>'+esc((v.year+' '+v.make+' '+v.model).trim()+(v.variant?' '+v.variant:''))+'</td><td class="r">'+odo(v.odometer)+'</td>'+
       '<td>'+(v.nextServiceDate? (due?chip('Overdue','due'):soon?chip('Due soon','gold'):fmtDate(v.nextServiceDate)) : '—')+'</td></tr>';
   }).join('');
   return '<div class="card pad0"><table class="tbl click"><thead><tr><th>Plate</th><th>Owner</th><th>Vehicle</th><th class="r">Odometer</th><th>Next service</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
@@ -2142,14 +2218,14 @@ VIEWS.vehicle = function(id){
     '<div class="colside">'+
       '<div class="card"><h2>Next service / PMS</h2>'+
         '<div class="nextsvc '+(due?'due':'')+'">'+(v.nextServiceDate? (due?'⚠ Overdue · ':'')+fmtDate(v.nextServiceDate) : 'Not scheduled')+
-        (v.nextServiceOdo?'<div class="muted small">or at '+num(v.nextServiceOdo)+' km (now '+num(v.odometer)+')</div>':'')+'</div></div>'+
+        (v.nextServiceOdo?'<div class="muted small">or at '+odo(v.nextServiceOdo)+' (now '+odo(v.odometer)+')</div>':'')+'</div></div>'+
       '<div class="card center"><h2>Customer QR portal</h2><div id="vehQR" class="qrbox"></div>'+
         '<div class="row gap center mt8"><button class="btn sm ghost" onclick="printQRSticker(\''+v.id+'\')">⎙ Print sticker</button>'+
         '<button class="btn sm ghost" onclick="previewPortal(\''+v.id+'\')">Preview portal</button></div>'+
         '<div class="muted small mt8">Scans resolve once hosted at:<br><code class="qr-url">'+esc(portalLink(v.id))+'</code></div></div>'+
       '<div class="card"><h2>Owner / Vehicle</h2><div class="ksmall">'+
         kv('Owner',esc(v.owner))+kv('Address',esc(v.address||'—'))+kv('Contact',esc(v.contactPerson+' · '+v.contactNumber))+
-        kv('Chassis #',esc(v.chassis||'—'))+kv('Year/Make/Model',esc(v.year+' '+v.make+' '+v.model))+kv('Variant',esc(v.variant||'—'))+kv('Last service odo',num(v.odometer)+' km')+'</div></div>'+
+        kv('Chassis #',esc(v.chassis||'—'))+kv('Year/Make/Model',esc(v.year+' '+v.make+' '+v.model))+kv('Variant',esc(v.variant||'—'))+kv('Last service odo',odo(v.odometer))+'</div></div>'+
     '</div></div></div>';
 };
 
@@ -2838,7 +2914,7 @@ function docJobOrder(j){
         ['PMS ref', esc(j.pmsRef)] ])+
       lines+
       (j.notes?'<div class="notes"><b>Service notes:</b> '+esc(j.notes)+'</div>':'')+
-      '<div class="notes"><b>Inspection:</b> Fuel '+esc((j.inspection||{}).fuel||'—')+' · Lights '+esc((j.inspection||{}).lights||'None')+' · '+esc((j.inspection||{}).condition||'')+'</div>'+
+      '<div class="notes"><b>Inspection:</b> Fuel '+esc(fmtFuel((j.inspection||{}).fuel))+' · Lights '+esc((j.inspection||{}).lights||'None')+' · '+esc((j.inspection||{}).condition||'')+'</div>'+
       cl+
       '<div class="sig-grid"><div class="sigline">Assessed by (Senior Mechanic)<br>'+esc(staffName(j.assessedBy))+'</div>'+
         '<div class="sigline">Service Adviser<br>'+esc(staffName(j.saId))+'</div>'+
@@ -3109,6 +3185,7 @@ if (typeof module!=='undefined' && module.exports){
     arJobs:arJobs, jobByNo:jobByNo, vehicleByPlate:vehicleByPlate, partById:partById,
     can:can, routeAllowed:routeAllowed, setCurrentUser:function(u){ CURRENT_USER=u; },
     commissionTable:commissionTable, jobLaborCommission:jobLaborCommission, jobLaborCommissionMap:jobLaborCommissionMap, jobLaborCommissionMapAll:jobLaborCommissionMapAll, laborTotal:laborTotal,
+    jobMissingFields:jobMissingFields, fmtFuel:fmtFuel, odo:odo,
     advancePostJob:null
   };
 }

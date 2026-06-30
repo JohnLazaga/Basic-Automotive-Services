@@ -105,7 +105,7 @@ function boardKanban(active){
   }).join('')+'</div>';
 }
 function boardList(active){
-  if(!active.length) return emptyState('No active units. Create a Job Order from Appointments or Intake.');
+  if(!active.length) return emptyState('No active units. Create a Job Order from Appointments or Ingress.');
   var rows = active.map(function(j){
     var due=isUpdateDue(j);
     return '<tr onclick="go(\'job\',\''+j.id+'\')">'+

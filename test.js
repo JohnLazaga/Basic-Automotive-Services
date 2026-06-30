@@ -116,6 +116,20 @@ section('5. Commission: admin-set per-staff rate × labor (not a shared pool)');
   ok('evaluation map shows excluded person would-earn 25.00', evalMap[mech[0].id]===25);
 })();
 
+/* ------------------------------------------------------- TEST 5b: ingress */
+section('5b. Ingress completeness gate + formatters');
+(function(){
+  const s=fresh();
+  ok('seeded job has no missing ingress fields', M.jobMissingFields(s.jobs[0]).length===0);
+  const bare={ plate:'NEW 1', owner:'', contactPerson:'', contactNumber:'', address:'', chassis:'', year:'', make:'', model:'', variant:'', odometer:0 };
+  const miss=M.jobMissingFields(bare);
+  ok('blank ingress flags Variant and Ingress odometer', miss.indexOf('Variant')>=0 && miss.indexOf('Ingress odometer')>=0);
+  ok('plate present is not flagged', miss.indexOf('Plate')<0);
+  ok('odo() formats with comma + km', M.odo(48250)==='48,250 km');
+  ok('fmtFuel numeric -> percent', M.fmtFuel(50)==='50%');
+  ok('fmtFuel blank -> dash', M.fmtFuel('')==='—');
+})();
+
 /* ---------------------------------------------------------------- TEST 6 */
 section('6. Inventory: Post Job deducts (idempotent); PO receive adds back');
 (function(){

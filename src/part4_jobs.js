@@ -54,9 +54,24 @@ function createJobFromAppt(a){
   });
 }
 
-/* ---- Intake --------------------------------------------------------------- */
-function openIntake(){
-  openModal('Intake — front desk', intakeForm({}), {
+/* ---- Ingress (front-desk intake) ------------------------------------------ */
+/* Fields that must be filled for a complete ingress. The Job Order can be created
+   with gaps (finish later), but a Post Job Report can NOT be created until these
+   are all complete. */
+var INGRESS_REQUIRED = [
+  ['plate','Plate'],['owner','Registered owner'],['contactPerson','Contact person'],
+  ['contactNumber','Contact #'],['address','Address'],['chassis','Chassis #'],
+  ['year','Year'],['make','Make'],['model','Model'],['variant','Variant'],
+  ['odometer','Ingress odometer'] ];
+function jobMissingFields(j){
+  return INGRESS_REQUIRED.filter(function(f){
+    var v=j[f[0]];
+    if(f[0]==='odometer') return !(Number(v)>0);
+    return !String(v==null?'':v).trim();
+  }).map(function(f){ return f[1]; });
+}
+function openIntake(draft){
+  openModal('Ingress — front desk', intakeForm(draft||{}), {
     footer:'<button class="btn ghost" onclick="closeModal()">Cancel</button>'+
       '<button class="btn ghost" onclick="intakeSubmit(\'estimate\')">Create Estimate</button>'+
       '<button class="btn primary" onclick="intakeSubmit(\'job\')">Create Job Order</button>', width:'680px' });
@@ -85,10 +100,25 @@ function intakeSubmit(kind){
     address:val('inAddr'), chassis:val('inChassis'), year:val('inYear'), make:val('inMake'), model:val('inModel'), variant:val('inVariant'),
     odometer:Number(val('inOdo'))||0, notes:val('inNotes') };
   if (!base.plate){ toast('Plate is required','err'); return; }
-  closeModal();
-  if (kind==='estimate'){ var e=createEstimateFrom(base); go('estimate', e.id); }
-  else { var j=createJob(base); toast('Job Order '+j.no+' created'); go('job', j.id); }
+  if (kind==='estimate'){ closeModal(); var e=createEstimateFrom(base); go('estimate', e.id); return; }
+  // Job Order: if ingress is incomplete, prompt to finish now or proceed and complete later.
+  var missing = jobMissingFields(base);
+  if (missing.length){ _ingressDraft=base; promptIncompleteIngress(missing); return; }
+  closeModal(); var j=createJob(base); toast('Job Order '+j.no+' created'); go('job', j.id);
 }
+var _ingressDraft=null;
+function promptIncompleteIngress(missing){
+  openModal('Complete ingress details?',
+    '<p class="muted small">These fields are still blank:</p>'+
+    '<p><b>'+missing.map(esc).join(', ')+'</b></p>'+
+    '<p class="muted small">You can create the Job Order now and finish them later in Job Details — '+
+    'but the <b>Post Job Report cannot be created</b> until every field is complete.</p>',
+    { footer:'<button class="btn ghost" onclick="reopenIngress()">‹ Go back &amp; complete</button>'+
+      '<span style="flex:1"></span>'+
+      '<button class="btn primary" onclick="createJobAnyway()">Create, finish later</button>', width:'520px' });
+}
+function reopenIngress(){ openIntake(_ingressDraft||{}); }
+function createJobAnyway(){ var b=_ingressDraft||{}; _ingressDraft=null; closeModal(); var j=createJob(b); toast('Job Order '+j.no+' created — complete the remaining details later'); go('job', j.id); }
 
 /* ---- Job Orders list ------------------------------------------------------ */
 var JOB_Q='';
@@ -98,7 +128,7 @@ function jobMatch(j){
 }
 function jobsBodyHTML(){
   var jobs=S.jobs.filter(jobMatch);
-  if(!jobs.length) return emptyState(JOB_Q? 'No job orders match “'+esc(JOB_Q)+'”.' : 'No job orders yet. Click New Intake.');
+  if(!jobs.length) return emptyState(JOB_Q? 'No job orders match “'+esc(JOB_Q)+'”.' : 'No job orders yet. Click New Ingress.');
   var rows = jobs.map(function(j){
     return '<tr onclick="go(\'job\',\''+j.id+'\')">'+
       '<td><b>'+esc(j.no)+'</b></td><td>'+esc(j.plate)+'</td>'+
@@ -117,7 +147,7 @@ function jobsSearch(v){ JOB_Q=v; var el=document.getElementById('jobsBody'); if(
 VIEWS.jobs = function(){
   var search='<input class="searchbox" id="jobsSearch" value="'+attr(JOB_Q)+'" oninput="jobsSearch(this.value)" placeholder="Search JO# / plate / owner / contact…" autocomplete="off">';
   return '<div class="page"><div class="page-head"><h1>Job Orders</h1><div class="row gap wrap">'+search+
-    '<button class="btn primary" onclick="openIntake()">＋ New Intake</button></div></div>'+
+    '<button class="btn primary" onclick="openIntake()">＋ New Ingress</button></div></div>'+
     '<div id="jobsBody">'+jobsBodyHTML()+'</div>'+
   '</div>';
 };
@@ -369,7 +399,7 @@ function jobInspectionPanel(j){
   return '<div class="card"><div class="card-head"><h2>Vehicle Check-in</h2>'+
     '<button class="btn sm" onclick="editInspection(\''+j.id+'\')">Edit check-in</button></div>'+
     '<div class="grid2 ksmall">'+
-      kv('Ingress odometer', num(insp.odometer)+' km')+ kv('Fuel level', insp.fuel||'—')+
+      kv('Ingress odometer', odo(insp.odometer))+ kv('Fuel level', fmtFuel(insp.fuel))+
       kv('Dash lights / DTC', insp.lights||'None')+ kv('Condition', insp.condition||'—')+
     '</div>'+
     (cl.created? '<div class="checklist"><div class="cl-title">Items left in vehicle '+(cl.leaveUnit?'':'(unit not left)')+'</div>'+
@@ -385,7 +415,7 @@ function editInspection(id){
     return '<label class="chk small"><input type="checkbox" id="ck_'+btoa(it).replace(/=/g,'')+'" '+(on?'checked':'')+'> '+esc(it)+'</label>'; }).join('');
   openModal('Vehicle check-in inspection',
     '<div class="grid2">'+field('Ingress odometer','<input id="isOdo" type="number" value="'+attr(insp.odometer||j.odometer)+'">')+
-    field('Fuel level','<input id="isFuel" value="'+attr(insp.fuel||'')+'" placeholder="e.g. 1/2">')+
+    field('Fuel level %','<input id="isFuel" type="number" min="0" max="100" value="'+attr(isFinite(insp.fuel)?insp.fuel:'')+'" placeholder="e.g. 50">')+
     field('Dash lights / DTC','<input id="isLights" value="'+attr(insp.lights||'')+'">')+
     field('General condition','<input id="isCond" value="'+attr(insp.condition||'')+'">')+'</div>'+
     '<label class="chk"><input type="checkbox" id="isLeave" '+(cl.leaveUnit?'checked':'')+'> Customer is leaving the unit (create items checklist)</label>'+
@@ -397,7 +427,7 @@ function editInspection(id){
 var isCtx=null;
 function saveInspection(){
   var j=jobById(isCtx);
-  j.inspection={ odometer:Number(val('isOdo'))||0, fuel:val('isFuel'), lights:val('isLights'), condition:val('isCond'), testDrive:j.inspection&&j.inspection.testDrive||'' };
+  j.inspection={ odometer:Number(val('isOdo'))||0, fuel:(val('isFuel')===''?'':Number(val('isFuel'))||0), lights:val('isLights'), condition:val('isCond'), testDrive:j.inspection&&j.inspection.testDrive||'' };
   var leave=checked('isLeave'); var items={};
   CHECKLIST_ITEMS.forEach(function(it){ items[it]=checked('ck_'+btoa(it).replace(/=/g,'')); });
   j.checklist={ created:leave, leaveUnit:leave, items:items, bodyNotes:val('isBody') };
@@ -452,25 +482,43 @@ function jobAssignPanel(j){
       '<label class="chk small"><input type="checkbox" '+((j.mechanicIds||[]).indexOf('TBA')>=0?'checked':'')+' onchange="toggleMech(\''+j.id+'\',\'TBA\')"> TBA</label></div></div>'+
     field('Service Bay','<select onchange="setJobField(\''+j.id+'\',\'bayId\',this.value)">'+optionList(S.bays,j.bayId,true)+'</select>')+
     field('Parts Salesman','<select onchange="setJobField(\''+j.id+'\',\'partsSalesman\',this.value)">'+optionList(staffByRole('Parts Salesman'),j.partsSalesman,true)+'</select>')+
+    field('Job hours','<input type="number" step="0.5" min="0" value="'+attr(j.jobHours||0)+'" onchange="setJobField(\''+j.id+'\',\'jobHours\',Number(this.value)||0)">')+
   '</div>';
 }
 function toggleMech(id,mid){ var j=jobById(id); var arr=j.mechanicIds||[]; var i=arr.indexOf(mid);
   if(i>=0) arr.splice(i,1); else arr.push(mid); j.mechanicIds=arr.filter(function(x){return x;}); persist(); render(); }
 function setJobField(id,f,v){ var j=jobById(id); j[f]=v; persist(); }
 
-/* ---- Job details / notes panel -------------------------------------------- */
+/* ---- Job details / notes panel --------------------------------------------
+   Auto-filled summary — every value is sourced from the Ingress form, the
+   Vehicle Check-in and the Assignment tab; nothing is entered here directly
+   (Edit is available for corrections). Missing required ingress fields are
+   flagged so staff know what still blocks the Post Job Report. */
 function jobDetailsPanel(j){
+  var insp=j.inspection||{};
+  var missing=jobMissingFields(j);
+  var banner = missing.length
+    ? '<div class="due-banner"><span class="amber">⚑ Incomplete ingress — finish before Post Job Report: '+missing.map(esc).join(', ')+'</span></div>'
+    : '';
   return '<div class="card"><div class="card-head"><h2>Job Details</h2><button class="btn sm" onclick="editJobDetails(\''+j.id+'\')">Edit</button></div>'+
+    banner+
     '<div class="ksmall">'+
-      kv('Owner', esc(j.owner))+ kv('Contact', esc(j.contactPerson+' · '+j.contactNumber))+
-      kv('Vehicle', esc((j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:'')))+ kv('Chassis #', esc(j.chassis||'—'))+
+      /* from Ingress */
+      kv('Owner', esc(j.owner||'—'))+ kv('Contact', esc((j.contactPerson||'')+' · '+(j.contactNumber||'')))+
+      kv('Address', esc(j.address||'—'))+ kv('Chassis #', esc(j.chassis||'—'))+
+      kv('Vehicle', esc((j.year+' '+j.make+' '+j.model).trim()||'—'))+ kv('Variant', esc(j.variant||'—'))+
       kv('Date in', fmtDate(j.dateIn))+ kv('ETD', fmtDate(j.etd))+
-      kv('Ingress odometer', num(j.odometer)+' km')+ kv('Job hours', num(j.jobHours))+
-      (j.lastServiceOdo? kv('Last service odometer', num(j.lastServiceOdo)+' km') : '')+
-      kv('Assessed by', esc(staffName(j.assessedBy)))+
+      kv('Ingress odometer', odo(j.odometer))+
+      (j.lastServiceOdo? kv('Last service odometer', odo(j.lastServiceOdo)) : '')+
+      /* from Vehicle Check-in */
+      kv('Fuel level', fmtFuel(insp.fuel))+ kv('Condition', esc(insp.condition||'—'))+
+      /* from Assignment */
+      kv('Service Adviser', esc(staffName(j.saId)))+ kv('Mechanic(s)', esc(mechName(j.mechanicIds)))+
+      kv('Service Bay', esc(bayName(j.bayId)))+ kv('Parts Salesman', esc(staffName(j.partsSalesman)))+
+      kv('Job hours', num(j.jobHours))+ kv('Assessed by', esc(staffName(j.assessedBy)))+
       kv('SI ref', esc(j.siRef||'—'))+ kv('PMS ref', esc(j.pmsRef||'—'))+
     '</div>'+
-    (j.notes? '<div class="notes"><b>Service notes</b><p>'+esc(j.notes)+'</p></div>':'')+
+    (j.notes? '<div class="notes"><b>Concerns / reported issues</b><p>'+esc(j.notes)+'</p></div>':'')+
   '</div>';
 }
 function editJobDetails(id){
@@ -483,6 +531,9 @@ function editJobDetails(id){
     field('Contact #','<input id="jdContact" value="'+attr(j.contactNumber)+'">')+
     field('Customer TIN','<input id="jdTin" value="'+attr(j.customerTin||'')+'">')+
     field('Chassis #','<input id="jdChassis" value="'+attr(j.chassis)+'">')+
+    field('Year','<input id="jdYear" type="number" value="'+attr(j.year||'')+'">')+
+    field('Make','<input id="jdMake" value="'+attr(j.make||'')+'">')+
+    field('Model','<input id="jdModel" value="'+attr(j.model||'')+'">')+
     field('Variant','<input id="jdVariant" value="'+attr(j.variant||'')+'">')+
     field('Date in','<input id="jdDateIn" type="date" value="'+attr(j.dateIn)+'">')+
     field('ETD','<input id="jdEtd" type="date" value="'+attr(j.etd)+'">')+
@@ -500,7 +551,7 @@ var jdCtx=null;
 function saveJobDetails(){
   var j=jobById(jdCtx);
   j.owner=val('jdOwner'); j.address=val('jdAddr'); j.contactPerson=val('jdCP'); j.contactNumber=val('jdContact');
-  j.customerTin=val('jdTin'); j.chassis=val('jdChassis'); j.variant=val('jdVariant'); j.dateIn=val('jdDateIn'); j.etd=val('jdEtd');
+  j.customerTin=val('jdTin'); j.chassis=val('jdChassis'); j.year=val('jdYear'); j.make=val('jdMake'); j.model=val('jdModel'); j.variant=val('jdVariant'); j.dateIn=val('jdDateIn'); j.etd=val('jdEtd');
   j.odometer=Number(val('jdOdo'))||0; j.lastServiceOdo=val('jdLastOdo')===''?'':Number(val('jdLastOdo'))||0; j.jobHours=Number(val('jdHours'))||0; j.assessedBy=val('jdAssess');
   j.siRef=val('jdSI'); j.pmsRef=val('jdPMS'); j.notes=val('jdNotes');
   persist(); closeModal(); render();
@@ -557,6 +608,16 @@ function quickC3(id){ var j=jobById(id); j.status='C3'; j.statusLog.push({time:n
 
 function advancePostJob(id){
   var j=jobById(id);
+  var missing=jobMissingFields(j);
+  if(missing.length){
+    openModal('Complete ingress first',
+      '<p class="muted small">The Post Job Report can’t be created until every ingress field is complete. Still missing:</p>'+
+      '<p><b>'+missing.map(esc).join(', ')+'</b></p>'+
+      '<p class="muted small">Fill these in <b>Job Details → Edit</b> (or Check-in / Assignment), then try again.</p>',
+      { footer:'<button class="btn ghost" onclick="closeModal()">Close</button>'+
+        '<button class="btn primary" onclick="closeModal();editJobDetails(\''+j.id+'\')">Edit Job Details</button>', width:'520px' });
+    return;
+  }
   j.approvedReleaseBy = val('apvRel') || j.saId;
   deductInventory(j);
   j.stage='Post Job Report';

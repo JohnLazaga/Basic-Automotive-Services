@@ -53,6 +53,10 @@ var PHP = new Intl.NumberFormat('en-PH', { style:'currency', currency:'PHP' });
 function peso(n){ return PHP.format(Number(n)||0); }
 function num(n){ return (Number(n)||0).toLocaleString('en-PH'); }
 function round2(n){ return Math.round((Number(n)||0)*100)/100; }
+/* Odometer reading: thousands comma + " km". */
+function odo(n){ return num(Number(n)||0)+' km'; }
+/* Fuel level as a percentage. Numeric -> "n%"; legacy free-text shown as-is; blank -> "—". */
+function fmtFuel(f){ if(f===''||f===null||f===undefined) return '—'; return isFinite(f)? (Number(f)+'%') : String(f); }
 
 function esc(s){
   if (s===null || s===undefined) return '';
@@ -287,7 +291,7 @@ function seedState(){
 
   var v1 = { id:uid('vh'), plate:'ABC 1234', owner:'Maria Dela Cruz', address:'12 Mapagkawanggawa St., Fairview, QC',
              contactPerson:'Maria Dela Cruz', contactNumber:'0917 555 1234', chassis:'MHFXX1234X0012345',
-             year:2019, make:'Toyota', model:'Vios', odometer:48250, nextServiceDate:'2026-09-01', nextServiceOdo:53000 };
+             year:2019, make:'Toyota', model:'Vios', variant:'1.3 E', odometer:48250, nextServiceDate:'2026-09-01', nextServiceOdo:53000 };
   var v2 = { id:uid('vh'), plate:'XYZ 8899', owner:'Jowil Motor Sales Inc.', address:'Commonwealth Ave., Fairview, QC',
              contactPerson:'Fleet Desk', contactNumber:'0998 222 1010', chassis:'JN1XX8899X0098765',
              year:2021, make:'Mitsubishi', model:'Montero Sport', odometer:31200, nextServiceDate:'2026-07-05', nextServiceOdo:35000 };
@@ -297,7 +301,7 @@ function seedState(){
     id:uid('job'), no:'JO-0001', stage:'Job Order',
     plate:v1.plate, vehicleId:v1.id, owner:v1.owner, address:v1.address,
     contactPerson:v1.contactPerson, contactNumber:v1.contactNumber, chassis:v1.chassis,
-    year:v1.year, make:v1.make, model:v1.model, customerTin:'',
+    year:v1.year, make:v1.make, model:v1.model, variant:v1.variant, customerTin:'',
     dateIn:todayISO(now), etd:todayISO(new Date(now.getTime()+86400000)), odometer:48250, jobHours:3,
     assessedBy:sm.id, saId:sa.id, mechanicIds:[m1.id], bayId:bayA.id,
     lines:[
@@ -308,7 +312,7 @@ function seedState(){
     ],
     partsSalesman:ps.id, siRef:'SI-2026-0456', pmsRef:'PMS-7781',
     notes:'Customer reports ticking noise on cold start. Check oil level & filter.',
-    inspection:{ odometer:48250, fuel:'1/2', lights:'None', condition:'Good, minor scratches RR door', testDrive:'' },
+    inspection:{ odometer:48250, fuel:50, lights:'None', condition:'Good, minor scratches RR door', testDrive:'' },
     checklist:{ created:true, leaveUnit:true, items:{ 'Spare tire':true,'Jack & wrench':true,'Floor mats':true,'Stereo':true,'OR/CR':false,'Valuables':false }, bodyNotes:'Scratch on rear right door logged.' },
     status:'B2', statusLog:[
       { time:new Date(now.getTime()-7200000).toISOString(), code:'A1', by:sa.id, note:'Unit received at front desk.' },

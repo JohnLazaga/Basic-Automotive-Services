@@ -14,16 +14,27 @@ function createEstimateFrom(base){
   return e;
 }
 
-VIEWS.estimates = function(){
-  var rows = S.estimates.map(function(e){
+var EST_Q='';
+function estMatch(e){
+  if(!EST_Q) return true; var q=EST_Q.toLowerCase();
+  return [e.no,e.plate,e.owner,e.contactPerson,e.contactNumber,e.make+' '+e.model].some(function(x){ return String(x||'').toLowerCase().indexOf(q)>=0; });
+}
+function estimatesBodyHTML(){
+  var list=S.estimates.filter(estMatch);
+  if(!list.length) return emptyState(EST_Q? 'No estimates match “'+esc(EST_Q)+'”.' : 'No estimates. Create one from Ingress.');
+  var rows = list.map(function(e){
     return '<tr onclick="go(\'estimate\',\''+e.id+'\')"><td><b>'+esc(e.no)+'</b></td><td>'+esc(e.plate)+'</td>'+
       '<td>'+esc(e.make+' '+e.model)+'</td><td>'+chip(e.status, e.status==='Converted'?'ok':'')+'</td>'+
       '<td>'+esc(fmtDate(e.date))+'</td><td class="r">'+peso(estTotal(e))+'</td></tr>';
   }).join('');
-  return '<div class="page"><div class="page-head"><h1>Estimates</h1>'+
-    '<button class="btn primary" onclick="openIntake()">＋ New (via Intake)</button></div>'+
-    (S.estimates.length? '<div class="card pad0"><table class="tbl click"><thead><tr><th>EST #</th><th>Plate</th><th>Vehicle</th><th>Status</th><th>Date</th><th class="r">Total</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
-      : emptyState('No estimates. Create one from Intake.'))+'</div>';
+  return '<div class="card pad0"><table class="tbl click"><thead><tr><th>EST #</th><th>Plate</th><th>Vehicle</th><th>Status</th><th>Date</th><th class="r">Total</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+}
+function estimatesSearch(v){ EST_Q=v; var el=document.getElementById('estBody'); if(el) el.innerHTML=estimatesBodyHTML(); }
+VIEWS.estimates = function(){
+  var search='<input class="searchbox" id="estSearch" value="'+attr(EST_Q)+'" oninput="estimatesSearch(this.value)" placeholder="Search EST# / plate / owner / contact…" autocomplete="off">';
+  return '<div class="page"><div class="page-head"><h1>Estimates</h1><div class="row gap wrap">'+search+
+    '<button class="btn primary" onclick="openIntake()">＋ New (via Ingress)</button></div></div>'+
+    '<div id="estBody">'+estimatesBodyHTML()+'</div></div>';
 };
 
 function estTotal(e){ return sumLines(e.lines); }
