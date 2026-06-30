@@ -1422,10 +1422,11 @@ function createJobFromAppt(a){
 /* Fields that must be filled for a complete ingress. The Job Order can be created
    with gaps (finish later), but a Post Job Report can NOT be created until these
    are all complete. */
+/* Variant is OPTIONAL — not every vehicle has a named variant. */
 var INGRESS_REQUIRED = [
   ['plate','Plate'],['owner','Registered owner'],['contactPerson','Contact person'],
   ['contactNumber','Contact #'],['address','Address'],['chassis','Chassis #'],
-  ['year','Year'],['make','Make'],['model','Model'],['variant','Variant'],
+  ['year','Year'],['make','Make'],['model','Model'],
   ['odometer','Ingress odometer'] ];
 function jobMissingFields(j){
   return INGRESS_REQUIRED.filter(function(f){
