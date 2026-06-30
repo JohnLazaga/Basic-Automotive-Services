@@ -129,6 +129,11 @@ section('5b. Ingress completeness gate + formatters');
   ok('odo() formats with comma + km', M.odo(48250)==='48,250 km');
   ok('fmtFuel numeric -> percent', M.fmtFuel(50)==='50%');
   ok('fmtFuel blank -> dash', M.fmtFuel('')==='—');
+  // OR series seed never reuses an already-issued number
+  const s2=fresh(); s2.shop.orNext=1001; s2.counters.or=1000;
+  s2.jobs=[{id:'a',orNumber:'OR-1005'},{id:'b',orNumber:'OR-1012'},{id:'c',orNumber:null}];
+  ok('orSeed continues above the highest issued OR (1013)', M.orSeed()===1013);
+  s2.jobs=[]; ok('orSeed floors at 1001 with no history', M.orSeed()===1001);
 })();
 
 /* ---------------------------------------------------------------- TEST 6 */

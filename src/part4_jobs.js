@@ -629,20 +629,53 @@ function deductInventory(j){
   j.inventoryDeducted=true;
 }
 function applyDiscount(id){ var j=jobById(id); j.discount={ type:val('dscType'), value:Number(val('dscVal'))||0 }; persist(); toast('Discount applied'); render(); }
+/* Lowest OR number that may still be issued — never below any already-issued OR,
+   so a fresh allocator can never reuse a number. */
+function orSeed(){
+  var hi=0;
+  (S.jobs||[]).forEach(function(x){ if(x&&x.orNumber){ var m=/(\d+)/.exec(String(x.orNumber)); if(m){ var v=Number(m[1]); if(v>hi) hi=v; } } });
+  return Math.max(hi+1, Number(S.shop.orNext)||0, (Number((S.counters||{}).or)||0)+1, 1001);
+}
+/* Allocate the next OR number ATOMICALLY. In cloud mode a Firestore transaction on
+   meta/orcounter hands out each number exactly once — even with several cashiers
+   billing at the same instant there can be NO duplicates. Offline falls back to a
+   local monotonic counter. */
+function allocateOrNumber(){
+  var seed = orSeed();
+  if (typeof cloudOn==='function' && cloudOn() && typeof FB!=='undefined' && FB && FB.ready && FB.db && FB.user){
+    var ref = FB.db.collection('meta').doc('orcounter');
+    return FB.db.runTransaction(function(t){
+      return t.get(ref).then(function(doc){
+        var stored = (doc.exists && Number(doc.data().next)>0) ? Number(doc.data().next) : 0;
+        var issue = Math.max(stored, seed);                 // never reuse / never go backward
+        t.set(ref, { next: issue+1, updatedAt:new Date().toISOString() }, { merge:true });
+        return issue;
+      });
+    }).then(function(issue){
+      if(S.counters) S.counters.or=issue;                   // keep local mirrors current
+      S.shop.orNext = issue+1;
+      return 'OR-'+String(issue);
+    });
+  }
+  if(!S.counters) S.counters={};
+  var n = Math.max(Number(S.counters.or)||0, seed);
+  S.counters.or = n; S.shop.orNext = n+1;
+  return Promise.resolve('OR-'+String(n));
+}
+var _issuingOR={};
 function advanceBilling(id){
   var j=jobById(id);
+  if(!j || j.stage!=='Post Job Report' || j.orNumber) return;   // already issued / wrong stage
+  if(_issuingOR[id]) return;                                     // in-flight guard (prevents double-click gaps)
+  _issuingOR[id]=true;
   j.discount={ type:val('dscType')||j.discount.type, value:Number(val('dscVal'))||j.discount.value||0 };
-  // OR/Invoice numbers use the shared meta/counters doc (writable by every active
-  // staff member, so it syncs) — NOT meta/shop.orNext, which only admins can write
-  // and so failed to persist for non-admin cashiers, breaking the series.
-  if(!S.counters) S.counters={};
-  var legacyNext = Number(S.shop.orNext)||0;                 // legacy "next OR" (admin-only store)
-  if (legacyNext-1 > (Number(S.counters.or)||0)) S.counters.or = legacyNext-1;   // never go backward
-  j.orNumber = nextNo('or','OR-',4);                          // increments & syncs via meta/counters
-  S.shop.orNext = (Number(S.counters.or)||0)+1;               // keep Settings display in sync (best-effort)
-  j.billedAt=new Date().toISOString();
-  j.stage='Final Billing';
-  persist(); toast('Final Billing issued · '+j.orNumber); render();
+  allocateOrNumber().then(function(orNo){
+    j.orNumber=orNo; j.billedAt=new Date().toISOString(); j.stage='Final Billing';
+    delete _issuingOR[id]; persist(); toast('Final Billing issued · '+orNo); render();
+  }).catch(function(err){
+    delete _issuingOR[id];
+    toast('Could not assign OR number — please try again.'+(err&&err.message?' ('+err.message+')':''),'err');
+  });
 }
 
 function jobPaymentBlock(j,b){
