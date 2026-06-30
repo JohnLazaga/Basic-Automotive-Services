@@ -130,8 +130,8 @@ function docBilling(j){
       ['Vehicle', esc((j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:'')+' · '+j.plate)],['JO #', esc(j.no)],
       ['Ingress odometer', num(j.odometer)+' km'],['Last service odometer', j.lastServiceOdo?num(j.lastServiceOdo)+' km':'—'] ])+
     pricedLinesTable(j,{sku:true})+ totalsBox(j,{discount:true})+
-    '<div class="sig-grid"><div class="sigline">Approved for release by (Supervisor)</div>'+
-      '<div class="sigline">Payment received by (Secretary)</div>'+
+    '<div class="sig-grid"><div class="sigline">Approved for release by (Supervisor)<br>'+esc(staffName(j.approvedReleaseBy))+'</div>'+
+      '<div class="sigline">Payment received by (Secretary)<br>'+esc(staffName(j.paymentReceivedBy))+'</div>'+
       '<div class="sigline">Unit Received by (Customer)<br>'+esc(j.owner||'')+'</div></div>'+
     '<div class="foot">THIS DOCUMENT IS NOT VALID FOR CLAIM OF INPUT TAX<br>'+
       esc(sh.name)+' · TIN '+esc(sh.tin)+' · '+esc(sh.address)+'</div>';

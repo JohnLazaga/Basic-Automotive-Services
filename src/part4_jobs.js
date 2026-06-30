@@ -27,7 +27,7 @@ function blankJob(){
     lines:[], partsSalesman:'', siRef:'', pmsRef:'', notes:'',
     inspection:{ odometer:0, fuel:'', lights:'', condition:'', testDrive:'' },
     checklist:{ created:false, leaveUnit:false, items:{}, bodyNotes:'' },
-    status:'A1', statusLog:[], addlWork:[], approvedReleaseBy:null,
+    status:'A1', statusLog:[], addlWork:[], approvedReleaseBy:null, paymentReceivedBy:null,
     discount:{ type:'amount', value:0 }, payments:[], orNumber:null, billedAt:null, releaseSignature:null,
     photos:[], inventoryDeducted:false };
 }
@@ -682,6 +682,10 @@ function jobPaymentBlock(j,b){
   var pays=(j.payments||[]).map(function(p){return '<div class="l2"><span>'+esc(fmtDate(p.date))+' · '+esc(p.method)+'</span><span>'+peso(p.amount)+'</span></div>';}).join('');
   var paid = b.balance<=0;
   return '<div class="bill-mini">'+line2('Total due', peso(b.gross),'tot')+line2('Paid', peso(b.paid))+line2('<b>Balance</b>','<b>'+peso(b.balance)+'</b>','tot')+'</div>'+
+    '<div class="grid2 mt8">'+
+      field('Approved for release by (Supervisor)','<select onchange="setJobField(\''+j.id+'\',\'approvedReleaseBy\',this.value)">'+optionList(staffByRole('SV'),j.approvedReleaseBy,true)+'</select>')+
+      field('Payment received by (Secretary)','<select onchange="setJobField(\''+j.id+'\',\'paymentReceivedBy\',this.value)">'+optionList(staffByRole('Secretary'),j.paymentReceivedBy,true)+'</select>')+
+    '</div>'+
     pays+
     (paid? '' : '<div class="grid2 mt8">'+field('Amount','<input id="pyAmt" type="number" step="0.01" value="'+attr(b.balance)+'">')+
       field('Method','<select id="pyMethod"><option>Cash</option><option>GCash</option><option>Card</option><option>Bank transfer</option><option>Charge account</option></select>')+'</div>'+
