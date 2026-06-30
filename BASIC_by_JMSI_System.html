@@ -902,11 +902,10 @@ function bindKeys(){
   if (_keysBound || typeof document==='undefined' || !document.addEventListener) return;
   _keysBound=true;
   document.addEventListener('keydown', function(e){
-    // ESC = back
+    // ESC = close any open modal, otherwise jump to the Operations Board
     if (e.key==='Escape' || e.keyCode===27){
       if (document.querySelector && document.querySelector('#modalRoot .modal-back')){ e.preventDefault(); closeModal(); return; }
-      var back={ job:'jobs', estimate:'estimates', vehicle:'vehicles', po:'purchaseorders' };
-      if (back[ROUTE.view]){ e.preventDefault(); go(back[ROUTE.view]); }
+      if (ROUTE.view!=='board'){ e.preventDefault(); go('board'); }
       return;
     }
     // ENTER = advance to next field (or submit on the last one)
@@ -1018,29 +1017,7 @@ function val(id){ var e=document.getElementById(id); return e? e.value : ''; }
 function checked(id){ var e=document.getElementById(id); return e? e.checked : false; }
 function setVal(id,v){ var e=document.getElementById(id); if(e) e.value=v; }
 
-/* ---- Signature pad -------------------------------------------------------- */
-var _sig = {};
-var _sigDrawing=false, _sigBound=false;
-function initSignature(canvasId){
-  var c = document.getElementById(canvasId); if(!c) return;
-  if (c._sigInit) return;            // already wired (content re-rendered but same node)
-  c._sigInit = true;
-  var ctx = c.getContext('2d'); ctx.lineWidth=2.4; ctx.lineCap='round'; ctx.strokeStyle='#1D1D1F';
-  var last=null; _sig[canvasId]={ dirty:false };
-  function pos(e){ var r=c.getBoundingClientRect(); var t=e.touches?e.touches[0]:e;
-    return { x:(t.clientX-r.left)*(c.width/r.width), y:(t.clientY-r.top)*(c.height/r.height) }; }
-  function start(e){ _sigDrawing=true; last=pos(e); e.preventDefault(); }
-  function move(e){ if(!_sigDrawing) return; var p=pos(e); ctx.beginPath(); ctx.moveTo(last.x,last.y);
-    ctx.lineTo(p.x,p.y); ctx.stroke(); last=p; _sig[canvasId].dirty=true; e.preventDefault(); }
-  c.addEventListener('mousedown',start); c.addEventListener('mousemove',move);
-  c.addEventListener('touchstart',start,{passive:false}); c.addEventListener('touchmove',move,{passive:false});
-  c.addEventListener('touchend',function(){ _sigDrawing=false; });
-  if (!_sigBound){ window.addEventListener('mouseup',function(){ _sigDrawing=false; }); _sigBound=true; }
-}
-function clearSignature(canvasId){ var c=document.getElementById(canvasId); if(!c) return;
-  c.getContext('2d').clearRect(0,0,c.width,c.height); if(_sig[canvasId]) _sig[canvasId].dirty=false; }
-function getSignature(canvasId){ var c=document.getElementById(canvasId);
-  if(!c||!_sig[canvasId]||!_sig[canvasId].dirty) return null; return c.toDataURL('image/png'); }
+/* Signatures are captured by hand on the printouts — no in-app signature pad. */
 
 /* ---- Photo upload (resize ~1100px, JPEG ~0.7) ----------------------------- */
 function handlePhotoFiles(files, cb){
@@ -1943,7 +1920,6 @@ function jobStagePanel(j,b){
     html+= billingEditBlock(j) + jobPaymentBlock(j,b);
   } else {
     html+='<div class="released">✓ Released'+(j.orNumber?' · OR '+esc(j.orNumber):'')+'<div class="muted small">'+esc(fmtDateTime(j.billedAt))+'</div></div>'+
-      (j.releaseSignature?'<img class="sig-show" src="'+j.releaseSignature+'"/>':'')+
       billingEditBlock(j);
   }
   html+='</div>';
@@ -2019,8 +1995,6 @@ function jobPaymentBlock(j,b){
       field('Method','<select id="pyMethod"><option>Cash</option><option>GCash</option><option>Card</option><option>Bank transfer</option><option>Charge account</option></select>')+'</div>'+
       '<button class="btn sm" onclick="recordPayment(\''+j.id+'\')">Record payment</button>')+
     field('Last service odometer','<input id="relOdo" type="number" value="'+attr(j.lastServiceOdo||j.odometer||'')+'" placeholder="reading at release">','Recorded on release; updates the vehicle’s last service odometer.')+
-    '<div class="fld mt8"><span class="fld-l">Release signature</span><canvas id="relSig" class="sigpad" width="420" height="140"></canvas>'+
-      '<div class="row gap"><button class="btn xs ghost" onclick="clearSignature(\'relSig\')">Clear</button></div></div>'+
     '<button class="btn primary full mt8" '+(paid?'':'disabled title="Balance must be fully paid"')+' onclick="releaseJob(\''+j.id+'\')">Release vehicle →</button>'+
     (paid?'':'<div class="muted small center">Balance must be fully paid to release.</div>');
 }
@@ -2033,7 +2007,6 @@ function releaseJob(id){
   var j=jobById(id);
   if (jobBalance(j)>0.001){ toast('Balance must be fully paid','err'); return; }
   var lso=Number(val('relOdo'))||0; if(lso) j.lastServiceOdo=lso;   // odometer reading at release
-  var sig=getSignature('relSig'); if(sig) j.releaseSignature=sig;
   j.stage='Released';
   // record the last service odometer on the vehicle and schedule next service
   var v=vehicleById(j.vehicleId); if(v){ var reading=Number(j.lastServiceOdo)||(j.inspection&&j.inspection.odometer)||j.odometer||0;
@@ -2042,11 +2015,8 @@ function releaseJob(id){
   persist(); toast('Vehicle released ✓'); render();
 }
 
-/* afterRender hook: init any signature pads present */
-function afterRender(){
-  if (document.getElementById('relSig')) initSignature('relSig');
-  if (document.getElementById('estSig')) initSignature('estSig');
-}
+/* afterRender hook (kept as a base no-op; part12_rbac.js chains onto it). */
+function afterRender(){}
 
 
 /* ===== */
@@ -2109,10 +2079,6 @@ VIEWS.estimate = function(id){
       '<div class="card"><div class="card-head"><h2>Parts & Labor</h2><button class="btn sm primary" onclick="addEstLine(\''+e.id+'\')">＋ Add line</button></div>'+
       '<table class="tbl"><thead><tr><th>Type</th><th>Description</th><th class="r">Qty</th><th class="r">Price</th><th class="r">Total</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>'+
       '<div class="estsum">'+(vs.exempt?line2('VAT-Exempt Sales',peso(vs.gross)):line2('VATable Sales',peso(vs.vatable))+line2('VAT ('+(S.shop.vatRate||12)+'%)',peso(vs.vat)))+line2('<b>Estimated total</b>','<b>'+peso(vs.gross)+'</b>','tot')+'</div></div>'+
-      '<div class="card"><h2>Customer signature</h2><p class="muted small">Optional — capture customer acknowledgement of the estimate.</p>'+
-        (e.signature? '<img class="sig-show" src="'+e.signature+'"/><div><button class="btn sm ghost" onclick="clearEstSig(\''+e.id+'\')">Re-sign</button></div>'
-          : '<canvas id="estSig" class="sigpad" width="460" height="150"></canvas><div class="row gap"><button class="btn xs ghost" onclick="clearSignature(\'estSig\')">Clear</button><button class="btn sm primary" onclick="saveEstSig(\''+e.id+'\')">Save signature</button></div>')+
-      '</div>'+
     '</div><div class="colside">'+
       '<div class="card"><h2>Approvals</h2>'+
         field('Assessed by (Senior Mechanic)','<select onchange="setEstField(\''+e.id+'\',\'assessedBy\',this.value)">'+optionList(staffByRole('SM'),e.assessedBy,true)+'</select>')+
@@ -2136,8 +2102,6 @@ function saveEstLine(){
   persist(); closeModal(); render();
 }
 function delEstLine(id,lid){ var e=estById(id); e.lines=e.lines.filter(function(x){return x.id!==lid;}); persist(); render(); }
-function saveEstSig(id){ var sig=getSignature('estSig'); if(!sig){toast('Please sign first','err');return;} var e=estById(id); e.signature=sig; e.signed=true; persist(); toast('Signature saved'); render(); }
-function clearEstSig(id){ var e=estById(id); e.signature=null; e.signed=false; persist(); render(); }
 
 function convertEstimate(id){
   var e=estById(id);
@@ -2919,7 +2883,7 @@ function docJobOrder(j){
       cl+
       '<div class="sig-grid"><div class="sigline">Assessed by (Senior Mechanic)<br>'+esc(staffName(j.assessedBy))+'</div>'+
         '<div class="sigline">Service Adviser<br>'+esc(staffName(j.saId))+'</div>'+
-        '<div class="sigline">Customer</div></div>'+
+        '<div class="sigline">Customer<br>'+esc(j.owner||'')+'</div></div>'+
       '<div class="foot">This Job Order carries no prices. Pricing appears on the Post Job Report and Final Billing.</div>';
   }
   return docShell('Job Order '+j.no,
@@ -2963,9 +2927,9 @@ function docPostJob(j){
       .concat(j.lastServiceOdo?[['Last service odometer', num(j.lastServiceOdo)+' km']]:[]))+
     pricedLinesTable(j)+ totalsBox(j,{discount:false})+
     (j.notes?'<div class="notes"><b>Service notes:</b> '+esc(j.notes)+'</div>':'')+
-    '<div class="sig-grid"><div class="sigline">Service Adviser<br>'+esc(staffName(j.saId))+'</div>'+
-      '<div class="sigline">Approved for release by<br>'+esc(staffName(j.approvedReleaseBy)||'SV / SA')+'</div>'+
-      '<div class="sigline">Customer</div></div>'+
+    '<div class="sig-grid"><div class="sigline">Checked by (Service Adviser)<br>'+esc(staffName(j.saId))+'</div>'+
+      '<div class="sigline">Approved for release by (Supervisor)<br>'+esc(staffName(j.approvedReleaseBy))+'</div>'+
+      '<div class="sigline">Customer<br>'+esc(j.owner||'')+'</div></div>'+
     '<div class="foot">Post Job Report — first document showing prices. Parts have been deducted from inventory.</div>';
   return docShell('Post Job Report '+j.no, body);
 }
@@ -2981,9 +2945,9 @@ function docBilling(j){
       ['Vehicle', esc((j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:'')+' · '+j.plate)],['JO #', esc(j.no)],
       ['Ingress odometer', num(j.odometer)+' km'],['Last service odometer', j.lastServiceOdo?num(j.lastServiceOdo)+' km':'—'] ])+
     pricedLinesTable(j,{sku:true})+ totalsBox(j,{discount:true})+
-    '<div class="sig-grid"><div class="sigline">Cashier / Authorized</div>'+
-      '<div class="sigline">Received by'+(j.releaseSignature?'<br><img class="sigimg" src="'+j.releaseSignature+'"/>':'')+'</div>'+
-      '<div class="sigline">'+esc(j.owner)+'</div></div>'+
+    '<div class="sig-grid"><div class="sigline">Approved for release by (Supervisor)</div>'+
+      '<div class="sigline">Payment received by (Secretary)</div>'+
+      '<div class="sigline">Unit Received by (Customer)<br>'+esc(j.owner||'')+'</div></div>'+
     '<div class="foot">THIS DOCUMENT IS NOT VALID FOR CLAIM OF INPUT TAX<br>'+
       esc(sh.name)+' · TIN '+esc(sh.tin)+' · '+esc(sh.address)+'</div>';
   return docShell('Billing '+(j.orNumber||j.no), body);
@@ -3004,7 +2968,7 @@ function docEstimate(e){
         '<div class="l2 grand"><span>Estimated Total</span><span>'+peso(vs.gross)+'</span></div></div>'+
       '<div class="sig-grid"><div class="sigline">Assessed by (Senior Mechanic)<br>'+esc(staffName(e.assessedBy))+'</div>'+
         '<div class="sigline">Approved (SA)<br>'+esc(staffName(e.approvedSA))+'</div>'+
-        '<div class="sigline">Customer'+(e.signature?'<br><img class="sigimg" src="'+e.signature+'"/>':'')+'</div></div>'+
+        '<div class="sigline">Customer<br>'+esc(e.owner||'')+'</div></div>'+
       '<div class="foot">This is an estimate only. Final charges may vary after diagnosis.</div>';
   }
   return docShell('Estimate '+e.no, '<div class="pagebreak">'+copy("Customer's Copy")+'</div>'+copy("Shop Copy"));

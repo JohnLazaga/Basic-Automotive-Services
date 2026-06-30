@@ -68,7 +68,7 @@ function docJobOrder(j){
       cl+
       '<div class="sig-grid"><div class="sigline">Assessed by (Senior Mechanic)<br>'+esc(staffName(j.assessedBy))+'</div>'+
         '<div class="sigline">Service Adviser<br>'+esc(staffName(j.saId))+'</div>'+
-        '<div class="sigline">Customer</div></div>'+
+        '<div class="sigline">Customer<br>'+esc(j.owner||'')+'</div></div>'+
       '<div class="foot">This Job Order carries no prices. Pricing appears on the Post Job Report and Final Billing.</div>';
   }
   return docShell('Job Order '+j.no,
@@ -112,9 +112,9 @@ function docPostJob(j){
       .concat(j.lastServiceOdo?[['Last service odometer', num(j.lastServiceOdo)+' km']]:[]))+
     pricedLinesTable(j)+ totalsBox(j,{discount:false})+
     (j.notes?'<div class="notes"><b>Service notes:</b> '+esc(j.notes)+'</div>':'')+
-    '<div class="sig-grid"><div class="sigline">Service Adviser<br>'+esc(staffName(j.saId))+'</div>'+
-      '<div class="sigline">Approved for release by<br>'+esc(staffName(j.approvedReleaseBy)||'SV / SA')+'</div>'+
-      '<div class="sigline">Customer</div></div>'+
+    '<div class="sig-grid"><div class="sigline">Checked by (Service Adviser)<br>'+esc(staffName(j.saId))+'</div>'+
+      '<div class="sigline">Approved for release by (Supervisor)<br>'+esc(staffName(j.approvedReleaseBy))+'</div>'+
+      '<div class="sigline">Customer<br>'+esc(j.owner||'')+'</div></div>'+
     '<div class="foot">Post Job Report — first document showing prices. Parts have been deducted from inventory.</div>';
   return docShell('Post Job Report '+j.no, body);
 }
@@ -130,9 +130,9 @@ function docBilling(j){
       ['Vehicle', esc((j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:'')+' · '+j.plate)],['JO #', esc(j.no)],
       ['Ingress odometer', num(j.odometer)+' km'],['Last service odometer', j.lastServiceOdo?num(j.lastServiceOdo)+' km':'—'] ])+
     pricedLinesTable(j,{sku:true})+ totalsBox(j,{discount:true})+
-    '<div class="sig-grid"><div class="sigline">Cashier / Authorized</div>'+
-      '<div class="sigline">Received by'+(j.releaseSignature?'<br><img class="sigimg" src="'+j.releaseSignature+'"/>':'')+'</div>'+
-      '<div class="sigline">'+esc(j.owner)+'</div></div>'+
+    '<div class="sig-grid"><div class="sigline">Approved for release by (Supervisor)</div>'+
+      '<div class="sigline">Payment received by (Secretary)</div>'+
+      '<div class="sigline">Unit Received by (Customer)<br>'+esc(j.owner||'')+'</div></div>'+
     '<div class="foot">THIS DOCUMENT IS NOT VALID FOR CLAIM OF INPUT TAX<br>'+
       esc(sh.name)+' · TIN '+esc(sh.tin)+' · '+esc(sh.address)+'</div>';
   return docShell('Billing '+(j.orNumber||j.no), body);
@@ -153,7 +153,7 @@ function docEstimate(e){
         '<div class="l2 grand"><span>Estimated Total</span><span>'+peso(vs.gross)+'</span></div></div>'+
       '<div class="sig-grid"><div class="sigline">Assessed by (Senior Mechanic)<br>'+esc(staffName(e.assessedBy))+'</div>'+
         '<div class="sigline">Approved (SA)<br>'+esc(staffName(e.approvedSA))+'</div>'+
-        '<div class="sigline">Customer'+(e.signature?'<br><img class="sigimg" src="'+e.signature+'"/>':'')+'</div></div>'+
+        '<div class="sigline">Customer<br>'+esc(e.owner||'')+'</div></div>'+
       '<div class="foot">This is an estimate only. Final charges may vary after diagnosis.</div>';
   }
   return docShell('Estimate '+e.no, '<div class="pagebreak">'+copy("Customer's Copy")+'</div>'+copy("Shop Copy"));

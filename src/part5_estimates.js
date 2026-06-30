@@ -56,10 +56,6 @@ VIEWS.estimate = function(id){
       '<div class="card"><div class="card-head"><h2>Parts & Labor</h2><button class="btn sm primary" onclick="addEstLine(\''+e.id+'\')">＋ Add line</button></div>'+
       '<table class="tbl"><thead><tr><th>Type</th><th>Description</th><th class="r">Qty</th><th class="r">Price</th><th class="r">Total</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>'+
       '<div class="estsum">'+(vs.exempt?line2('VAT-Exempt Sales',peso(vs.gross)):line2('VATable Sales',peso(vs.vatable))+line2('VAT ('+(S.shop.vatRate||12)+'%)',peso(vs.vat)))+line2('<b>Estimated total</b>','<b>'+peso(vs.gross)+'</b>','tot')+'</div></div>'+
-      '<div class="card"><h2>Customer signature</h2><p class="muted small">Optional — capture customer acknowledgement of the estimate.</p>'+
-        (e.signature? '<img class="sig-show" src="'+e.signature+'"/><div><button class="btn sm ghost" onclick="clearEstSig(\''+e.id+'\')">Re-sign</button></div>'
-          : '<canvas id="estSig" class="sigpad" width="460" height="150"></canvas><div class="row gap"><button class="btn xs ghost" onclick="clearSignature(\'estSig\')">Clear</button><button class="btn sm primary" onclick="saveEstSig(\''+e.id+'\')">Save signature</button></div>')+
-      '</div>'+
     '</div><div class="colside">'+
       '<div class="card"><h2>Approvals</h2>'+
         field('Assessed by (Senior Mechanic)','<select onchange="setEstField(\''+e.id+'\',\'assessedBy\',this.value)">'+optionList(staffByRole('SM'),e.assessedBy,true)+'</select>')+
@@ -83,8 +79,6 @@ function saveEstLine(){
   persist(); closeModal(); render();
 }
 function delEstLine(id,lid){ var e=estById(id); e.lines=e.lines.filter(function(x){return x.id!==lid;}); persist(); render(); }
-function saveEstSig(id){ var sig=getSignature('estSig'); if(!sig){toast('Please sign first','err');return;} var e=estById(id); e.signature=sig; e.signed=true; persist(); toast('Signature saved'); render(); }
-function clearEstSig(id){ var e=estById(id); e.signature=null; e.signed=false; persist(); render(); }
 
 function convertEstimate(id){
   var e=estById(id);

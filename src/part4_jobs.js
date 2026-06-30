@@ -579,7 +579,6 @@ function jobStagePanel(j,b){
     html+= billingEditBlock(j) + jobPaymentBlock(j,b);
   } else {
     html+='<div class="released">✓ Released'+(j.orNumber?' · OR '+esc(j.orNumber):'')+'<div class="muted small">'+esc(fmtDateTime(j.billedAt))+'</div></div>'+
-      (j.releaseSignature?'<img class="sig-show" src="'+j.releaseSignature+'"/>':'')+
       billingEditBlock(j);
   }
   html+='</div>';
@@ -655,8 +654,6 @@ function jobPaymentBlock(j,b){
       field('Method','<select id="pyMethod"><option>Cash</option><option>GCash</option><option>Card</option><option>Bank transfer</option><option>Charge account</option></select>')+'</div>'+
       '<button class="btn sm" onclick="recordPayment(\''+j.id+'\')">Record payment</button>')+
     field('Last service odometer','<input id="relOdo" type="number" value="'+attr(j.lastServiceOdo||j.odometer||'')+'" placeholder="reading at release">','Recorded on release; updates the vehicle’s last service odometer.')+
-    '<div class="fld mt8"><span class="fld-l">Release signature</span><canvas id="relSig" class="sigpad" width="420" height="140"></canvas>'+
-      '<div class="row gap"><button class="btn xs ghost" onclick="clearSignature(\'relSig\')">Clear</button></div></div>'+
     '<button class="btn primary full mt8" '+(paid?'':'disabled title="Balance must be fully paid"')+' onclick="releaseJob(\''+j.id+'\')">Release vehicle →</button>'+
     (paid?'':'<div class="muted small center">Balance must be fully paid to release.</div>');
 }
@@ -669,7 +666,6 @@ function releaseJob(id){
   var j=jobById(id);
   if (jobBalance(j)>0.001){ toast('Balance must be fully paid','err'); return; }
   var lso=Number(val('relOdo'))||0; if(lso) j.lastServiceOdo=lso;   // odometer reading at release
-  var sig=getSignature('relSig'); if(sig) j.releaseSignature=sig;
   j.stage='Released';
   // record the last service odometer on the vehicle and schedule next service
   var v=vehicleById(j.vehicleId); if(v){ var reading=Number(j.lastServiceOdo)||(j.inspection&&j.inspection.odometer)||j.odometer||0;
@@ -678,8 +674,5 @@ function releaseJob(id){
   persist(); toast('Vehicle released ✓'); render();
 }
 
-/* afterRender hook: init any signature pads present */
-function afterRender(){
-  if (document.getElementById('relSig')) initSignature('relSig');
-  if (document.getElementById('estSig')) initSignature('estSig');
-}
+/* afterRender hook (kept as a base no-op; part12_rbac.js chains onto it). */
+function afterRender(){}

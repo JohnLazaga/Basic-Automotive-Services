@@ -135,11 +135,10 @@ function bindKeys(){
   if (_keysBound || typeof document==='undefined' || !document.addEventListener) return;
   _keysBound=true;
   document.addEventListener('keydown', function(e){
-    // ESC = back
+    // ESC = close any open modal, otherwise jump to the Operations Board
     if (e.key==='Escape' || e.keyCode===27){
       if (document.querySelector && document.querySelector('#modalRoot .modal-back')){ e.preventDefault(); closeModal(); return; }
-      var back={ job:'jobs', estimate:'estimates', vehicle:'vehicles', po:'purchaseorders' };
-      if (back[ROUTE.view]){ e.preventDefault(); go(back[ROUTE.view]); }
+      if (ROUTE.view!=='board'){ e.preventDefault(); go('board'); }
       return;
     }
     // ENTER = advance to next field (or submit on the last one)
@@ -251,29 +250,7 @@ function val(id){ var e=document.getElementById(id); return e? e.value : ''; }
 function checked(id){ var e=document.getElementById(id); return e? e.checked : false; }
 function setVal(id,v){ var e=document.getElementById(id); if(e) e.value=v; }
 
-/* ---- Signature pad -------------------------------------------------------- */
-var _sig = {};
-var _sigDrawing=false, _sigBound=false;
-function initSignature(canvasId){
-  var c = document.getElementById(canvasId); if(!c) return;
-  if (c._sigInit) return;            // already wired (content re-rendered but same node)
-  c._sigInit = true;
-  var ctx = c.getContext('2d'); ctx.lineWidth=2.4; ctx.lineCap='round'; ctx.strokeStyle='#1D1D1F';
-  var last=null; _sig[canvasId]={ dirty:false };
-  function pos(e){ var r=c.getBoundingClientRect(); var t=e.touches?e.touches[0]:e;
-    return { x:(t.clientX-r.left)*(c.width/r.width), y:(t.clientY-r.top)*(c.height/r.height) }; }
-  function start(e){ _sigDrawing=true; last=pos(e); e.preventDefault(); }
-  function move(e){ if(!_sigDrawing) return; var p=pos(e); ctx.beginPath(); ctx.moveTo(last.x,last.y);
-    ctx.lineTo(p.x,p.y); ctx.stroke(); last=p; _sig[canvasId].dirty=true; e.preventDefault(); }
-  c.addEventListener('mousedown',start); c.addEventListener('mousemove',move);
-  c.addEventListener('touchstart',start,{passive:false}); c.addEventListener('touchmove',move,{passive:false});
-  c.addEventListener('touchend',function(){ _sigDrawing=false; });
-  if (!_sigBound){ window.addEventListener('mouseup',function(){ _sigDrawing=false; }); _sigBound=true; }
-}
-function clearSignature(canvasId){ var c=document.getElementById(canvasId); if(!c) return;
-  c.getContext('2d').clearRect(0,0,c.width,c.height); if(_sig[canvasId]) _sig[canvasId].dirty=false; }
-function getSignature(canvasId){ var c=document.getElementById(canvasId);
-  if(!c||!_sig[canvasId]||!_sig[canvasId].dirty) return null; return c.toDataURL('image/png'); }
+/* Signatures are captured by hand on the printouts — no in-app signature pad. */
 
 /* ---- Photo upload (resize ~1100px, JPEG ~0.7) ----------------------------- */
 function handlePhotoFiles(files, cb){
