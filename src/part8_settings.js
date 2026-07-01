@@ -5,7 +5,7 @@
 
 VIEWS.settings = function(){
   var sh=S.shop;
-  var bays=S.bays.map(function(b){return '<span class="tagx">'+esc(b.name)+'<button onclick="delBay(\''+b.id+'\')">✕</button></span>';}).join('');
+  var bays=S.bays.map(function(b){return '<span class="tagx">'+esc(b.name)+'<button title="Rename" onclick="renameBay(\''+b.id+'\')">✎</button><button title="Remove" onclick="delBay(\''+b.id+'\')">✕</button></span>';}).join('');
   var cps=(sh.checkpoints||[]).map(function(c,i){return '<span class="tagx">'+esc(c)+'<button onclick="delCheckpoint('+i+')">✕</button></span>';}).join('');
   var sampleQuery="SELECT part_no AS partNo, description AS name, srp AS price,\n       buying_price AS cost, quantity AS stock, min_qty AS reorder\nFROM parts;";
   var sampleJSON='[\n  {"partNo":"OF-1042","name":"Oil Filter","price":220,"cost":120,"stock":24,"reorder":6}\n]';
@@ -62,6 +62,7 @@ function saveShop(){
 }
 function addBay(){ var n=val('bayNew'); if(!n) return; S.bays.push({ id:uid('bay'), name:n }); persist(); render(); }
 function delBay(id){ S.bays=S.bays.filter(function(b){return b.id!==id;}); persist(); render(); }
+function renameBay(id){ var b=bayById(id); if(!b) return; var n=prompt('Rename service bay', b.name); if(n===null) return; n=n.trim(); if(!n) return; b.name=n; persist(); render(); }
 function addCheckpoint(){ var t=val('cpNew'); if(!t) return; S.shop.checkpoints.push(t); S.shop.checkpoints.sort(); persist(); render(); }
 function delCheckpoint(i){ S.shop.checkpoints.splice(i,1); persist(); render(); }
 
