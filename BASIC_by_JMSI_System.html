@@ -1913,7 +1913,7 @@ function jobStagePanel(j,b){
   if (j.stage==='Job Order'){
     var canPost = j.status==='C3';
     html+='<p class="muted small">Advance to <b>Post Job Report</b> once status is <b>C3 (Release cleared)</b>. This deducts consumed parts from inventory and reveals prices on the printout.</p>'+
-      (canPost? '<div class="grid2">'+field('Approved for release by','<select id="apvRel">'+optionList(S.staff.filter(function(s){return s.role==='SV'||s.role==='SA';}),j.saId,false)+'</select>')+'</div>'+
+      (canPost? '<div class="grid2">'+field('Approved for release by (Supervisor)','<select id="apvRel">'+optionList(staffByRole('SV'),j.approvedReleaseBy,false)+'</select>')+'</div>'+
         '<button class="btn primary full" onclick="advancePostJob(\''+j.id+'\')">Create Post Job Report →</button>'
         : '<div class="lock">🔒 Locked until C3. Current: '+statusBadge(j.status)+'</div>'+
           '<button class="btn sm full" onclick="quickC3(\''+j.id+'\')">Mark C3 (Release cleared)</button>');
@@ -1923,6 +1923,9 @@ function jobStagePanel(j,b){
       field('Discount type','<select id="dscType"><option value="amount"'+(j.discount.type==='amount'?' selected':'')+'>₱ Amount</option><option value="percent"'+(j.discount.type==='percent'?' selected':'')+'>% Percent</option></select>')+
       field('Discount value','<input id="dscVal" type="number" step="0.01" value="'+attr(j.discount.value||0)+'">')+'</div>'+
       '<button class="btn ghost sm" onclick="applyDiscount(\''+j.id+'\')">Apply discount</button>'+
+      '<div class="grid2 mt8">'+
+      field('Approved for release by (Supervisor)','<select onchange="setJobField(\''+j.id+'\',\'approvedReleaseBy\',this.value)">'+optionList(staffByRole('SV'),j.approvedReleaseBy,true)+'</select>')+
+      field('Payment received by (Secretary)','<select onchange="setJobField(\''+j.id+'\',\'paymentReceivedBy\',this.value)">'+optionList(staffByRole('Secretary'),j.paymentReceivedBy,true)+'</select>')+'</div>'+
       '<button class="btn primary full mt8" onclick="advanceBilling(\''+j.id+'\')">Create Final Billing (assign OR #) →</button>';
   } else if (j.stage==='Final Billing'){
     html+= billingEditBlock(j) + jobPaymentBlock(j,b);
@@ -1967,7 +1970,7 @@ function advancePostJob(id){
         '<button class="btn primary" onclick="closeModal();editJobDetails(\''+j.id+'\')">Edit Job Details</button>', width:'520px' });
     return;
   }
-  j.approvedReleaseBy = val('apvRel') || j.saId;
+  j.approvedReleaseBy = val('apvRel') || '';
   deductInventory(j);
   j.stage='Post Job Report';
   persist(); toast('Post Job Report created · inventory deducted'); render();
@@ -2015,6 +2018,10 @@ var _issuingOR={};
 function advanceBilling(id){
   var j=jobById(id);
   if(!j || j.stage!=='Post Job Report' || j.orNumber) return;   // already issued / wrong stage
+  var sup=staffById(j.approvedReleaseBy);
+  if(!sup || sup.role!=='SV'){ toast('Select the approving Supervisor first','err'); return; }
+  var sec=staffById(j.paymentReceivedBy);
+  if(!sec || sec.role!=='Secretary'){ toast('Enter the Secretary who received payment first','err'); return; }
   if(_issuingOR[id]) return;                                     // in-flight guard (prevents double-click gaps)
   _issuingOR[id]=true;
   j.discount={ type:val('dscType')||j.discount.type, value:Number(val('dscVal'))||j.discount.value||0 };
