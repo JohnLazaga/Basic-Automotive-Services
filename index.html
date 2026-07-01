@@ -2956,7 +2956,7 @@ function docJobOrder(j){
     return '<div class="copy-tag">'+tag+'</div>'+ docHeader('Job Order · '+j.no)+
       metaRows([['Plate', esc(j.plate)],['Date in', fmtDate(j.dateIn)],
         ['Owner', esc(j.owner)],['ETD', fmtDate(j.etd)],
-        ['Contact person', esc(j.contactPerson)],['Ingress odometer', num(j.odometer)+' km'],
+        ['Contact person', esc(j.contactPerson)],['Ingress Odo', num(j.odometer)+' km'],
         ['Vehicle', esc((j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:''))],['Chassis #', esc(j.chassis)],
         ['Service Adviser', esc(staffName(j.saId))],['Mechanic(s)', esc(mechName(j.mechanicIds))],
         ['Bay', esc(bayName(j.bayId))],['Job hours', num(j.jobHours)],
@@ -3004,14 +3004,14 @@ function totalsBox(j,opts){
 /* ---- Post Job Report: prices + Approved for release by -------------------- */
 function docPostJob(j){
   var body=docHeader('Post Job Report · '+j.no)+
-    metaRows([['Plate', esc(j.plate)],['Date in', fmtDate(j.dateIn)],
-      ['Owner', esc(j.owner)],['Contact', esc(j.contactPerson+' · '+j.contactNumber)],
-      ['Vehicle', esc((j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:''))],['Chassis #', esc(j.chassis)],
-      ['Ingress odometer', num(j.odometer)+' km'],['Last service odometer', j.lastServiceOdo?num(j.lastServiceOdo)+' km':'—'],
-      ['ETD', fmtDate(j.etd)],['PMS ref', esc(j.pmsRef)],
+    metaRows([['Plate', esc(j.plate)],['Owner', esc(j.owner)],
+      ['Date in', fmtDate(j.dateIn)],['ETD', fmtDate(j.etd)],
+      ['Contact', esc(j.contactPerson+' · '+j.contactNumber)],['Chassis #', esc(j.chassis)],
+      ['Vehicle', esc((j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:''))],['PMS ref', esc(j.pmsRef)],
+      ['Ingress Odo', num(j.odometer)+' km'],['Last Service Odo', j.lastServiceOdo?num(j.lastServiceOdo)+' km':'—'],
       ['Service Adviser', esc(staffName(j.saId))],['Mechanic(s)', esc(mechName(j.mechanicIds))],
       ['Bay', esc(bayName(j.bayId))] ])+
-    pricedLinesTable(j)+ totalsBox(j,{discount:false})+
+    pricedLinesTable(j,{sku:true})+ totalsBox(j,{discount:false})+
     (j.notes?'<div class="notes"><b>Service notes:</b> '+esc(j.notes)+'</div>':'')+
     '<div class="sig-grid"><div class="sigline">Checked by (Service Adviser)<br>'+esc(staffName(j.saId))+'</div>'+
       '<div class="sigline">Approved for release by (Supervisor)<br>'+esc(staffName(j.approvedReleaseBy))+'</div>'+
@@ -3029,7 +3029,7 @@ function docBilling(j){
       ['Sold to', esc(j.owner)],['TIN', esc(j.customerTin||'—')],
       ['Address', esc(j.address||'—')],['SI reference', esc(j.siRef||'—')],
       ['Vehicle', esc((j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:'')+' · '+j.plate)],['JO #', esc(j.no)],
-      ['Ingress odometer', num(j.odometer)+' km'],['Last service odometer', j.lastServiceOdo?num(j.lastServiceOdo)+' km':'—'] ])+
+      ['Ingress Odo', num(j.odometer)+' km'],['Last Service Odo', j.lastServiceOdo?num(j.lastServiceOdo)+' km':'—'] ])+
     pricedLinesTable(j,{sku:true})+ totalsBox(j,{discount:true})+
     '<div class="sig-grid"><div class="sigline">Approved for release by (Supervisor)<br>'+esc(staffName(j.approvedReleaseBy))+'</div>'+
       '<div class="sigline">Payment received by (Secretary)<br>'+esc(staffName(j.paymentReceivedBy))+'</div>'+
