@@ -617,8 +617,17 @@ function setSaveState(st){
 }
 
 function counters(){ return S.counters; }
+/* Highest numeric suffix already used by records of this kind — so a stale/behind
+   counter (offline device, cross-device sync race) can never reissue a live number. */
+function maxSeriesNo(kind){
+  var coll = { jo:S.jobs, est:S.estimates, po:S.purchaseOrders }[kind] || [];
+  var hi=0;
+  coll.forEach(function(r){ if(r&&r.no){ var m=/(\d+)/.exec(String(r.no)); if(m){ var v=Number(m[1]); if(v>hi) hi=v; } } });
+  return hi;
+}
 function nextNo(kind, prefix, pad){
-  var c = S.counters; c[kind] = (c[kind]||0) + 1;
+  var c = S.counters;
+  c[kind] = Math.max((c[kind]||0), maxSeriesNo(kind)) + 1;   // never below any existing record
   return prefix + String(c[kind]).padStart(pad||4,'0');
 }
 
