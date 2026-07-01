@@ -3004,8 +3004,8 @@ function totalsBox(j,opts){
 /* ---- Post Job Report: prices + Approved for release by -------------------- */
 function docPostJob(j){
   var body=docHeader('Post Job Report · '+j.no)+
-    metaRows([['Plate', esc(j.plate)],['Date in', fmtDate(j.dateIn)],
-      ['Owner', esc(j.owner)],['ETD', fmtDate(j.etd)],
+    metaRows([['Plate', esc(j.plate)],['Owner', esc(j.owner)],
+      ['Date in', fmtDate(j.dateIn)],['ETD', fmtDate(j.etd)],
       ['Contact', esc(j.contactPerson+' · '+j.contactNumber)],['Chassis #', esc(j.chassis)],
       ['Vehicle', esc((j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:''))],['PMS ref', esc(j.pmsRef)],
       ['Ingress Odo', num(j.odometer)+' km'],['Last Service Odo', j.lastServiceOdo?num(j.lastServiceOdo)+' km':'—'],
