@@ -131,9 +131,10 @@ function jobsBodyHTML(){
   var jobs=S.jobs.filter(jobMatch);
   if(!jobs.length) return emptyState(JOB_Q? 'No job orders match “'+esc(JOB_Q)+'”.' : 'No job orders yet. Click New Ingress.');
   var rows = jobs.map(function(j){
+    var veh=(j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:'');
     return '<tr onclick="go(\'job\',\''+j.id+'\')">'+
-      '<td><b>'+esc(j.no)+'</b></td><td>'+esc(j.plate)+'</td>'+
-      '<td>'+esc(j.make+' '+j.model)+'</td>'+
+      '<td><b>'+esc(j.no)+'</b></td>'+
+      '<td><b>'+esc(j.plate)+'</b>'+(veh?' <span class="muted small">'+esc(veh)+'</span>':'')+'</td>'+
       '<td>'+chip(j.stage, j.stage==='Released'?'ok':j.stage==='Job Order'?'':'gold')+'</td>'+
       '<td>'+statusBadge(j.status)+'</td>'+
       '<td>'+esc(fmtDate(j.dateIn))+'</td>'+
@@ -141,7 +142,7 @@ function jobsBodyHTML(){
       '<td class="r">'+(jobBalance(j)>0?'<span class="amber">'+peso(jobBalance(j))+'</span>':'—')+'</td></tr>';
   }).join('');
   return '<div class="card pad0"><table class="tbl click"><thead><tr>'+
-    '<th>JO #</th><th>Plate</th><th>Vehicle</th><th>Stage</th><th>Status</th><th>Date in</th><th class="r">Bill</th><th class="r">Balance</th>'+
+    '<th>JO #</th><th>Plate / Vehicle</th><th>Stage</th><th>Status</th><th>Date in</th><th class="r">Bill</th><th class="r">Balance</th>'+
     '</tr></thead><tbody>'+rows+'</tbody></table></div>';
 }
 function jobsSearch(v){ JOB_Q=v; var el=document.getElementById('jobsBody'); if(el) el.innerHTML=jobsBodyHTML(); }
