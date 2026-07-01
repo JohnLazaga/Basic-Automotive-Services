@@ -6,6 +6,7 @@ function createEstimateFrom(base){
   var v = vehicleByPlate(base.plate);
   var e = { id:uid('est'), no:nextNo('est','EST-',4), date:todayISO(),
     plate:base.plate||'', owner:base.owner||(v&&v.owner)||'', contactPerson:base.contactPerson||'', contactNumber:base.contactNumber||'',
+    address:base.address||(v&&v.address)||'',
     year:base.year||(v&&v.year)||'', make:base.make||(v&&v.make)||'', model:base.model||(v&&v.model)||'',
     odometer:base.odometer||(v&&v.odometer)||0,
     lines:[], assessedBy:'', approvedSA:'', approvedSV:'', signature:null, signed:false, status:'Draft',
@@ -43,10 +44,11 @@ VIEWS.estimate = function(id){
   var e = estById(id) || S.estimates[0];
   if(!e) return emptyState('Estimate not found.');
   var rows=(e.lines||[]).map(function(l){
-    return '<tr><td>'+chip(l.type==='part'?'Part':'Labor', l.type==='part'?'':'gold')+'</td><td>'+esc(l.desc)+'</td>'+
+    return '<tr><td>'+chip(l.type==='part'?'Part':'Labor', l.type==='part'?'':'gold')+'</td>'+
+      '<td>'+esc((l.type==='part'&&l.sku)?l.sku:'—')+'</td><td>'+esc(l.desc)+'</td>'+
       '<td class="r">'+num(l.qty)+'</td><td class="r">'+peso(l.price)+'</td><td class="r">'+peso(lineTotal(l))+'</td>'+
       '<td class="r"><button class="ic" onclick="editEstLine(\''+e.id+'\',\''+l.id+'\')">✎</button><button class="ic" onclick="delEstLine(\''+e.id+'\',\''+l.id+'\')">✕</button></td></tr>';
-  }).join('')||'<tr><td colspan="6" class="muted center">No lines.</td></tr>';
+  }).join('')||'<tr><td colspan="7" class="muted center">No lines.</td></tr>';
   var vs=vatSplit(estTotal(e),S);
   return '<div class="page">'+
     '<div class="page-head"><div><a class="back" onclick="go(\'estimates\')">‹ Estimates</a><h1>'+esc(e.no)+' · '+esc(e.plate)+'</h1></div>'+
@@ -54,7 +56,7 @@ VIEWS.estimate = function(id){
       (e.status!=='Converted'?'<button class="btn primary" onclick="convertEstimate(\''+e.id+'\')">Convert to Job Order →</button>':'<span>'+chip('Converted','ok')+'</span>')+'</div></div>'+
     '<div class="cols"><div class="colmain">'+
       '<div class="card"><div class="card-head"><h2>Parts & Labor</h2><button class="btn sm primary" onclick="addEstLine(\''+e.id+'\')">＋ Add line</button></div>'+
-      '<table class="tbl"><thead><tr><th>Type</th><th>Description</th><th class="r">Qty</th><th class="r">Price</th><th class="r">Total</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>'+
+      '<table class="tbl"><thead><tr><th>Type</th><th>SKU</th><th>Description</th><th class="r">Qty</th><th class="r">Price</th><th class="r">Total</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>'+
       '<div class="estsum">'+(vs.exempt?line2('VAT-Exempt Sales',peso(vs.gross)):line2('VATable Sales',peso(vs.vatable))+line2('VAT ('+(S.shop.vatRate||12)+'%)',peso(vs.vat)))+line2('<b>Estimated total</b>','<b>'+peso(vs.gross)+'</b>','tot')+'</div></div>'+
     '</div><div class="colside">'+
       '<div class="card"><h2>Approvals</h2>'+
@@ -63,7 +65,9 @@ VIEWS.estimate = function(id){
         field('Approved by (SV)','<select onchange="setEstField(\''+e.id+'\',\'approvedSV\',this.value)">'+optionList(staffByRole('SV'),e.approvedSV,true)+'</select>')+
       '</div>'+
       '<div class="card"><h2>Customer / Vehicle</h2><div class="ksmall">'+
-        kv('Owner',esc(e.owner))+kv('Contact',esc(e.contactNumber))+kv('Vehicle',esc(e.year+' '+e.make+' '+e.model))+kv('Odometer',num(e.odometer)+' km')+'</div></div>'+
+        kv('Owner',esc(e.owner))+kv('Contact person',esc(e.contactPerson))+kv('Contact #',esc(e.contactNumber))+
+        kv('Address',esc(e.address||(vehicleByPlate(e.plate)||{}).address||''))+
+        kv('Vehicle',esc(e.year+' '+e.make+' '+e.model))+kv('Odometer',num(e.odometer)+' km')+'</div></div>'+
     '</div></div></div>';
 };
 

@@ -48,8 +48,8 @@ function metaRows(pairs){
 /* ---- Job Order: NO PRICES, exactly 2 copies ------------------------------- */
 function docJobOrder(j){
   function copy(tag){
-    var lines='<table><thead><tr><th>#</th><th>Type</th><th>Description</th><th class="r">Qty</th></tr></thead><tbody>'+
-      (j.lines||[]).map(function(l,i){return '<tr><td>'+(i+1)+'</td><td>'+(l.type==='part'?'Part':'Labor')+'</td><td>'+esc(l.desc)+'</td><td class="r">'+num(l.qty)+'</td></tr>';}).join('')+
+    var lines='<table><thead><tr><th>#</th><th>Type</th><th>SKU</th><th>Description</th><th class="r">Qty</th></tr></thead><tbody>'+
+      (j.lines||[]).map(function(l,i){return '<tr><td>'+(i+1)+'</td><td>'+(l.type==='part'?'Part':'Labor')+'</td><td>'+esc((l.type==='part'&&l.sku)?l.sku:'—')+'</td><td>'+esc(l.desc)+'</td><td class="r">'+num(l.qty)+'</td></tr>';}).join('')+
       '</tbody></table>';
     var cl=j.checklist&&j.checklist.created? '<div class="dtitle" style="font-size:12px;margin-top:14px">Items left in vehicle</div><div class="checks">'+
       Object.keys(j.checklist.items||{}).filter(function(k){return j.checklist.items[k];}).map(function(k){return '<div>☑ '+esc(k)+'</div>';}).join('')+'</div>'+
@@ -57,7 +57,7 @@ function docJobOrder(j){
     return '<div class="copy-tag">'+tag+'</div>'+ docHeader('Job Order · '+j.no)+
       metaRows([['Plate', esc(j.plate)],['Date in', fmtDate(j.dateIn)],
         ['Owner', esc(j.owner)],['ETD', fmtDate(j.etd)],
-        ['Contact', esc(j.contactPerson+' · '+j.contactNumber)],['Ingress odometer', num(j.odometer)+' km'],
+        ['Contact person', esc(j.contactPerson)],['Ingress odometer', num(j.odometer)+' km'],
         ['Vehicle', esc((j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:''))],['Chassis #', esc(j.chassis)],
         ['Service Adviser', esc(staffName(j.saId))],['Mechanic(s)', esc(mechName(j.mechanicIds))],
         ['Bay', esc(bayName(j.bayId))],['Job hours', num(j.jobHours)],
@@ -106,10 +106,12 @@ function totalsBox(j,opts){
 function docPostJob(j){
   var body=docHeader('Post Job Report · '+j.no)+
     metaRows([['Plate', esc(j.plate)],['Date in', fmtDate(j.dateIn)],
-      ['Owner', esc(j.owner)],['Ingress odometer', num(j.odometer)+' km'],
-      ['Vehicle', esc((j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:''))],['Service Adviser', esc(staffName(j.saId))],
-      ['Mechanic(s)', esc(mechName(j.mechanicIds))],['Bay', esc(bayName(j.bayId))] ]
-      .concat(j.lastServiceOdo?[['Last service odometer', num(j.lastServiceOdo)+' km']]:[]))+
+      ['Owner', esc(j.owner)],['Contact', esc(j.contactPerson+' · '+j.contactNumber)],
+      ['Vehicle', esc((j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:''))],['Chassis #', esc(j.chassis)],
+      ['Ingress odometer', num(j.odometer)+' km'],['Last service odometer', j.lastServiceOdo?num(j.lastServiceOdo)+' km':'—'],
+      ['ETD', fmtDate(j.etd)],['PMS ref', esc(j.pmsRef)],
+      ['Service Adviser', esc(staffName(j.saId))],['Mechanic(s)', esc(mechName(j.mechanicIds))],
+      ['Bay', esc(bayName(j.bayId))] ])+
     pricedLinesTable(j)+ totalsBox(j,{discount:false})+
     (j.notes?'<div class="notes"><b>Service notes:</b> '+esc(j.notes)+'</div>':'')+
     '<div class="sig-grid"><div class="sigline">Checked by (Service Adviser)<br>'+esc(staffName(j.saId))+'</div>'+
@@ -141,13 +143,15 @@ function printBilling(id){ printDoc(docBilling(jobById(id))); }
 
 /* ---- Estimate: 2 copies --------------------------------------------------- */
 function docEstimate(e){
+  var ev=vehicleByPlate(e.plate); var eAddr=(e.address||(ev&&ev.address)||'');
   function copy(tag){
     var vs=vatSplit(estTotal(e),S);
     return '<div class="copy-tag">'+tag+'</div>'+docHeader('Job Estimate · '+e.no)+
-      metaRows([['Plate', esc(e.plate)],['Date', fmtDate(e.date)],['Owner', esc(e.owner)],['Contact', esc(e.contactNumber)],
+      metaRows([['Plate', esc(e.plate)],['Date', fmtDate(e.date)],['Owner', esc(e.owner)],['Contact person', esc(e.contactPerson)],
+        ['Contact #', esc(e.contactNumber)],['Address', esc(eAddr)],
         ['Vehicle', esc(e.year+' '+e.make+' '+e.model)],['Odometer', num(e.odometer)+' km']])+
-      '<table><thead><tr><th>Type</th><th>Description</th><th class="r">Qty</th><th class="r">Unit</th><th class="r">Amount</th></tr></thead><tbody>'+
-      (e.lines||[]).map(function(l){return '<tr><td>'+(l.type==='part'?'Part':'Labor')+'</td><td>'+esc(l.desc)+'</td><td class="r">'+num(l.qty)+'</td><td class="r">'+peso(l.price)+'</td><td class="r">'+peso(lineTotal(l))+'</td></tr>';}).join('')+'</tbody></table>'+
+      '<table><thead><tr><th>Type</th><th>SKU</th><th>Description</th><th class="r">Qty</th><th class="r">Unit</th><th class="r">Amount</th></tr></thead><tbody>'+
+      (e.lines||[]).map(function(l){return '<tr><td>'+(l.type==='part'?'Part':'Labor')+'</td><td>'+esc((l.type==='part'&&l.sku)?l.sku:'—')+'</td><td>'+esc(l.desc)+'</td><td class="r">'+num(l.qty)+'</td><td class="r">'+peso(l.price)+'</td><td class="r">'+peso(lineTotal(l))+'</td></tr>';}).join('')+'</tbody></table>'+
       '<div class="totbox">'+(vs.exempt?'<div class="l2"><span>VAT-Exempt Sales</span><span>'+peso(vs.gross)+'</span></div>':
         '<div class="l2"><span>VATable Sales</span><span>'+peso(vs.vatable)+'</span></div><div class="l2"><span>VAT ('+(S.shop.vatRate||12)+'%)</span><span>'+peso(vs.vat)+'</span></div>')+
         '<div class="l2 grand"><span>Estimated Total</span><span>'+peso(vs.gross)+'</span></div></div>'+
