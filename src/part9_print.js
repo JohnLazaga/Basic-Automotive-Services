@@ -13,9 +13,6 @@ function printCSS(){
     '.dtitle{font-size:15px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin:6px 0 12px;color:#CC0F0F}'+
     '.meta{display:grid;grid-template-columns:1fr 1fr;gap:4px 24px;font-size:12.5px;margin-bottom:12px}'+
     '.meta b{display:inline-block;min-width:120px;color:#6E6E73;font-weight:600}'+
-    '.metaband{display:grid;gap:4px 12px;font-size:11px;margin-bottom:8px}'+
-    '.metaband>div{min-width:0;word-break:break-word}'+
-    '.metaband b{display:block;color:#6E6E73;font-weight:600;font-size:9px;text-transform:uppercase;letter-spacing:.02em}'+
     'table{width:100%;border-collapse:collapse;font-size:12.5px;margin:8px 0}'+
     'th,td{text-align:left;padding:6px 8px;border-bottom:1px solid #E5E5EA}'+
     'th{background:#F5F5F7;font-size:11px;text-transform:uppercase;letter-spacing:.03em;color:#6E6E73}'+
@@ -47,13 +44,14 @@ function docShell(title, body){
 function metaRows(pairs){
   return '<div class="meta">'+pairs.map(function(p){return '<div><b>'+esc(p[0])+'</b>'+(p[1]||'—')+'</div>';}).join('')+'</div>';
 }
-/* Render metadata as horizontal bands — each inner array is one row, laid out
-   as N equal columns so all its fields sit on a single line. */
-function metaBands(bands){
-  return bands.map(function(row){
-    return '<div class="metaband" style="grid-template-columns:repeat('+row.length+',1fr)">'+
-      row.map(function(p){return '<div><b>'+esc(p[0])+'</b>'+(p[1]||'—')+'</div>';}).join('')+'</div>';
-  }).join('');
+/* Two-column metadata: `left` fills the left column top-to-bottom, `right` the
+   right column. Pairs are interleaved so the row-major .meta grid renders each
+   list as a vertical column in the given order. */
+function metaCols(left, right){
+  function cell(p){ return p ? '<div><b>'+esc(p[0])+'</b>'+(p[1]||'—')+'</div>' : '<div></div>'; }
+  var n=Math.max(left.length, right.length), cells='';
+  for(var i=0;i<n;i++){ cells+=cell(left[i])+cell(right[i]); }
+  return '<div class="meta">'+cells+'</div>';
 }
 
 /* ---- Job Order: NO PRICES, exactly 2 copies ------------------------------- */
@@ -66,11 +64,11 @@ function docJobOrder(j){
       Object.keys(j.checklist.items||{}).filter(function(k){return j.checklist.items[k];}).map(function(k){return '<div>☑ '+esc(k)+'</div>';}).join('')+'</div>'+
       (j.checklist.bodyNotes?'<div class="notes">Body: '+esc(j.checklist.bodyNotes)+'</div>':'') : '';
     return '<div class="copy-tag">'+tag+'</div>'+ docHeader('Job Order · '+j.no)+
-      metaBands([
+      metaCols(
         [['Plate', esc(j.plate)],['Owner', esc(j.owner)],['Contact person', esc(j.contactPerson)],
          ['Vehicle', esc((j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:''))],['Chassis #', esc(j.chassis)],['Ingress Odo', num(j.odometer)+' km']],
         [['Date in', fmtDate(j.dateIn)],['ETD', fmtDate(j.etd)],['Service Adviser', esc(staffName(j.saId))],
-         ['Mechanic', esc(mechName(j.mechanicIds))],['Bay', esc(bayName(j.bayId))],['Job hours', num(j.jobHours)],['PMS ref', esc(j.pmsRef)]] ])+
+         ['Mechanic', esc(mechName(j.mechanicIds))],['Bay', esc(bayName(j.bayId))],['Job hours', num(j.jobHours)],['PMS ref', esc(j.pmsRef)]] )+
       lines+
       (j.notes?'<div class="notes"><b>Service notes:</b> '+esc(j.notes)+'</div>':'')+
       '<div class="notes"><b>Inspection:</b> Fuel '+esc(fmtFuel((j.inspection||{}).fuel))+' · Lights '+esc((j.inspection||{}).lights||'None')+' · '+esc((j.inspection||{}).condition||'')+'</div>'+
@@ -114,12 +112,12 @@ function totalsBox(j,opts){
 /* ---- Post Job Report: prices + Approved for release by -------------------- */
 function docPostJob(j){
   var body=docHeader('Post Job Report · '+j.no)+
-    metaBands([
+    metaCols(
       [['Plate', esc(j.plate)],['Owner', esc(j.owner)],['Contact', esc(j.contactPerson+' · '+j.contactNumber)],
        ['Vehicle', esc((j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:''))],['Chassis #', esc(j.chassis)],
        ['Ingress Odo', num(j.odometer)+' km'],['Last Service Odo', j.lastServiceOdo?num(j.lastServiceOdo)+' km':'—']],
       [['Date in', fmtDate(j.dateIn)],['ETD', fmtDate(j.etd)],['Service Adviser', esc(staffName(j.saId))],
-       ['Mechanic', esc(mechName(j.mechanicIds))],['Bay', esc(bayName(j.bayId))],['PMS ref', esc(j.pmsRef)]] ])+
+       ['Mechanic', esc(mechName(j.mechanicIds))],['Bay', esc(bayName(j.bayId))],['PMS ref', esc(j.pmsRef)]] )+
     pricedLinesTable(j,{sku:true})+ totalsBox(j,{discount:false})+
     (j.notes?'<div class="notes"><b>Service notes:</b> '+esc(j.notes)+'</div>':'')+
     '<div class="sig-grid"><div class="sigline">Checked by (Service Adviser)<br>'+esc(staffName(j.saId))+'</div>'+
@@ -134,11 +132,11 @@ function printPostJob(id){ printDoc(docPostJob(jobById(id))); }
 function docBilling(j){
   var sh=S.shop;
   var body=docHeader('FINAL BILLING RECEIPT · '+(j.orNumber||''))+
-    metaBands([
+    metaCols(
       [['Plate', esc(j.plate)],['Owner', esc(j.owner)],['Contact', esc(j.contactPerson+' · '+j.contactNumber)],
        ['Vehicle', esc((j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:''))],['Chassis #', esc(j.chassis)],
        ['Ingress Odo', num(j.odometer)+' km'],['Last Service Odo', j.lastServiceOdo?num(j.lastServiceOdo)+' km':'—']],
-      [['Date', fmtDate(j.billedAt)],['TIN', esc(j.customerTin||'—')],['SI reference', esc(j.siRef||'—')],['JO #', esc(j.no)]] ])+
+      [['Date', fmtDate(j.billedAt)],['TIN', esc(j.customerTin||'—')],['SI reference', esc(j.siRef||'—')],['JO #', esc(j.no)]] )+
     pricedLinesTable(j,{sku:true})+ totalsBox(j,{discount:true})+
     '<div class="sig-grid"><div class="sigline">Approved for release by (Supervisor)<br>'+esc(staffName(j.approvedReleaseBy))+'</div>'+
       '<div class="sigline">Payment received by (Secretary)<br>'+esc(staffName(j.paymentReceivedBy))+'</div>'+
