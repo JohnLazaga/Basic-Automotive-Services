@@ -594,6 +594,9 @@ function billingEditBlock(j){
   if(!can('billing_edit')) return '';
   return '<details class="billedit"'+(j.stage==='Final Billing'?' open':'')+'><summary>✎ Edit billing &amp; discount</summary>'+
     '<div class="grid2 mt8">'+
+    field('Approved for release by (Supervisor)','<select onchange="setJobField(\''+j.id+'\',\'approvedReleaseBy\',this.value)">'+optionList(staffByRole('SV'),j.approvedReleaseBy,true)+'</select>')+
+    field('Payment received by (Secretary)','<select onchange="setJobField(\''+j.id+'\',\'paymentReceivedBy\',this.value)">'+optionList(staffByRole('Secretary'),j.paymentReceivedBy,true)+'</select>')+'</div>'+
+    '<div class="grid2 mt8">'+
     field('Discount type','<select id="bdType"><option value="amount"'+(j.discount.type==='amount'?' selected':'')+'>₱ Amount</option><option value="percent"'+(j.discount.type==='percent'?' selected':'')+'>% Percent</option></select>')+
     field('Discount value','<input id="bdVal" type="number" step="0.01" value="'+attr(j.discount.value||0)+'">')+'</div>'+
     field('SI reference #','<input id="bdSI" value="'+attr(j.siRef||'')+'" placeholder="appears on Final Billing">')+
