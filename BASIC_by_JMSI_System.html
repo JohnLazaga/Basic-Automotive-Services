@@ -1511,7 +1511,7 @@ VIEWS.job = function(id){
   var bill = runningBill(j);
   return '<div class="page">'+
     '<div class="page-head"><div><a class="back" onclick="go(\'jobs\')">‹ Job Orders</a>'+
-      '<h1>'+esc(j.no)+' · '+esc(j.plate)+' '+statusBadge(j.status)+'</h1></div>'+
+      '<h1>'+esc(j.no)+' · '+esc(j.plate)+((j.year+' '+j.make+' '+j.model).trim()?' · '+esc((j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:'')):'')+' '+statusBadge(j.status)+'</h1></div>'+
       '<div class="row gap">'+jobPrintButtons(j)+
         (((typeof isAdminUser!=='function')||isAdminUser())?'<button class="btn danger ghost" onclick="deleteJobConfirm(\''+j.id+'\')">🗑 Delete</button>':'')+
       '</div></div>'+
