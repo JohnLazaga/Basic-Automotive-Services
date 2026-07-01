@@ -69,13 +69,13 @@ function boardMatch(j){
 function boardBody(){
   var active = S.jobs.filter(function(j){return j.stage!=='Released';}).filter(boardMatch);
   if(BOARD_Q && !active.length) return emptyState('No active units match “'+esc(BOARD_Q)+'”.');
-  return BOARD_MODE==='kanban'? boardKanban(active) : BOARD_MODE==='bays'? boardBays(active) : boardList(active);
+  return BOARD_MODE==='kanban'? boardKanban(active) : BOARD_MODE==='bays'? boardBays(active) : BOARD_MODE==='mechs'? boardMechs(active) : boardList(active);
 }
 function boardSearch(v){ BOARD_Q=v; var el=document.getElementById('boardBody'); if(el) el.innerHTML=boardBody(); }
 VIEWS.board = function(){
   var toggle = '<div class="seg">'+
-    ['kanban','list','bays'].map(function(m){
-      var on=BOARD_MODE===m?' on':''; var lab={kanban:'Kanban',list:'List',bays:'Service Bays'}[m];
+    ['kanban','list','bays','mechs'].map(function(m){
+      var on=BOARD_MODE===m?' on':''; var lab={kanban:'Kanban',list:'List',bays:'Service Bays',mechs:'Mechanics'}[m];
       return '<button class="seg-b'+on+'" onclick="setBoardMode(\''+m+'\')">'+lab+'</button>';
     }).join('')+'</div>';
   var search='<input class="searchbox" id="boardSearch" value="'+attr(BOARD_Q)+'" oninput="boardSearch(this.value)" placeholder="Search plate / owner / contact…" autocomplete="off">';
@@ -141,6 +141,30 @@ function boardBays(active){
   var none = '<div class="baycell nobay"><div class="bay-name">Not yet in a bay</div>'+
     (noBay.length? noBay.map(function(j){ return '<div class="bay-car" onclick="go(\'job\',\''+j.id+'\')">🚗 '+esc(j.plate)+' '+statusBadge(j.status)+'</div>'; }).join('')
       : '<div class="bay-empty">—</div>')+'</div>';
+  return '<div class="baygrid">'+cells+none+'</div>';
+}
+function boardMechs(active){
+  // Group active jobs under each mechanic (a job with several mechanics shows under each).
+  var byMech = {};
+  active.forEach(function(j){ (j.mechanicIds||[]).forEach(function(id){ if(id&&id!=='TBA') (byMech[id]=byMech[id]||[]).push(j); }); });
+  var mechs = (S.staff||[]).filter(function(s){ return isMechanicRole(s.role); })
+    .sort(function(a,b){ return kpiRoleRank(a.role)-kpiRoleRank(b.role) || (a.name<b.name?-1:1); });
+  var cells = mechs.map(function(s){
+    var jobs = byMech[s.id]||[];
+    return '<div class="baycell"><div class="bay-name">'+esc(s.name)+
+        ' <span class="muted small">· '+esc(roleLabel(s.role))+'</span>'+
+        '<span class="kcount" title="Active jobs">'+jobs.length+'</span></div>'+
+      (jobs.length? jobs.map(function(j){ return '<div class="bay-car" onclick="go(\'job\',\''+j.id+'\')">'+
+        '🚗 '+esc(j.plate)+' '+statusBadge(j.status)+
+        '<div class="muted small">'+esc(j.make+' '+j.model)+' · '+esc(bayName(j.bayId))+'</div></div>'; }).join('')
+        : '<div class="bay-empty">No active jobs</div>')+'</div>';
+  }).join('');
+  var unassigned = active.filter(function(j){ return !(j.mechanicIds||[]).some(function(id){ return id&&id!=='TBA'; }); });
+  var none = '<div class="baycell nobay"><div class="bay-name">No mechanic assigned'+
+      '<span class="kcount">'+unassigned.length+'</span></div>'+
+    (unassigned.length? unassigned.map(function(j){ return '<div class="bay-car" onclick="go(\'job\',\''+j.id+'\')">🚗 '+esc(j.plate)+' '+statusBadge(j.status)+'</div>'; }).join('')
+      : '<div class="bay-empty">—</div>')+'</div>';
+  if(!mechs.length) return emptyState('No mechanics on staff. Add them in Records → Staff.');
   return '<div class="baygrid">'+cells+none+'</div>';
 }
 
