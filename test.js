@@ -227,6 +227,24 @@ section('Extra invariants');
   s.shop.vatReg=false; const ex=M.vatSplit(1000,s); ok('non-VAT yields exempt', ex.exempt===true && ex.vat===0);
 })();
 
+/* -------------------------------------------------- Series-number uniqueness */
+section('Series numbers never duplicate (stale/behind counter)');
+(function(){
+  const s=fresh();
+  // Simulate a counter that has fallen behind the records already present
+  // (the cross-device / offline sync case that produced three JO-0040).
+  const maxJo = Math.max.apply(null, s.jobs.map(function(j){ return Number(/(\d+)/.exec(j.no)[1]); }));
+  s.counters.jo = 1;                       // way behind the existing jobs
+  const j1=M.createJob({plate:'ZZZ 111'}); const j2=M.createJob({plate:'ZZZ 222'});
+  ok('JO # skips past existing max', Number(/(\d+)/.exec(j1.no)[1]) === maxJo+1);
+  ok('consecutive JO #s are unique', j1.no!==j2.no);
+  const allJo=s.jobs.map(function(j){return j.no;});
+  ok('no duplicate JO # in state', new Set(allJo).size===allJo.length);
+  // Estimates share the same allocator
+  s.counters.est=0; const e1=M.createEstimateFrom({plate:'ZZZ 111'}); const e2=M.createEstimateFrom({plate:'ZZZ 222'});
+  ok('consecutive EST #s are unique', e1.no!==e2.no);
+})();
+
 /* ---------------------------------------------------------------- RBAC */
 section('RBAC permission engine');
 (function(){
