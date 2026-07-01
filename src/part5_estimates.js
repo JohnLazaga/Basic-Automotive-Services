@@ -2,9 +2,9 @@
    PART 5 — Estimates: list, detail (line editor, approvers, signature, convert)
    ========================================================================== */
 
-function createEstimateFrom(base){
+async function createEstimateFrom(base){
   var v = vehicleByPlate(base.plate);
-  var e = { id:uid('est'), no:nextNo('est','EST-',4), date:todayISO(),
+  var e = { id:uid('est'), no:await allocateSeriesNumber('est','EST-',4), date:todayISO(),
     plate:base.plate||'', owner:base.owner||(v&&v.owner)||'', contactPerson:base.contactPerson||'', contactNumber:base.contactNumber||'',
     address:base.address||(v&&v.address)||'',
     year:base.year||(v&&v.year)||'', make:base.make||(v&&v.make)||'', model:base.model||(v&&v.model)||'',
@@ -86,9 +86,11 @@ function delEstLine(id,lid){ var e=estById(id); e.lines=e.lines.filter(function(
 
 function convertEstimate(id){
   var e=estById(id);
-  var job=createJob({ plate:e.plate, owner:e.owner, contactPerson:e.contactPerson, contactNumber:e.contactNumber,
+  createJob({ plate:e.plate, owner:e.owner, contactPerson:e.contactPerson, contactNumber:e.contactNumber,
     year:e.year, make:e.make, model:e.model, odometer:e.odometer, assessedBy:e.assessedBy, saId:e.approvedSA, notes:e.notes,
-    lines: e.lines.map(function(l){ return { id:uid('ln'), type:l.type, ref:l.ref, desc:l.desc, qty:l.qty, price:l.price }; }) });
-  e.status='Converted'; persist();
-  toast('Converted to '+job.no); go('job', job.id);
+    lines: e.lines.map(function(l){ return { id:uid('ln'), type:l.type, ref:l.ref, desc:l.desc, qty:l.qty, price:l.price }; }) })
+  .then(function(job){
+    e.status='Converted'; persist();
+    toast('Converted to '+job.no); go('job', job.id);
+  });
 }

@@ -19,9 +19,13 @@ function section(t){ console.log('\n'+t); }
 /* fresh seeded state */
 function fresh(){ const s = M.seedState(); M.setS(s); return s; }
 
+/* Creators (createJob/createEstimateFrom) are async now — the whole suite runs
+   inside main() so state-sharing tests stay strictly sequential. */
+async function main(){
+
 /* ---------------------------------------------------------------- TEST 1 */
 section('1. Every view & detail page renders without throwing');
-(function(){
+await (async function(){
   const s = fresh();
   const VIEWS = M.VIEWS();
   const simple = ['board','appointments','jobs','estimates','reports','dailyclose','productivity','receivables','vehicles','parts','labor','purchaseorders','staff','settings'];
@@ -31,7 +35,7 @@ section('1. Every view & detail page renders without throwing');
   });
   // detail pages
   try { ok('detail job', VIEWS.job(s.jobs[0].id).length>0); } catch(e){ ok('detail job',false); console.log('     '+e.message); }
-  try { const e=M.createEstimateFrom({plate:'ABC 1234'}); ok('detail estimate', VIEWS.estimate(e.id).length>0); } catch(e){ ok('detail estimate',false); console.log('     '+e.message); }
+  try { const e=await M.createEstimateFrom({plate:'ABC 1234'}); ok('detail estimate', VIEWS.estimate(e.id).length>0); } catch(e){ ok('detail estimate',false); console.log('     '+e.message); }
   try { ok('detail vehicle', VIEWS.vehicle(s.vehicles[0].id).length>0); } catch(e){ ok('detail vehicle',false); console.log('     '+e.message); }
   try { ok('detail po', VIEWS.po(s.purchaseOrders[0].id).length>0); } catch(e){ ok('detail po',false); console.log('     '+e.message); }
   // board in all 3 modes — VIEWS.board reads BOARD_MODE; we can't flip the module var directly,
@@ -156,9 +160,9 @@ section('6. Inventory: Post Job deducts (idempotent); PO receive adds back');
 
 /* ---------------------------------------------------------------- TEST 7 */
 section('7. Appointment "Check in" creates a Job Order, marks Arrived');
-(function(){
+await (async function(){
   const s=fresh(); const a=s.appointments[0]; const n0=s.jobs.length;
-  const job=M.createJobFromAppt(a); a.status='Arrived'; a.jobId=job.id;
+  const job=await M.createJobFromAppt(a); a.status='Arrived'; a.jobId=job.id;
   ok('job order created', s.jobs.length===n0+1 && /^JO-/.test(job.no));
   ok('appointment marked Arrived', a.status==='Arrived' && a.jobId===job.id);
 })();
@@ -229,19 +233,19 @@ section('Extra invariants');
 
 /* -------------------------------------------------- Series-number uniqueness */
 section('Series numbers never duplicate (stale/behind counter)');
-(function(){
+await (async function(){
   const s=fresh();
   // Simulate a counter that has fallen behind the records already present
   // (the cross-device / offline sync case that produced three JO-0040).
   const maxJo = Math.max.apply(null, s.jobs.map(function(j){ return Number(/(\d+)/.exec(j.no)[1]); }));
   s.counters.jo = 1;                       // way behind the existing jobs
-  const j1=M.createJob({plate:'ZZZ 111'}); const j2=M.createJob({plate:'ZZZ 222'});
+  const j1=await M.createJob({plate:'ZZZ 111'}); const j2=await M.createJob({plate:'ZZZ 222'});
   ok('JO # skips past existing max', Number(/(\d+)/.exec(j1.no)[1]) === maxJo+1);
   ok('consecutive JO #s are unique', j1.no!==j2.no);
   const allJo=s.jobs.map(function(j){return j.no;});
   ok('no duplicate JO # in state', new Set(allJo).size===allJo.length);
   // Estimates share the same allocator
-  s.counters.est=0; const e1=M.createEstimateFrom({plate:'ZZZ 111'}); const e2=M.createEstimateFrom({plate:'ZZZ 222'});
+  s.counters.est=0; const e1=await M.createEstimateFrom({plate:'ZZZ 111'}); const e2=await M.createEstimateFrom({plate:'ZZZ 222'});
   ok('consecutive EST #s are unique', e1.no!==e2.no);
 })();
 
@@ -280,3 +284,6 @@ console.log('\n─────────────────────�
 console.log('  PASS: '+pass+'   FAIL: '+fail);
 if(fail){ console.log('  Failures: '+fails.join(' | ')); process.exit(1); }
 else console.log('  ✓ All acceptance tests passed.');
+
+} // end main
+main().catch(function(e){ console.log('  ✗ test harness threw: '+(e&&e.stack||e)); process.exit(1); });

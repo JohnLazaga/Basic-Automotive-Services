@@ -245,6 +245,35 @@ function nextNo(kind, prefix, pad){
   c[kind] = Math.max((c[kind]||0), maxSeriesNo(kind)) + 1;   // never below any existing record
   return prefix + String(c[kind]).padStart(pad||4,'0');
 }
+/* Atomic series-number allocator — mirrors allocateOrNumber. In cloud mode a
+   Firestore transaction on meta/<kind>counter hands out each number exactly once,
+   even across simultaneous devices. Offline (or if the transaction fails / is not
+   permitted) it falls back to the local seed-from-max path, so creation never
+   blocks. Returns a Promise. */
+function allocateSeriesNumber(kind, prefix, pad){
+  var seed = Math.max((Number((S.counters||{})[kind])||0), maxSeriesNo(kind)) + 1;
+  function local(){
+    if(!S.counters) S.counters={};
+    S.counters[kind] = Math.max(Number(S.counters[kind])||0, seed);
+    return prefix + String(S.counters[kind]).padStart(pad||4,'0');
+  }
+  if (typeof cloudOn==='function' && cloudOn() && typeof FB!=='undefined' && FB && FB.ready && FB.db && FB.user){
+    var ref = FB.db.collection('meta').doc(kind+'counter');
+    return FB.db.runTransaction(function(t){
+      return t.get(ref).then(function(doc){
+        var stored = (doc.exists && Number(doc.data().next)>0) ? Number(doc.data().next) : 0;
+        var issue = Math.max(stored, seed);                 // never reuse / never go backward
+        t.set(ref, { next: issue+1, updatedAt:new Date().toISOString() }, { merge:true });
+        return issue;
+      });
+    }).then(function(issue){
+      if(!S.counters) S.counters={};
+      S.counters[kind] = issue;
+      return prefix + String(issue).padStart(pad||4,'0');
+    }).catch(function(){ return local(); });               // permission/offline → safe local seed
+  }
+  return Promise.resolve(local());
+}
 
 /* ---- Roles --------------------------------------------------------------- */
 /* Internal role KEYS are unchanged (avoids data migration); only labels change. */

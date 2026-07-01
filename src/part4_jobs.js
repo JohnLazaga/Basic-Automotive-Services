@@ -19,7 +19,7 @@ function ensureVehicle(snap){
 }
 
 function blankJob(){
-  return { id:uid('job'), no:nextNo('jo','JO-',4), stage:'Job Order',
+  return { id:uid('job'), no:'', stage:'Job Order',
     plate:'', vehicleId:null, owner:'', address:'', contactPerson:'', contactNumber:'', chassis:'',
     year:'', make:'', model:'', variant:'', customerTin:'',
     dateIn:todayISO(), etd:'', odometer:0, lastServiceOdo:'', jobHours:0,
@@ -32,8 +32,9 @@ function blankJob(){
     photos:[], inventoryDeducted:false };
 }
 
-function createJob(base){
+async function createJob(base){
   var j = Object.assign(blankJob(), base||{});
+  j.no = await allocateSeriesNumber('jo','JO-',4);          // atomic, unique
   if (!j.statusLog.length) j.statusLog=[{ time:new Date().toISOString(), code:j.status||'A1', by:j.saId||'', note:'Job Order created.' }];
   var v = ensureVehicle(j);
   j.vehicleId = v.id;
@@ -101,11 +102,11 @@ function intakeSubmit(kind){
     address:val('inAddr'), chassis:val('inChassis'), year:val('inYear'), make:val('inMake'), model:val('inModel'), variant:val('inVariant'),
     odometer:Number(val('inOdo'))||0, notes:val('inNotes') };
   if (!base.plate){ toast('Plate is required','err'); return; }
-  if (kind==='estimate'){ closeModal(); var e=createEstimateFrom(base); go('estimate', e.id); return; }
+  if (kind==='estimate'){ closeModal(); createEstimateFrom(base).then(function(e){ go('estimate', e.id); }); return; }
   // Job Order: if ingress is incomplete, prompt to finish now or proceed and complete later.
   var missing = jobMissingFields(base);
   if (missing.length){ _ingressDraft=base; promptIncompleteIngress(missing); return; }
-  closeModal(); var j=createJob(base); toast('Job Order '+j.no+' created'); go('job', j.id);
+  closeModal(); createJob(base).then(function(j){ toast('Job Order '+j.no+' created'); go('job', j.id); });
 }
 var _ingressDraft=null;
 function promptIncompleteIngress(missing){
@@ -119,7 +120,7 @@ function promptIncompleteIngress(missing){
       '<button class="btn primary" onclick="createJobAnyway()">Create, finish later</button>', width:'520px' });
 }
 function reopenIngress(){ openIntake(_ingressDraft||{}); }
-function createJobAnyway(){ var b=_ingressDraft||{}; _ingressDraft=null; closeModal(); var j=createJob(b); toast('Job Order '+j.no+' created — complete the remaining details later'); go('job', j.id); }
+function createJobAnyway(){ var b=_ingressDraft||{}; _ingressDraft=null; closeModal(); createJob(b).then(function(j){ toast('Job Order '+j.no+' created — complete the remaining details later'); go('job', j.id); }); }
 
 /* ---- Job Orders list ------------------------------------------------------ */
 var JOB_Q='';

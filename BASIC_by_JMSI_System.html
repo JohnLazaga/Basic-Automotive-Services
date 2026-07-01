@@ -630,6 +630,35 @@ function nextNo(kind, prefix, pad){
   c[kind] = Math.max((c[kind]||0), maxSeriesNo(kind)) + 1;   // never below any existing record
   return prefix + String(c[kind]).padStart(pad||4,'0');
 }
+/* Atomic series-number allocator — mirrors allocateOrNumber. In cloud mode a
+   Firestore transaction on meta/<kind>counter hands out each number exactly once,
+   even across simultaneous devices. Offline (or if the transaction fails / is not
+   permitted) it falls back to the local seed-from-max path, so creation never
+   blocks. Returns a Promise. */
+function allocateSeriesNumber(kind, prefix, pad){
+  var seed = Math.max((Number((S.counters||{})[kind])||0), maxSeriesNo(kind)) + 1;
+  function local(){
+    if(!S.counters) S.counters={};
+    S.counters[kind] = Math.max(Number(S.counters[kind])||0, seed);
+    return prefix + String(S.counters[kind]).padStart(pad||4,'0');
+  }
+  if (typeof cloudOn==='function' && cloudOn() && typeof FB!=='undefined' && FB && FB.ready && FB.db && FB.user){
+    var ref = FB.db.collection('meta').doc(kind+'counter');
+    return FB.db.runTransaction(function(t){
+      return t.get(ref).then(function(doc){
+        var stored = (doc.exists && Number(doc.data().next)>0) ? Number(doc.data().next) : 0;
+        var issue = Math.max(stored, seed);                 // never reuse / never go backward
+        t.set(ref, { next: issue+1, updatedAt:new Date().toISOString() }, { merge:true });
+        return issue;
+      });
+    }).then(function(issue){
+      if(!S.counters) S.counters={};
+      S.counters[kind] = issue;
+      return prefix + String(issue).padStart(pad||4,'0');
+    }).catch(function(){ return local(); });               // permission/offline → safe local seed
+  }
+  return Promise.resolve(local());
+}
 
 /* ---- Roles --------------------------------------------------------------- */
 /* Internal role KEYS are unchanged (avoids data migration); only labels change. */
@@ -1366,9 +1395,10 @@ function saveAppt(id){
 function delAppt(id){ S.appointments=S.appointments.filter(function(x){return x.id!==id;}); persist(); closeModal(); render(); }
 function checkInAppt(id){
   var a=S.appointments.find(function(x){return x.id===id;}); if(!a) return;
-  var job = createJobFromAppt(a);
-  a.status='Arrived'; a.jobId=job.id; persist();
-  toast('Checked in · '+job.no+' created'); go('job', job.id);
+  createJobFromAppt(a).then(function(job){
+    a.status='Arrived'; a.jobId=job.id; persist();
+    toast('Checked in · '+job.no+' created'); go('job', job.id);
+  });
 }
 
 function field(label, control, hint){
@@ -1400,7 +1430,7 @@ function ensureVehicle(snap){
 }
 
 function blankJob(){
-  return { id:uid('job'), no:nextNo('jo','JO-',4), stage:'Job Order',
+  return { id:uid('job'), no:'', stage:'Job Order',
     plate:'', vehicleId:null, owner:'', address:'', contactPerson:'', contactNumber:'', chassis:'',
     year:'', make:'', model:'', variant:'', customerTin:'',
     dateIn:todayISO(), etd:'', odometer:0, lastServiceOdo:'', jobHours:0,
@@ -1413,8 +1443,9 @@ function blankJob(){
     photos:[], inventoryDeducted:false };
 }
 
-function createJob(base){
+async function createJob(base){
   var j = Object.assign(blankJob(), base||{});
+  j.no = await allocateSeriesNumber('jo','JO-',4);          // atomic, unique
   if (!j.statusLog.length) j.statusLog=[{ time:new Date().toISOString(), code:j.status||'A1', by:j.saId||'', note:'Job Order created.' }];
   var v = ensureVehicle(j);
   j.vehicleId = v.id;
@@ -1482,11 +1513,11 @@ function intakeSubmit(kind){
     address:val('inAddr'), chassis:val('inChassis'), year:val('inYear'), make:val('inMake'), model:val('inModel'), variant:val('inVariant'),
     odometer:Number(val('inOdo'))||0, notes:val('inNotes') };
   if (!base.plate){ toast('Plate is required','err'); return; }
-  if (kind==='estimate'){ closeModal(); var e=createEstimateFrom(base); go('estimate', e.id); return; }
+  if (kind==='estimate'){ closeModal(); createEstimateFrom(base).then(function(e){ go('estimate', e.id); }); return; }
   // Job Order: if ingress is incomplete, prompt to finish now or proceed and complete later.
   var missing = jobMissingFields(base);
   if (missing.length){ _ingressDraft=base; promptIncompleteIngress(missing); return; }
-  closeModal(); var j=createJob(base); toast('Job Order '+j.no+' created'); go('job', j.id);
+  closeModal(); createJob(base).then(function(j){ toast('Job Order '+j.no+' created'); go('job', j.id); });
 }
 var _ingressDraft=null;
 function promptIncompleteIngress(missing){
@@ -1500,7 +1531,7 @@ function promptIncompleteIngress(missing){
       '<button class="btn primary" onclick="createJobAnyway()">Create, finish later</button>', width:'520px' });
 }
 function reopenIngress(){ openIntake(_ingressDraft||{}); }
-function createJobAnyway(){ var b=_ingressDraft||{}; _ingressDraft=null; closeModal(); var j=createJob(b); toast('Job Order '+j.no+' created — complete the remaining details later'); go('job', j.id); }
+function createJobAnyway(){ var b=_ingressDraft||{}; _ingressDraft=null; closeModal(); createJob(b).then(function(j){ toast('Job Order '+j.no+' created — complete the remaining details later'); go('job', j.id); }); }
 
 /* ---- Job Orders list ------------------------------------------------------ */
 var JOB_Q='';
@@ -2113,9 +2144,9 @@ function afterRender(){}
    PART 5 — Estimates: list, detail (line editor, approvers, signature, convert)
    ========================================================================== */
 
-function createEstimateFrom(base){
+async function createEstimateFrom(base){
   var v = vehicleByPlate(base.plate);
-  var e = { id:uid('est'), no:nextNo('est','EST-',4), date:todayISO(),
+  var e = { id:uid('est'), no:await allocateSeriesNumber('est','EST-',4), date:todayISO(),
     plate:base.plate||'', owner:base.owner||(v&&v.owner)||'', contactPerson:base.contactPerson||'', contactNumber:base.contactNumber||'',
     address:base.address||(v&&v.address)||'',
     year:base.year||(v&&v.year)||'', make:base.make||(v&&v.make)||'', model:base.model||(v&&v.model)||'',
@@ -2197,11 +2228,13 @@ function delEstLine(id,lid){ var e=estById(id); e.lines=e.lines.filter(function(
 
 function convertEstimate(id){
   var e=estById(id);
-  var job=createJob({ plate:e.plate, owner:e.owner, contactPerson:e.contactPerson, contactNumber:e.contactNumber,
+  createJob({ plate:e.plate, owner:e.owner, contactPerson:e.contactPerson, contactNumber:e.contactNumber,
     year:e.year, make:e.make, model:e.model, odometer:e.odometer, assessedBy:e.assessedBy, saId:e.approvedSA, notes:e.notes,
-    lines: e.lines.map(function(l){ return { id:uid('ln'), type:l.type, ref:l.ref, desc:l.desc, qty:l.qty, price:l.price }; }) });
-  e.status='Converted'; persist();
-  toast('Converted to '+job.no); go('job', job.id);
+    lines: e.lines.map(function(l){ return { id:uid('ln'), type:l.type, ref:l.ref, desc:l.desc, qty:l.qty, price:l.price }; }) })
+  .then(function(job){
+    e.status='Converted'; persist();
+    toast('Converted to '+job.no); go('job', job.id);
+  });
 }
 
 
@@ -2484,15 +2517,18 @@ VIEWS.purchaseorders = function(){
     '<button class="btn primary" onclick="newPO()">＋ New PO</button></div></div>'+
     (S.purchaseOrders.length?'<div class="card pad0"><table class="tbl click"><thead><tr><th>PO #</th><th>Supplier</th><th>Status</th><th>Date</th><th class="r">Total</th></tr></thead><tbody>'+rows+'</tbody></table></div>':emptyState('No purchase orders.'))+'</div>';
 };
-function newPO(){ var po={ id:uid('po'), no:nextNo('po','PO-',4), date:todayISO(), supplier:'', status:'Draft', lines:[], notes:'', receivedDate:null };
-  S.purchaseOrders.unshift(po); persist(); go('po', po.id); }
+function newPO(){ allocateSeriesNumber('po','PO-',4).then(function(no){
+  var po={ id:uid('po'), no:no, date:todayISO(), supplier:'', status:'Draft', lines:[], notes:'', receivedDate:null };
+  S.purchaseOrders.unshift(po); persist(); go('po', po.id); }); }
 function suggestReorder(){
   var low=S.parts.filter(function(p){return (p.stock||0)<=(p.reorder||0);});
   if(!low.length){ toast('Nothing below reorder level'); return; }
-  var po={ id:uid('po'), no:nextNo('po','PO-',4), date:todayISO(), supplier:'', status:'Draft',
-    lines:low.map(function(p){ return { partId:p.id, name:p.name, qty:Math.max((p.reorder||0)*2-(p.stock||0),(p.reorder||0)), cost:p.cost||0 }; }),
-    notes:'Auto-generated from low-stock parts.', receivedDate:null };
-  S.purchaseOrders.unshift(po); persist(); toast('Draft PO built from '+low.length+' low-stock parts'); go('po', po.id);
+  allocateSeriesNumber('po','PO-',4).then(function(no){
+    var po={ id:uid('po'), no:no, date:todayISO(), supplier:'', status:'Draft',
+      lines:low.map(function(p){ return { partId:p.id, name:p.name, qty:Math.max((p.reorder||0)*2-(p.stock||0),(p.reorder||0)), cost:p.cost||0 }; }),
+      notes:'Auto-generated from low-stock parts.', receivedDate:null };
+    S.purchaseOrders.unshift(po); persist(); toast('Draft PO built from '+low.length+' low-stock parts'); go('po', po.id);
+  });
 }
 VIEWS.po = function(id){
   var po=S.purchaseOrders.find(function(x){return x.id===id;})||S.purchaseOrders[0];
@@ -3254,6 +3290,7 @@ if (typeof module!=='undefined' && module.exports){
     can:can, routeAllowed:routeAllowed, setCurrentUser:function(u){ CURRENT_USER=u; },
     commissionTable:commissionTable, jobLaborCommission:jobLaborCommission, jobLaborCommissionMap:jobLaborCommissionMap, jobLaborCommissionMapAll:jobLaborCommissionMapAll, laborTotal:laborTotal,
     jobMissingFields:jobMissingFields, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
+    allocateSeriesNumber:allocateSeriesNumber, maxSeriesNo:maxSeriesNo, nextNo:nextNo,
     advancePostJob:null
   };
 }
