@@ -1181,6 +1181,11 @@ VIEWS.board = function(){
   '</div>';
 };
 
+/* Time of the most recent status/clipboard log entry for a job (or '—'). */
+function lastLogTimeLabel(j){
+  var log=j.statusLog||[]; if(!log.length) return '—';
+  return fmtDateTime(log[log.length-1].time);
+}
 function jobCardMini(j){
   var due = isUpdateDue(j);
   return '<div class="jcard" onclick="go(\'job\',\''+j.id+'\')">'+
@@ -1188,6 +1193,7 @@ function jobCardMini(j){
       (due?'<span class="duedot" title="Update due">●</span>':'')+'</div>'+
     '<div class="jcard-veh">'+esc(j.year+' '+j.make+' '+j.model)+'</div>'+
     '<div class="jcard-meta"><span>'+esc(bayName(j.bayId))+'</span><span>'+esc(mechName(j.mechanicIds))+'</span></div>'+
+    '<div class="jcard-meta"><span class="muted small">⏱ last log '+esc(lastLogTimeLabel(j))+'</span></div>'+
     '<div class="jcard-foot"><span class="muted">'+esc(j.no)+'</span><span class="bill">'+peso(jobGross(j))+'</span></div>'+
   '</div>';
 }
@@ -1210,11 +1216,12 @@ function boardList(active){
       '<td>'+statusBadge(j.status)+(due?' <span class="amber">⚑ due</span>':'')+'</td>'+
       '<td>'+esc(bayName(j.bayId))+'</td>'+
       '<td>'+esc(mechName(j.mechanicIds))+'</td>'+
+      '<td>'+esc(lastLogTimeLabel(j))+'</td>'+
       '<td>'+esc(fmtDate(j.etd))+'</td>'+
       '<td class="r">'+peso(jobGross(j))+'</td></tr>';
   }).join('');
   return '<div class="card pad0"><table class="tbl click">'+
-    '<thead><tr><th>JO #</th><th>Plate</th><th>Vehicle</th><th>Status</th><th>Bay</th><th>Mechanic(s)</th><th>ETD</th><th class="r">Running bill</th></tr></thead>'+
+    '<thead><tr><th>JO #</th><th>Plate</th><th>Vehicle</th><th>Status</th><th>Bay</th><th>Mechanic(s)</th><th>Last log</th><th>ETD</th><th class="r">Running bill</th></tr></thead>'+
     '<tbody>'+rows+'</tbody></table></div>';
 }
 function boardBays(active){
