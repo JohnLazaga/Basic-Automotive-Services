@@ -3064,8 +3064,9 @@ function docBilling(j){
   var body=docHeader('FINAL BILLING RECEIPT · '+(j.orNumber||''))+
     metaCols(
       [['Plate', esc(j.plate)],['Owner', esc(j.owner)],['Contact', esc(j.contactPerson+' · '+j.contactNumber)],
-       ['Vehicle', esc((j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:''))],['Chassis #', esc(j.chassis)]],
-      [['Date', fmtDate(j.billedAt)],['TIN', esc(j.customerTin||'—')],['SI reference', esc(j.siRef||'—')],['JO #', esc(j.no)],
+       ['Vehicle', esc((j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:''))],['Chassis #', esc(j.chassis)],
+       ['JO #', esc(j.no)]],
+      [['Date', fmtDate(j.billedAt)],['TIN', esc(j.customerTin||'—')],['SI reference', esc(j.siRef||'—')],
        ['Ingress Odo', num(j.odometer)+' km'],['Last Service Odo', j.lastServiceOdo?num(j.lastServiceOdo)+' km':'—']] )+
     pricedLinesTable(j,{sku:true})+ totalsBox(j,{discount:true})+
     '<div class="sig-grid"><div class="sigline">Approved for release by (Supervisor)<br>'+esc(staffNameIfRole(j.approvedReleaseBy,'SV'))+'</div>'+
