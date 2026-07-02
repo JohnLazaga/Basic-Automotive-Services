@@ -220,6 +220,49 @@ function docPayout(){
 }
 function printPayout(){ printDoc(docPayout()); }
 
+/* Per-mechanic commission detail: each mechanic's jobs with job description,
+   discounted labor and the commission earned on that job. */
+function docMechCommission(){
+  var jobs=jobsInProdPeriod(billedJobs());
+  var byMech={};   // id -> { name, role, rows:[], labor, commission }
+  jobs.forEach(function(j){
+    var cm=jobLaborCommissionMap(j,S);                 // actual payout map (toggle-on)
+    var lab=discountedLabor(j);
+    var desc=(j.lines||[]).filter(function(l){return l.type==='labor';}).map(function(l){return l.desc;})
+      .filter(Boolean).join(', ') || (j.notes||'') || 'Service';
+    var veh=((j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:'')).trim();
+    Object.keys(cm).forEach(function(id){
+      var s=staffById(id); if(!s || !isMechanicRole(s.role)) return;   // mechanics only
+      if(!byMech[id]) byMech[id]={ name:s.name, role:s.role, rows:[], labor:0, commission:0 };
+      byMech[id].rows.push({ no:j.no, veh:veh, plate:j.plate, desc:desc, labor:lab, comm:cm[id] });
+      byMech[id].labor=round2(byMech[id].labor+lab);
+      byMech[id].commission=round2(byMech[id].commission+cm[id]);
+    });
+  });
+  var ids=Object.keys(byMech).sort(function(a,b){
+    var A=byMech[a], B=byMech[b];
+    return kpiRoleRank(A.role)-kpiRoleRank(B.role) || String(A.name).localeCompare(String(B.name));
+  });
+  var grand=0;
+  var blocks=ids.map(function(id){
+    var m=byMech[id]; grand=round2(grand+m.commission);
+    var rows=m.rows.map(function(r){
+      return '<tr><td>'+esc(r.no)+'</td><td>'+esc(r.plate)+(r.veh?' · '+esc(r.veh):'')+'</td><td>'+esc(r.desc)+'</td>'+
+        '<td class="r">'+peso(r.labor)+'</td><td class="r">'+peso(r.comm)+'</td></tr>';
+    }).join('');
+    return '<div class="dtitle" style="margin-top:16px">'+esc(m.name)+' · '+esc(roleLabel(m.role))+'</div>'+
+      '<table><thead><tr><th>JO #</th><th>Vehicle</th><th>Job description</th><th class="r">Labor (discounted)</th><th class="r">Commission</th></tr></thead>'+
+      '<tbody>'+rows+
+      '<tr class="tot"><td></td><td></td><td class="r">Subtotal</td><td class="r">'+peso(m.labor)+'</td><td class="r">'+peso(m.commission)+'</td></tr>'+
+      '</tbody></table>';
+  }).join('') || '<p class="r">No mechanic commissions in this period.</p>';
+  var body=docHeader('Mechanic Commission Detail · '+esc(prodPeriodLabel()))+ blocks+
+    '<div class="totbox"><div class="l2 grand"><span>Total mechanic commission</span><span>'+peso(grand)+'</span></div></div>'+
+    '<div class="foot">Commission = each mechanic’s own rate × the job’s labor net of any labor discount. Includes only mechanics switched on for payout.</div>';
+  return docShell('Mechanic commission detail', body);
+}
+function printMechCommission(){ printDoc(docMechCommission()); }
+
 /* ---- Daily Close report --------------------------------------------------- */
 function docDailyClose(){
   var date=DC_DATE||todayISO();

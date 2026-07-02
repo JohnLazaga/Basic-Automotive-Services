@@ -175,7 +175,8 @@ VIEWS.productivity = function(){
     '<input type="date" value="'+attr(PROD_FROM)+'" onchange="PROD_FROM=this.value;render()"> <span class="muted">to</span> '+
     '<input type="date" value="'+attr(PROD_TO)+'" onchange="PROD_TO=this.value;render()"></div>' : '';
   return '<div class="page"><div class="page-head"><h1>Staff Productivity</h1>'+
-    '<button class="btn primary" onclick="printPayout()">⎙ Payout sheet</button></div>'+
+    '<div class="row gap"><button class="btn ghost" onclick="printMechCommission()">⎙ Mechanic commissions</button>'+
+    '<button class="btn primary" onclick="printPayout()">⎙ Payout sheet</button></div></div>'+
     '<div class="row gap" style="align-items:center;flex-wrap:wrap"><div class="seg">'+seg+'</div>'+custom+
       '<span class="muted small">'+esc(prodPeriodLabel())+'</span></div>'+
     '<p class="muted small mt8">Commission is each staff member’s own admin-set rate × the job’s labor (set per person on the Staff page). The Commission column is the <b>evaluation</b> figure — shown even for staff switched off (greyed). The <b>Payout sheet</b> pays only staff with <b>Payout</b> on.</p>'+
