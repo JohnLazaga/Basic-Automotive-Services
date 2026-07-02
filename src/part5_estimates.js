@@ -43,21 +43,26 @@ function estTotal(e){ return sumLines(e.lines); }
 VIEWS.estimate = function(id){
   var e = estById(id) || S.estimates[0];
   if(!e) return emptyState('Estimate not found.');
-  var rows=(e.lines||[]).map(function(l){
-    return '<tr><td>'+chip(l.type==='part'?'Part':'Labor', l.type==='part'?'':'gold')+'</td>'+
-      '<td>'+esc((l.type==='part'&&l.sku)?l.sku:'—')+'</td><td>'+esc(l.desc)+'</td>'+
-      '<td class="r">'+num(l.qty)+'</td><td class="r">'+peso(l.price)+'</td><td class="r">'+peso(lineTotal(l))+'</td>'+
-      '<td class="r"><button class="ic" onclick="editEstLine(\''+e.id+'\',\''+l.id+'\')">✎</button><button class="ic" onclick="delEstLine(\''+e.id+'\',\''+l.id+'\')">✕</button></td></tr>';
-  }).join('')||'<tr><td colspan="7" class="muted center">No lines.</td></tr>';
+  function estTbl(type,title){
+    var list=(e.lines||[]).filter(function(l){return l.type===type;});
+    var rows=list.map(function(l){
+      return '<tr>'+(type==='part'?'<td>'+esc(l.sku||'—')+'</td>':'')+'<td>'+esc(l.desc)+'</td>'+
+        '<td class="r">'+num(l.qty)+'</td><td class="r">'+peso(l.price)+'</td><td class="r">'+peso(lineTotal(l))+'</td>'+
+        '<td class="r"><button class="ic" onclick="editEstLine(\''+e.id+'\',\''+l.id+'\')">✎</button><button class="ic" onclick="delEstLine(\''+e.id+'\',\''+l.id+'\')">✕</button></td></tr>';
+    }).join('')||'<tr><td colspan="'+(type==='part'?6:5)+'" class="muted center">No '+(type==='part'?'parts':'labor')+' yet.</td></tr>';
+    return '<div class="card"><div class="card-head"><h2>'+title+'</h2>'+
+      '<button class="btn sm primary" onclick="addEstLine(\''+e.id+'\',\''+type+'\')">＋ Add '+(type==='part'?'part':'labor')+'</button></div>'+
+      '<table class="tbl"><thead><tr>'+(type==='part'?'<th>SKU</th><th>Part</th>':'<th>Description</th>')+
+      '<th class="r">Qty</th><th class="r">Price</th><th class="r">Total</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+  }
   var vs=vatSplit(estTotal(e),S);
   return '<div class="page">'+
     '<div class="page-head"><div><a class="back" onclick="go(\'estimates\')">‹ Estimates</a><h1>'+esc(e.no)+' · '+esc(e.plate)+'</h1></div>'+
       '<div class="row gap"><button class="btn ghost" onclick="printEstimate(\''+e.id+'\')">⎙ Print (2 copies)</button>'+
       (e.status!=='Converted'?'<button class="btn primary" onclick="convertEstimate(\''+e.id+'\')">Convert to Job Order →</button>':'<span>'+chip('Converted','ok')+'</span>')+'</div></div>'+
     '<div class="cols"><div class="colmain">'+
-      '<div class="card"><div class="card-head"><h2>Parts & Labor</h2><button class="btn sm primary" onclick="addEstLine(\''+e.id+'\')">＋ Add line</button></div>'+
-      '<table class="tbl"><thead><tr><th>Type</th><th>SKU</th><th>Description</th><th class="r">Qty</th><th class="r">Price</th><th class="r">Total</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>'+
-      '<div class="estsum">'+(vs.exempt?line2('VAT-Exempt Sales',peso(vs.gross)):line2('VATable Sales',peso(vs.vatable))+line2('VAT ('+(S.shop.vatRate||12)+'%)',peso(vs.vat)))+line2('<b>Estimated total</b>','<b>'+peso(vs.gross)+'</b>','tot')+'</div></div>'+
+      estTbl('part','Parts')+ estTbl('labor','Labor')+
+      '<div class="card"><div class="estsum">'+(vs.exempt?line2('VAT-Exempt Sales',peso(vs.gross)):line2('VATable Sales',peso(vs.vatable))+line2('VAT ('+(S.shop.vatRate||12)+'%)',peso(vs.vat)))+line2('<b>Estimated total</b>','<b>'+peso(vs.gross)+'</b>','tot')+'</div></div>'+
     '</div><div class="colside">'+
       '<div class="card"><h2>Approvals</h2>'+
         field('Assessed by (Senior Mechanic)','<select onchange="setEstField(\''+e.id+'\',\'assessedBy\',this.value)">'+optionList(staffByRole('SM'),e.assessedBy,true)+'</select>')+
@@ -72,7 +77,7 @@ VIEWS.estimate = function(id){
 };
 
 function setEstField(id,f,v){ var e=estById(id); e[f]=v; persist(); }
-function addEstLine(id){ openModal('Add line', lineForm(), { onOk:'saveEstLine', okText:'Add' }); setTimeout(function(){estLineCtx={est:id,line:null};},10); }
+function addEstLine(id,type){ openModal(type==='labor'?'Add labor':'Add part', lineForm({type:type||'part'}), { onOk:'saveEstLine', okText:'Add' }); setTimeout(function(){estLineCtx={est:id,line:null};},10); }
 function editEstLine(id,lid){ var e=estById(id); var l=e.lines.find(function(x){return x.id===lid;}); openModal('Edit line', lineForm(l), { onOk:'saveEstLine' }); setTimeout(function(){estLineCtx={est:id,line:lid};},10); }
 var estLineCtx=null;
 function saveEstLine(){

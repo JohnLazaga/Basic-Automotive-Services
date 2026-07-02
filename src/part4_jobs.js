@@ -180,7 +180,6 @@ VIEWS.job = function(id){
       '<div class="colmain">'+
         jobStatusPanel(j)+
         jobLinesPanel(j)+
-        jobAddlPanel(j)+
         jobInspectionPanel(j)+
         jobPhotosPanel(j)+
       '</div>'+
@@ -250,24 +249,30 @@ function jobLinesPanel(j){
   // 'billing_edit' permission can still edit them even after billing is done.
   var billed = (j.stage==='Final Billing' || j.stage==='Released');
   var locked = billed && !can('billing_edit');
-  var rows = (j.lines||[]).map(function(l){
-    return '<tr><td>'+chip(l.type==='part'?'Part':'Labor', l.type==='part'?'':'gold')+'</td>'+
-      '<td>'+(l.sku?'<span class="muted small">'+esc(l.sku)+'</span> ':'')+esc(l.desc)+'</td><td class="r">'+num(l.qty)+'</td>'+
-      '<td class="r">'+peso(l.price)+'</td><td class="r">'+peso(lineTotal(l))+'</td>'+
-      '<td class="r">'+(locked?'':'<button class="ic" onclick="editLine(\''+j.id+'\',\''+l.id+'\')">✎</button>'+
-        '<button class="ic" onclick="delLine(\''+j.id+'\',\''+l.id+'\')">✕</button>')+'</td></tr>';
-  }).join('') || '<tr><td colspan="6" class="muted center">No lines yet.</td></tr>';
-  return '<div class="card"><div class="card-head"><h2>Parts & Labor</h2>'+
-    (locked?'':'<button class="btn sm primary" onclick="addLine(\''+j.id+'\')">＋ Add line</button>')+'</div>'+
-    '<table class="tbl"><thead><tr><th>Type</th><th>Description</th><th class="r">Qty</th><th class="r">Price</th><th class="r">Total</th><th></th></tr></thead>'+
-    '<tbody>'+rows+'</tbody></table></div>';
+  function tbl(type, title){
+    var list=(j.lines||[]).filter(function(l){return l.type===type;});
+    var rows = list.map(function(l){
+      return '<tr>'+
+        '<td>'+(type==='part'&&l.sku?'<span class="muted small">'+esc(l.sku)+'</span> ':'')+esc(l.desc)+'</td><td class="r">'+num(l.qty)+'</td>'+
+        '<td class="r">'+peso(l.price)+'</td><td class="r">'+peso(lineTotal(l))+'</td>'+
+        '<td class="r">'+(locked?'':'<button class="ic" onclick="editLine(\''+j.id+'\',\''+l.id+'\')">✎</button>'+
+          '<button class="ic" onclick="delLine(\''+j.id+'\',\''+l.id+'\')">✕</button>')+'</td></tr>';
+    }).join('') || '<tr><td colspan="5" class="muted center">No '+(type==='part'?'parts':'labor')+' yet.</td></tr>';
+    return '<div class="card"><div class="card-head"><h2>'+title+'</h2>'+
+      (locked?'':'<button class="btn sm primary" onclick="addLine(\''+j.id+'\',\''+type+'\')">＋ Add '+(type==='part'?'part':'labor')+'</button>')+'</div>'+
+      '<table class="tbl"><thead><tr><th>'+(type==='part'?'Part':'Description')+'</th><th class="r">Qty</th><th class="r">Price</th><th class="r">Total</th><th></th></tr></thead>'+
+      '<tbody>'+rows+'</tbody></table></div>';
+  }
+  return tbl('part','Parts') + tbl('labor','Labor');
 }
 /* Line editor. Part lines: Qty → SKU (auto-fills Part Name / Net Price / SRP from
    the parts catalog, all editable) with full manual entry when no SKU is used.
    Labor lines: pick from the labor menu or free-text. */
 function lineForm(l){
   l=l||{type:'part',qty:1,price:0,desc:''};
-  return field('Type','<select id="lnType" onchange="lineTypeSwap()"><option value="part"'+(l.type==='part'?' selected':'')+'>Part</option><option value="labor"'+(l.type==='labor'?' selected':'')+'>Labor</option></select>')+
+  // Parts and labor are encoded separately — the type is fixed by which panel's
+  // Add button opened the dialog, so no Type selector is shown.
+  return '<input type="hidden" id="lnType" value="'+(l.type==='labor'?'labor':'part')+'">'+
     '<div id="lnFields">'+ (l.type==='labor' ? laborFields(l) : partFields(l)) +'</div>';
 }
 function partFields(l){
@@ -288,10 +293,6 @@ function laborFields(l){
     '<div class="grid2">'+field('Qty','<input id="lnQty" type="number" step="0.5" value="'+attr(l.qty||1)+'">')+
     field('Price','<input id="lnPrice" type="number" step="0.01" value="'+attr(l.price||0)+'">')+'</div>';
 }
-function lineTypeSwap(){
-  var t=val('lnType');
-  document.getElementById('lnFields').innerHTML = (t==='labor') ? laborFields({}) : partFields({});
-}
 function catalogHint(){
   if (typeof CATALOG_STATE==='undefined') return '';
   if (CATALOG_STATE==='ready') return 'Catalog ready — type a SKU to auto-fill.';
@@ -307,9 +308,9 @@ function skuLookup(){
 }
 function laborPick(){ var sel=document.getElementById('lnRef'); var o=sel.options[sel.selectedIndex];
   if(o&&o.value){ setVal('lnDesc',o.getAttribute('data-name')); setVal('lnPrice',o.getAttribute('data-price')); } }
-function addLine(id){
-  lineCtx={job:id,line:null};
-  openModal('Add lines', lineForm(), {
+function addLine(id,type){
+  lineCtx={job:id,line:null,type:type||'part'};
+  openModal(type==='labor'?'Add labor':'Add parts', lineForm({type:type||'part'}), {
     footer:'<button class="btn ghost" onclick="closeModal()">Done</button>'+
       '<span style="flex:1"></span>'+
       '<button class="btn primary" onclick="saveLineMore()">Add line</button>' });
@@ -359,37 +360,9 @@ function deleteJobConfirm(id){
     },'Delete job order', true);
 }
 
-/* ---- Additional work panel ------------------------------------------------ */
-function jobAddlPanel(j){
-  var rows=(j.addlWork||[]).map(function(a,i){
-    return '<div class="addl-row"><div><b>'+esc(a.desc)+'</b> · '+peso(a.amount)+
-      '<div class="muted small">Reported to '+esc(staffName(a.reportedTo))+'</div></div>'+
-      '<div>'+(a.approved? chip('Customer approved','ok')
-        : '<button class="btn xs primary" onclick="approveAddl(\''+j.id+'\','+i+')">Mark approved</button>')+
-        ' <button class="ic" onclick="delAddl(\''+j.id+'\','+i+')">✕</button></div></div>';
-  }).join('') || emptyState('No additional work logged.');
-  return '<div class="card"><div class="card-head"><h2>Additional Work / Parts</h2>'+
-    '<button class="btn sm" onclick="addAddl(\''+j.id+'\')">＋ Log additional</button></div>'+
-    '<p class="muted small">Extra work not in the original order must be reported to SA/SV and customer-approved before it is added to the bill.</p>'+
-    '<div class="addl">'+rows+'</div></div>';
-}
-function addAddl(id){
-  openModal('Log additional work',
-    field('Description','<input id="awDesc" placeholder="e.g. Replace cracked serpentine belt">')+
-    '<div class="grid2">'+field('Amount','<input id="awAmt" type="number" step="0.01" value="0">')+
-    field('Reported to','<select id="awTo">'+optionList(S.staff.filter(function(s){return s.role==='SA'||s.role==='SV';}),null,false)+'</select>')+'</div>'+
-    '<label class="chk"><input type="checkbox" id="awApproved"> Customer already approved</label>',
-    { onOk:'saveAddl', okText:'Log' });
-  setTimeout(function(){awCtx=id;},10);
-}
-var awCtx=null;
-function saveAddl(){
-  var j=jobById(awCtx);
-  j.addlWork.push({ desc:val('awDesc'), amount:Number(val('awAmt'))||0, reportedTo:val('awTo'), approved:checked('awApproved') });
-  persist(); closeModal(); render();
-}
-function approveAddl(id,i){ var j=jobById(id); j.addlWork[i].approved=true; persist(); toast('Additional work approved'); render(); }
-function delAddl(id,i){ var j=jobById(id); j.addlWork.splice(i,1); persist(); render(); }
+/* Additional Work panel removed — extra work discovered mid-job is added
+   directly to the Parts / Labor lines of the ongoing job order. Legacy
+   addlWork entries on old jobs still render in bills and printouts. */
 
 /* ---- Inspection / check-in panel ------------------------------------------ */
 var CHECKLIST_ITEMS=['Spare tire','Jack & wrench','Stereo / head unit','Floor mats','Valuables','OR/CR','Tools','Fire extinguisher','Early warning device'];
