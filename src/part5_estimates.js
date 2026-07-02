@@ -18,7 +18,8 @@ async function createEstimateFrom(base){
 var EST_Q='';
 function estMatch(e){
   if(!EST_Q) return true; var q=EST_Q.toLowerCase();
-  return [e.no,e.plate,e.owner,e.contactPerson,e.contactNumber,e.make+' '+e.model].some(function(x){ return String(x||'').toLowerCase().indexOf(q)>=0; });
+  var staffTxt=staffSearchStr([e.assessedBy,e.approvedSA,e.approvedSV]);
+  return [e.no,e.plate,e.owner,e.contactPerson,e.contactNumber,e.make+' '+e.model,staffTxt].some(function(x){ return String(x||'').toLowerCase().indexOf(q)>=0; });
 }
 function estimatesBodyHTML(){
   var list=S.estimates.filter(estMatch);

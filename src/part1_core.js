@@ -304,6 +304,13 @@ function mechanicStaff(){ return (S.staff||[]).filter(function(s){return isMecha
 /* ---- Lookups -------------------------------------------------------------- */
 function staffById(id){ return (S.staff||[]).find(function(s){return s.id===id;}) || null; }
 function staffName(id){ if(!id||id==='TBA') return 'TBA'; var s=staffById(id); return s?s.name:'—'; }
+/* Searchable text for one or more staff ids — includes each person's name AND
+   nickname, so searches match either. */
+function staffSearchStr(ids){
+  return (Array.isArray(ids)?ids:[ids]).map(function(id){
+    var s=(id&&id!=='TBA')?staffById(id):null; return s?((s.name||'')+' '+(s.nickname||'')):'';
+  }).join(' ');
+}
 /* Name only if the referenced staff actually holds the given role — guards
    signature blocks against stale references (e.g. an SA stored in a field
    that must be a Supervisor). Wrong-role references print as blank. */

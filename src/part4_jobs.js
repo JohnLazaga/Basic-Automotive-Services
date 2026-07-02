@@ -141,7 +141,8 @@ function createJobAnyway(){ var b=_ingressDraft||{}; _ingressDraft=null; closeMo
 var JOB_Q='';
 function jobMatch(j){
   if(!JOB_Q) return true; var q=JOB_Q.toLowerCase();
-  return [j.no,j.plate,j.owner,j.contactPerson,j.make+' '+j.model,j.siRef,j.pmsRef].some(function(x){ return String(x||'').toLowerCase().indexOf(q)>=0; });
+  var staffTxt=staffSearchStr((j.mechanicIds||[]).concat([j.saId,j.assessedBy,j.partsSalesman]));
+  return [j.no,j.plate,j.owner,j.contactPerson,j.make+' '+j.model,j.siRef,j.pmsRef,staffTxt].some(function(x){ return String(x||'').toLowerCase().indexOf(q)>=0; });
 }
 function jobsBodyHTML(){
   var jobs=S.jobs.filter(jobMatch);

@@ -689,6 +689,13 @@ function mechanicStaff(){ return (S.staff||[]).filter(function(s){return isMecha
 /* ---- Lookups -------------------------------------------------------------- */
 function staffById(id){ return (S.staff||[]).find(function(s){return s.id===id;}) || null; }
 function staffName(id){ if(!id||id==='TBA') return 'TBA'; var s=staffById(id); return s?s.name:'—'; }
+/* Searchable text for one or more staff ids — includes each person's name AND
+   nickname, so searches match either. */
+function staffSearchStr(ids){
+  return (Array.isArray(ids)?ids:[ids]).map(function(id){
+    var s=(id&&id!=='TBA')?staffById(id):null; return s?((s.name||'')+' '+(s.nickname||'')):'';
+  }).join(' ');
+}
 /* Name only if the referenced staff actually holds the given role — guards
    signature blocks against stale references (e.g. an SA stored in a field
    that must be a Supervisor). Wrong-role references print as blank. */
@@ -1216,7 +1223,7 @@ function boardKPIs(){
 var BOARD_Q='';
 function boardMatch(j){
   if(!BOARD_Q) return true; var q=BOARD_Q.toLowerCase();
-  var mechs=(j.mechanicIds||[]).map(staffName).join(' ');
+  var mechs=staffSearchStr((j.mechanicIds||[]).concat([j.saId]));
   return [j.plate,j.owner,j.contactPerson,j.make,j.model,j.make+' '+j.model,mechs]
     .some(function(x){ return String(x||'').toLowerCase().indexOf(q)>=0; });
 }
@@ -1572,7 +1579,8 @@ function createJobAnyway(){ var b=_ingressDraft||{}; _ingressDraft=null; closeMo
 var JOB_Q='';
 function jobMatch(j){
   if(!JOB_Q) return true; var q=JOB_Q.toLowerCase();
-  return [j.no,j.plate,j.owner,j.contactPerson,j.make+' '+j.model,j.siRef,j.pmsRef].some(function(x){ return String(x||'').toLowerCase().indexOf(q)>=0; });
+  var staffTxt=staffSearchStr((j.mechanicIds||[]).concat([j.saId,j.assessedBy,j.partsSalesman]));
+  return [j.no,j.plate,j.owner,j.contactPerson,j.make+' '+j.model,j.siRef,j.pmsRef,staffTxt].some(function(x){ return String(x||'').toLowerCase().indexOf(q)>=0; });
 }
 function jobsBodyHTML(){
   var jobs=S.jobs.filter(jobMatch);
@@ -2183,7 +2191,8 @@ async function createEstimateFrom(base){
 var EST_Q='';
 function estMatch(e){
   if(!EST_Q) return true; var q=EST_Q.toLowerCase();
-  return [e.no,e.plate,e.owner,e.contactPerson,e.contactNumber,e.make+' '+e.model].some(function(x){ return String(x||'').toLowerCase().indexOf(q)>=0; });
+  var staffTxt=staffSearchStr([e.assessedBy,e.approvedSA,e.approvedSV]);
+  return [e.no,e.plate,e.owner,e.contactPerson,e.contactNumber,e.make+' '+e.model,staffTxt].some(function(x){ return String(x||'').toLowerCase().indexOf(q)>=0; });
 }
 function estimatesBodyHTML(){
   var list=S.estimates.filter(estMatch);

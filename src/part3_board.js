@@ -64,7 +64,7 @@ function boardKPIs(){
 var BOARD_Q='';
 function boardMatch(j){
   if(!BOARD_Q) return true; var q=BOARD_Q.toLowerCase();
-  var mechs=(j.mechanicIds||[]).map(staffName).join(' ');
+  var mechs=staffSearchStr((j.mechanicIds||[]).concat([j.saId]));
   return [j.plate,j.owner,j.contactPerson,j.make,j.model,j.make+' '+j.model,mechs]
     .some(function(x){ return String(x||'').toLowerCase().indexOf(q)>=0; });
 }
