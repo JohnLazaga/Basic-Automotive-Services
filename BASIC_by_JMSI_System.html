@@ -1489,6 +1489,21 @@ function jobMissingFields(j){
     return !String(v==null?'':v).trim();
   }).map(function(f){ return f[1]; });
 }
+/* Everything that must be complete before a Post Job Report can be created:
+   the ingress fields plus dates, both odometers, check-in condition and the
+   assignment (Service Adviser + mechanics). */
+function postJobMissingFields(j){
+  var missing = jobMissingFields(j);
+  var insp = j.inspection||{};
+  if(!String(j.dateIn||'').trim()) missing.push('Date in');
+  if(!String(j.etd||'').trim()) missing.push('ETD');
+  if(!(Number(j.lastServiceOdo)>0)) missing.push('Last service odometer');
+  if(insp.fuel===''||insp.fuel===null||insp.fuel===undefined) missing.push('Fuel level');
+  if(!String(insp.condition||'').trim()) missing.push('Condition');
+  if(!j.saId||j.saId==='TBA') missing.push('Service Adviser');
+  if(!(j.mechanicIds||[]).filter(function(id){return id&&id!=='TBA';}).length) missing.push('Mechanic(s)');
+  return missing;
+}
 function openIntake(draft){
   openModal('Ingress — front desk', intakeForm(draft||{}), {
     footer:'<button class="btn ghost" onclick="closeModal()">Cancel</button>'+
@@ -1929,9 +1944,11 @@ function editJobDetails(id){
     field('Model','<input id="jdModel" value="'+attr(j.model||'')+'">')+
     field('Variant','<input id="jdVariant" value="'+attr(j.variant||'')+'">')+
     field('Date in','<input id="jdDateIn" type="date" value="'+attr(j.dateIn)+'">')+
-    field('ETD','<input id="jdEtd" type="date" value="'+attr(j.etd)+'">')+
+    field('ETD','<input id="jdEtd" type="date" value="'+attr(j.etd)+'">'+
+      '<label class="chk small"><input type="checkbox" id="jdEtdSame" onchange="if(this.checked){setVal(\'jdEtd\',val(\'jdDateIn\'));}"'+(j.etd&&j.etd===j.dateIn?' checked':'')+'> Same as Date in</label>')+
     field('Ingress odometer','<input id="jdOdo" type="number" value="'+attr(j.odometer)+'">')+
-    field('Last service odometer','<input id="jdLastOdo" type="number" value="'+attr(j.lastServiceOdo||'')+'" placeholder="set on release">')+
+    field('Last service odometer','<input id="jdLastOdo" type="number" value="'+attr(j.lastServiceOdo||'')+'" placeholder="set on release">'+
+      '<label class="chk small"><input type="checkbox" id="jdLastOdoSame" onchange="if(this.checked){setVal(\'jdLastOdo\',val(\'jdOdo\'));}"'+(j.lastServiceOdo&&Number(j.lastServiceOdo)===Number(j.odometer)?' checked':'')+'> Same as Ingress</label>')+
     field('Job hours','<input id="jdHours" type="number" step="0.5" value="'+attr(j.jobHours)+'">')+
     field('Assessed by (Senior Mechanic)','<select id="jdAssess">'+optionList(staffByRole('SM'),j.assessedBy,true)+'</select>')+
     field('SI reference #','<input id="jdSI" value="'+attr(j.siRef||'')+'">')+
@@ -2006,10 +2023,10 @@ function quickC3(id){ var j=jobById(id); j.status='C3'; j.statusLog.push({time:n
 
 function advancePostJob(id){
   var j=jobById(id);
-  var missing=jobMissingFields(j);
+  var missing=postJobMissingFields(j);
   if(missing.length){
-    openModal('Complete ingress first',
-      '<p class="muted small">The Post Job Report can’t be created until every ingress field is complete. Still missing:</p>'+
+    openModal('Complete job details first',
+      '<p class="muted small">The Post Job Report can’t be created until these fields are complete. Still missing:</p>'+
       '<p><b>'+missing.map(esc).join(', ')+'</b></p>'+
       '<p class="muted small">Fill these in <b>Job Details → Edit</b> (or Check-in / Assignment), then try again.</p>',
       { footer:'<button class="btn ghost" onclick="closeModal()">Close</button>'+
