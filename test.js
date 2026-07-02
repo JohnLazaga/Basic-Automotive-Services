@@ -283,6 +283,13 @@ await (async function(){
   ok('no customer contact number exposed', keys.indexOf('contactNumber')<0 && JSON.stringify(d).indexOf(v.contactNumber||'~none~')<0);
   ok('no prices in history', d.history.every(h=>!('price' in h) && !('amount' in h)));
   ok('renders from doc (public)', M.portalCardsHTML(d).indexOf('p-plate')>-1);
+  // With a billed job, history carries a report and the portal exposes a View button
+  const j=s.jobs[0]; j.stage='Final Billing'; j.orNumber='OR-1001'; j.billedAt=new Date().toISOString();
+  const v2=s.vehicles.find(x=>x.id===j.vehicleId)||s.vehicles[0];
+  const d2=M.portalDataForVehicle(v2); const h=d2.history[0];
+  ok('history entry carries job no + amount + report', h && h.no && ('amount' in h) && h.report && h.report.lines.length>0);
+  ok('portal home shows View report button + amount', M.portalCardsHTML(d2).indexOf('portalViewReport')>-1);
+  ok('report view shows Total Amount Due', M.portalReportHTML(h,d2).indexOf('Total Amount Due')>-1);
 })();
 
 /* ---------------------------------------------------------------- RBAC */

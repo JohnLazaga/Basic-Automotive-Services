@@ -25,7 +25,18 @@ function portalDataForVehicle(v){
     history: hist.map(function(j){
       var work=(j.lines||[]).filter(function(l){return l.type==='labor';}).map(function(l){return l.desc;}).filter(Boolean).join(' · ')
         || (j.lines||[]).map(function(l){return l.desc;}).filter(Boolean).join(' · ') || 'Service';
-      return { dateISO:(j.billedAt||j.dateIn||''), work:work, odo:Number(j.lastServiceOdo)||Number(j.odometer)||0 };
+      var b=runningBill(j);
+      return {
+        jobId:j.id, no:j.no||'', stage:j.stage||'', orNumber:j.orNumber||'',
+        dateISO:(j.billedAt||j.dateIn||''), work:work,
+        odo:Number(j.lastServiceOdo)||Number(j.odometer)||0,
+        amount:b.gross,
+        report:{
+          lines:(j.lines||[]).map(function(l){ return { type:l.type, sku:(l.type==='part'?(l.sku||''):''), desc:l.desc, qty:Number(l.qty)||0, price:Number(l.price)||0, total:lineTotal(l) }; }),
+          addl:(j.addlWork||[]).filter(function(a){return a.approved;}).map(function(a){ return { desc:a.desc, amount:Number(a.amount)||0 }; }),
+          vatable:b.vatable, vat:b.vat, exempt:!!b.exempt, disc:b.disc, gross:b.gross, vatRate:Number((S.shop||{}).vatRate)||12
+        }
+      };
     }),
     shop:{ name:sh.name||'', address:sh.address||'', contact:sh.contact||'' },
     updatedAt:new Date().toISOString()
@@ -33,13 +44,20 @@ function portalDataForVehicle(v){
 }
 /* Shared portal markup, rendered from a portal-data object (live for staff, or
    the fetched public doc for customers). */
+var PORTAL_LAST=null;   // last-rendered portal data, for the report drill-down
 function portalCardsHTML(d){
+  PORTAL_LAST=d;
   var sh=d.shop||{};
   var due = d.nextServiceDate && d.nextServiceDate<=todayISO();
-  var timeline=(d.history&&d.history.length)? d.history.map(function(h){
-    return '<div class="p-item"><div class="p-date">'+esc(fmtDate(h.dateISO))+'</div>'+
+  var timeline=(d.history&&d.history.length)? d.history.map(function(h,i){
+    return '<div class="p-item"><div class="p-item-top">'+
+        '<span class="p-jo">'+esc(h.no||'')+'</span> '+
+        '<span class="p-date">'+esc(fmtDate(h.dateISO))+'</span>'+
+        (h.report?'<button class="p-view" onclick="portalViewReport('+i+')">View report →</button>':'')+
+      '</div>'+
       '<div class="p-work">'+esc(h.work||'Service')+'</div>'+
-      '<div class="p-odo">'+num(h.odo)+' km</div></div>';
+      '<div class="p-item-foot"><span class="p-odo">'+num(h.odo)+' km</span>'+
+        '<span class="p-amt">'+peso(h.amount||0)+'</span></div></div>';
   }).join('') : '<div class="p-empty">No service records yet.</div>';
   return '<div class="portal">'+
     '<div class="p-head"><img class="p-lockup" src="'+LOGO_LOCKUP+'" alt="Basic by JMSI"/></div>'+
@@ -54,6 +72,50 @@ function portalCardsHTML(d){
       (sh.contact?'<a class="p-btn" href="tel:'+esc(String(sh.contact).replace(/[^0-9+]/g,''))+'">Call the shop</a>':'')+'</div>'+
     '<div class="p-foot">Read-only customer portal · powered by '+esc(sh.name)+'</div>'+
   '</div>';
+}
+/* Customer-facing final job report, rendered from a history entry's snapshot. */
+function portalReportHTML(h, d){
+  var sh=d.shop||{}; var r=h.report||{lines:[],addl:[]};
+  var rowsP=(r.lines||[]).filter(function(l){return l.type==='part';});
+  var rowsL=(r.lines||[]).filter(function(l){return l.type==='labor';});
+  function lineRows(arr, isPart){
+    return arr.map(function(l){
+      return '<tr>'+(isPart?'<td>'+esc(l.sku||'—')+'</td>':'')+'<td>'+esc(l.desc)+'</td>'+
+        '<td class="r">'+num(l.qty)+'</td><td class="r">'+peso(l.price)+'</td><td class="r">'+peso(l.total)+'</td></tr>';
+    }).join('') || '<tr><td colspan="'+(isPart?5:4)+'" class="p-muted">—</td></tr>';
+  }
+  var addlRows=(r.addl||[]).map(function(a){ return '<tr><td>'+esc(a.desc)+'</td><td class="r">'+peso(a.amount)+'</td></tr>'; }).join('');
+  var tot=''
+    + (r.exempt? '<div class="p-l2"><span>VAT-Exempt Sales</span><span>'+peso(r.vatable)+'</span></div>'
+      : '<div class="p-l2"><span>VATable Sales</span><span>'+peso(r.vatable)+'</span></div><div class="p-l2"><span>VAT ('+(r.vatRate||12)+'%)</span><span>'+peso(r.vat)+'</span></div>')
+    + (r.disc? '<div class="p-l2"><span>Discount</span><span>−'+peso(r.disc)+'</span></div>':'')
+    + '<div class="p-l2 p-grand"><span>Total Amount Due</span><span>'+peso(r.gross)+'</span></div>';
+  return '<div class="portal">'+
+    '<div class="p-head"><img class="p-lockup" src="'+LOGO_LOCKUP+'" alt="Basic by JMSI"/></div>'+
+    '<button class="p-back" onclick="portalViewHome()">‹ Back to history</button>'+
+    '<div class="p-veh"><div class="p-plate">Final Job Report</div>'+
+      '<div class="p-model">'+esc(h.no||'')+(h.orNumber?' · OR '+esc(h.orNumber):'')+'</div>'+
+      '<div class="p-owner">'+esc(fmtDate(h.dateISO))+' · '+esc((d.year+' '+d.make+' '+d.model).trim())+' · '+esc(d.plate)+'</div></div>'+
+    '<div class="p-card"><div class="p-card-t">Parts</div>'+
+      '<table class="p-tbl"><thead><tr><th>SKU</th><th>Part</th><th class="r">Qty</th><th class="r">Unit</th><th class="r">Amount</th></tr></thead><tbody>'+lineRows(rowsP,true)+'</tbody></table></div>'+
+    '<div class="p-card"><div class="p-card-t">Labor</div>'+
+      '<table class="p-tbl"><thead><tr><th>Description</th><th class="r">Qty</th><th class="r">Unit</th><th class="r">Amount</th></tr></thead><tbody>'+lineRows(rowsL,false)+'</tbody></table></div>'+
+    (addlRows?'<div class="p-card"><div class="p-card-t">Additional work</div><table class="p-tbl"><tbody>'+addlRows+'</tbody></table></div>':'')+
+    '<div class="p-card">'+tot+'</div>'+
+    '<div class="p-foot">'+esc(sh.name)+' · '+esc(sh.address)+'<br>THIS DOCUMENT IS NOT VALID FOR CLAIM OF INPUT TAX</div>'+
+  '</div>';
+}
+function portalViewReport(i){
+  if(!PORTAL_LAST||!PORTAL_LAST.history) return;
+  var h=PORTAL_LAST.history[i]; if(!h||!h.report) return;
+  var app=(typeof document!=='undefined')&&document.getElementById('app'); if(!app) return;
+  app.innerHTML='<div class="portal-page">'+portalReportHTML(h,PORTAL_LAST)+'</div>';
+  if(typeof window!=='undefined'&&window.scrollTo) window.scrollTo(0,0);
+}
+function portalViewHome(){
+  var app=(typeof document!=='undefined')&&document.getElementById('app'); if(!app||!PORTAL_LAST) return;
+  app.innerHTML='<div class="portal-page">'+portalCardsHTML(PORTAL_LAST)+'</div>';
+  if(typeof window!=='undefined'&&window.scrollTo) window.scrollTo(0,0);
 }
 function portalHTML(){
   var v=vehicleById(portalVehicleId());
@@ -111,7 +173,7 @@ if (typeof module!=='undefined' && module.exports){
     deductInventory:deductInventory, receivePO:receivePO,
     importPartsText:importPartsText, importPartsFromArray:importPartsFromArray, parseCSV:parseCSV,
     portalHTML:portalHTML, isPortalRoute:isPortalRoute, setPortalId:function(fn){ portalVehicleId=fn; },
-    portalDataForVehicle:portalDataForVehicle, portalCardsHTML:portalCardsHTML,
+    portalDataForVehicle:portalDataForVehicle, portalCardsHTML:portalCardsHTML, portalReportHTML:portalReportHTML,
     render:function(){ return render(); }, setRoute:function(v,a){ ROUTE.view=v; ROUTE.arg=a||null; },
     LOGO_URI:function(){ return LOGO_URI; }, LOGO_LOCKUP:function(){ return LOGO_LOCKUP; },
     arJobs:arJobs, jobByNo:jobByNo, vehicleByPlate:vehicleByPlate, partById:partById,
