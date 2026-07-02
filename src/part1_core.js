@@ -107,13 +107,27 @@ function jobSubtotal(job){
   var rate = (Number(S.shop.vatRate)||12)/100;
   return round2(n * (1 + rate));
 }
-/* Discount is taken off the (VAT-inclusive) Total Amount Due. */
-function discountAmount(job){
-  var d = job.discount || { type:'amount', value:0 };
-  var base = jobSubtotal(job);
+/* Discounts are value-based (peso amounts) applied to three consolidated
+   buckets: parts, labor and "other" (free-text reference). On printouts they
+   are consolidated into a single Discount amount — never itemised. */
+function discParts(job){ var d=(job&&job.discount)||{}; return round2(Number(d.parts)||0); }
+function discLabor(job){ var d=(job&&job.discount)||{}; return round2(Number(d.labor)||0); }
+function discOther(job){ var d=(job&&job.discount)||{}; return round2(Number(d.other)||0); }
+/* Sum of the value-based buckets, with backward compatibility for the old
+   {type, value} shape (treated as a single consolidated amount). */
+function discountRaw(job){
+  var d = job && job.discount; if(!d) return 0;
+  if (d.parts!==undefined || d.labor!==undefined || d.other!==undefined){
+    return round2((Number(d.parts)||0)+(Number(d.labor)||0)+(Number(d.other)||0));
+  }
+  var base = jobSubtotal(job);                    // legacy {type,value}
   if (d.type==='percent') return round2(base * (Number(d.value)||0)/100);
-  return round2(Math.min(Number(d.value)||0, base));
+  return round2(Number(d.value)||0);
 }
+/* Discount is taken off the (VAT-inclusive) Total Amount Due; capped at it. */
+function discountAmount(job){ return round2(Math.min(discountRaw(job), jobSubtotal(job))); }
+/* Labor value net of the labor discount — the base for commission. */
+function discountedLabor(job){ return round2(Math.max(0, laborTotal(job.lines) - discLabor(job))); }
 /* Total Amount Due = subtotal (VATable + VAT) − discount. */
 function jobGross(job){ return round2(jobSubtotal(job) - discountAmount(job)); }
 
@@ -152,14 +166,14 @@ function assignedCommissionIds(job, includeAll){
 }
 /* Actual payout map — each assigned, toggle-on person earns their own rate × labor. */
 function jobLaborCommissionMap(job, S){
-  var labor = laborTotal(job.lines); var map = {};
+  var labor = discountedLabor(job); var map = {};
   assignedCommissionIds(job).forEach(function(id){ map[id] = round2(labor * staffCommissionRate(id)/100); });
   return map;
 }
 /* Evaluation map — same per-person rates but ignoring the payout toggle, so an
    excluded person still shows the commission they WOULD earn. */
 function jobLaborCommissionMapAll(job, S){
-  var labor = laborTotal(job.lines); var map = {};
+  var labor = discountedLabor(job); var map = {};
   assignedCommissionIds(job, true).forEach(function(id){ map[id] = round2(labor * staffCommissionRate(id)/100); });
   return map;
 }
@@ -362,7 +376,7 @@ function seedState(){
       { time:new Date(now.getTime()-1800000).toISOString(), code:'B2', by:m1.id, note:'Parts complete, work ongoing.' }
     ],
     addlWork:[], approvedReleaseBy:null,
-    discount:{ type:'amount', value:0 }, payments:[], orNumber:null, billedAt:null, releaseSignature:null,
+    discount:{ parts:0, labor:0, other:0, otherNote:'' }, payments:[], orNumber:null, billedAt:null, releaseSignature:null,
     photos:[], inventoryDeducted:false
   };
 

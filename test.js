@@ -231,6 +231,28 @@ section('Extra invariants');
   s.shop.vatReg=false; const ex=M.vatSplit(1000,s); ok('non-VAT yields exempt', ex.exempt===true && ex.vat===0);
 })();
 
+/* ------------------------------------------------ Value-based discounts */
+section('Discounts: value-based Parts/Labor/Other, consolidated + commission on net labor');
+await (async function(){
+  const s=fresh(); s.shop.vatReg=true; s.shop.vatRate=12;
+  const mech=s.staff.find(x=>x.role==='Mechanic'); mech.commissionRate=5; mech.commission=true;
+  const job={ id:'d1', no:'JO-D', stage:'Final Billing',
+    lines:[{type:'part',ref:null,desc:'P',qty:1,price:1000},{type:'labor',ref:null,desc:'L',qty:1,price:1000}],
+    mechanicIds:[mech.id], saId:'', assessedBy:'', partsSalesman:'',
+    discount:{parts:100, labor:200, other:50, otherNote:'promo'}, payments:[], addlWork:[] };
+  const b=M.runningBill(job);
+  // base 2000 + 12% = 2240 subtotal; consolidated discount 350; gross 1890
+  ok('consolidated discount = parts+labor+other (350)', b.disc===350);
+  ok('gross = subtotal − consolidated discount', b.gross===M.round2(2240-350));
+  // printout shows ONE Discount line, no per-bucket breakdown
+  const doc=M.docBilling(job);
+  const discLines=(doc.match(/Discount/g)||[]).length;
+  ok('billing printout shows a single consolidated Discount line', discLines===1 && doc.indexOf('promo')===-1);
+  // commission on discounted labor: (1000 − 200) × 5% = 40.00
+  const cm=M.jobLaborCommissionMap(job, s);
+  ok('commission based on discounted labor (40.00)', cm[mech.id]===40);
+})();
+
 /* -------------------------------------------------- Series-number uniqueness */
 section('Series numbers never duplicate (stale/behind counter)');
 await (async function(){

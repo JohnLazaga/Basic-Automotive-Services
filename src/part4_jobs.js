@@ -28,7 +28,7 @@ function blankJob(){
     inspection:{ odometer:0, fuel:'', lights:'', condition:'', testDrive:'' },
     checklist:{ created:false, leaveUnit:false, items:{}, bodyNotes:'' },
     status:'A1', statusLog:[], addlWork:[], approvedReleaseBy:null, paymentReceivedBy:null,
-    discount:{ type:'amount', value:0 }, payments:[], orNumber:null, billedAt:null, releaseSignature:null,
+    discount:{ parts:0, labor:0, other:0, otherNote:'' }, payments:[], orNumber:null, billedAt:null, releaseSignature:null,
     photos:[], inventoryDeducted:false };
 }
 
@@ -562,9 +562,7 @@ function jobStagePanel(j,b){
           '<button class="btn sm full" onclick="quickC3(\''+j.id+'\')">Mark C3 (Release cleared)</button>');
   } else if (j.stage==='Post Job Report'){
     html+='<p class="muted small">Apply discounts and issue the BIR VAT invoice in <b>Final Billing</b>.</p>'+
-      '<div class="grid2">'+
-      field('Discount type','<select id="dscType"><option value="amount"'+(j.discount.type==='amount'?' selected':'')+'>₱ Amount</option><option value="percent"'+(j.discount.type==='percent'?' selected':'')+'>% Percent</option></select>')+
-      field('Discount value','<input id="dscVal" type="number" step="0.01" value="'+attr(j.discount.value||0)+'">')+'</div>'+
+      discountEditor(j,'dsc')+
       '<button class="btn ghost sm" onclick="applyDiscount(\''+j.id+'\')">Apply discount</button>'+
       '<div class="grid2 mt8">'+
       field('Approved for release by (Supervisor)','<select onchange="setJobField(\''+j.id+'\',\'approvedReleaseBy\',this.value)">'+optionList(staffByRole('SV'),j.approvedReleaseBy,true)+'</select>')+
@@ -587,9 +585,7 @@ function billingEditBlock(j){
     '<div class="grid2 mt8">'+
     field('Approved for release by (Supervisor)','<select onchange="setJobField(\''+j.id+'\',\'approvedReleaseBy\',this.value)">'+optionList(staffByRole('SV'),j.approvedReleaseBy,true)+'</select>')+
     field('Payment received by (Secretary)','<select onchange="setJobField(\''+j.id+'\',\'paymentReceivedBy\',this.value)">'+optionList(staffByRole('Secretary'),j.paymentReceivedBy,true)+'</select>')+'</div>'+
-    '<div class="grid2 mt8">'+
-    field('Discount type','<select id="bdType"><option value="amount"'+(j.discount.type==='amount'?' selected':'')+'>₱ Amount</option><option value="percent"'+(j.discount.type==='percent'?' selected':'')+'>% Percent</option></select>')+
-    field('Discount value','<input id="bdVal" type="number" step="0.01" value="'+attr(j.discount.value||0)+'">')+'</div>'+
+    discountEditor(j,'bd')+
     field('SI reference #','<input id="bdSI" value="'+attr(j.siRef||'')+'" placeholder="appears on Final Billing">')+
     '<button class="btn primary sm" onclick="saveBillingEdits(\''+j.id+'\')">Apply changes</button>'+
     '<p class="muted small">Recomputes the Total Amount Due; the balance updates to match. Edit line items above with the ✎ buttons.</p>'+
@@ -598,9 +594,24 @@ function billingEditBlock(j){
 function saveBillingEdits(id){
   if(!can('billing_edit')){ toast('Not permitted','err'); return; }
   var j=jobById(id);
-  j.discount={ type:val('bdType'), value:Number(val('bdVal'))||0 };
+  j.discount=readDiscount('bd');
   j.siRef=val('bdSI');
   persist(); toast('Billing updated'); render();
+}
+/* Value-based discount editor: consolidated Parts, Labor and Other buckets
+   plus a free-text reference note. `pre` is the input-id prefix. */
+function discountEditor(j, pre){
+  var d=j.discount||{};
+  return '<div class="grid2">'+
+    field('Discount on Parts (₱)','<input id="'+pre+'Parts" type="number" step="0.01" value="'+attr(Number(d.parts)||0)+'">')+
+    field('Discount on Labor (₱)','<input id="'+pre+'Labor" type="number" step="0.01" value="'+attr(Number(d.labor)||0)+'">')+'</div>'+
+    '<div class="grid2">'+
+    field('Other discounts (₱)','<input id="'+pre+'Other" type="number" step="0.01" value="'+attr(Number(d.other)||0)+'">')+
+    field('Other — reference','<input id="'+pre+'Note" value="'+attr(d.otherNote||'')+'" placeholder="e.g. senior citizen, promo">')+'</div>';
+}
+function readDiscount(pre){
+  return { parts:Number(val(pre+'Parts'))||0, labor:Number(val(pre+'Labor'))||0,
+    other:Number(val(pre+'Other'))||0, otherNote:val(pre+'Note')||'' };
 }
 function quickC3(id){ var j=jobById(id); j.status='C3'; j.statusLog.push({time:new Date().toISOString(),code:'C3',by:j.saId,note:'Release cleared, forward to billing.'}); persist(); toast('Status → C3'); render(); }
 
@@ -628,7 +639,7 @@ function deductInventory(j){
   (j.lines||[]).forEach(function(l){ if(l.type==='part'&&l.ref){ var p=partById(l.ref); if(p){ p.stock=round2((p.stock||0)-(Number(l.qty)||0)); } } });
   j.inventoryDeducted=true;
 }
-function applyDiscount(id){ var j=jobById(id); j.discount={ type:val('dscType'), value:Number(val('dscVal'))||0 }; persist(); toast('Discount applied'); render(); }
+function applyDiscount(id){ var j=jobById(id); j.discount=readDiscount('dsc'); persist(); toast('Discount applied'); render(); }
 /* Lowest OR number that may still be issued — never below any already-issued OR,
    so a fresh allocator can never reuse a number. */
 function orSeed(){
@@ -672,7 +683,7 @@ function advanceBilling(id){
   if(!sec || sec.role!=='Secretary'){ toast('Enter the Secretary who received payment first','err'); return; }
   if(_issuingOR[id]) return;                                     // in-flight guard (prevents double-click gaps)
   _issuingOR[id]=true;
-  j.discount={ type:val('dscType')||j.discount.type, value:Number(val('dscVal'))||j.discount.value||0 };
+  if(document.getElementById('dscParts')) j.discount=readDiscount('dsc');
   allocateOrNumber().then(function(orNo){
     j.orNumber=orNo; j.billedAt=new Date().toISOString(); j.stage='Final Billing';
     delete _issuingOR[id]; persist(); toast('Final Billing issued · '+orNo); render();
