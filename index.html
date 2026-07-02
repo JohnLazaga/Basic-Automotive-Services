@@ -2345,7 +2345,8 @@ VIEWS.vehicle = function(id){
   var hist=S.jobs.filter(function(j){return j.vehicleId===v.id||(j.plate||'').toUpperCase()===(v.plate||'').toUpperCase();})
     .sort(function(a,b){return (b.dateIn||'')<(a.dateIn||'')?-1:1;});
   var timeline=hist.length? hist.map(function(j){
-    return '<div class="tl-item"><div class="tl-dot"></div><div class="tl-body"><div class="tl-top"><b>'+esc(j.no)+'</b> '+chip(j.stage,j.stage==='Released'?'ok':'')+' <span class="muted">'+esc(fmtDate(j.dateIn))+'</span></div>'+
+    return '<div class="tl-item"><div class="tl-dot"></div><div class="tl-body"><div class="tl-top"><b>'+esc(j.no)+'</b> '+chip(j.stage,j.stage==='Released'?'ok':'')+' <span class="muted">'+esc(fmtDate(j.dateIn))+'</span>'+
+      '<button class="btn xs ghost" style="margin-left:auto" onclick="go(\'job\',\''+j.id+'\')">View →</button></div>'+
       '<div class="muted small">'+esc((j.lines||[]).map(function(l){return l.desc;}).join(', ')||'—')+'</div>'+
       '<div class="tl-amt">'+peso(jobGross(j))+'</div></div></div>';
   }).join('') : emptyState('No service history yet.');
