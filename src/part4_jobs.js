@@ -534,6 +534,8 @@ function editJobDetails(id){
     field('Last service odometer','<input id="jdLastOdo" type="number" value="'+attr(j.lastServiceOdo||'')+'" placeholder="set on release">'+
       '<label class="chk small"><input type="checkbox" id="jdLastOdoSame" onchange="if(this.checked){setVal(\'jdLastOdo\',val(\'jdOdo\'));}"'+(j.lastServiceOdo&&Number(j.lastServiceOdo)===Number(j.odometer)?' checked':'')+'> Same as Ingress</label>')+
     field('Job hours','<input id="jdHours" type="number" step="0.5" value="'+attr(j.jobHours)+'">')+
+    field('Fuel level %','<input id="jdFuel" type="number" min="0" max="100" value="'+attr(isFinite((j.inspection||{}).fuel)?(j.inspection||{}).fuel:'')+'" placeholder="e.g. 50">')+
+    field('Condition','<input id="jdCond" value="'+attr((j.inspection||{}).condition||'')+'">')+
     field('Assessed by (Senior Mechanic)','<select id="jdAssess">'+optionList(staffByRole('SM'),j.assessedBy,true)+'</select>')+
     field('SI reference #','<input id="jdSI" value="'+attr(j.siRef||'')+'">')+
     field('PMS reference #','<input id="jdPMS" value="'+attr(j.pmsRef||'')+'">')+
@@ -547,6 +549,7 @@ function saveJobDetails(){
   j.owner=val('jdOwner'); j.address=val('jdAddr'); j.contactPerson=val('jdCP'); j.contactNumber=val('jdContact');
   j.customerTin=val('jdTin'); j.chassis=val('jdChassis'); j.year=val('jdYear'); j.make=val('jdMake'); j.model=val('jdModel'); j.variant=val('jdVariant'); j.dateIn=val('jdDateIn'); j.etd=val('jdEtd');
   j.odometer=Number(val('jdOdo'))||0; j.lastServiceOdo=val('jdLastOdo')===''?'':Number(val('jdLastOdo'))||0; j.jobHours=Number(val('jdHours'))||0; j.assessedBy=val('jdAssess');
+  j.inspection=j.inspection||{}; j.inspection.fuel=(val('jdFuel')===''?'':Number(val('jdFuel'))||0); j.inspection.condition=val('jdCond');
   j.siRef=val('jdSI'); j.pmsRef=val('jdPMS'); j.notes=val('jdNotes');
   persist(); closeModal(); render();
 }
