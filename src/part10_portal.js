@@ -32,9 +32,12 @@ function portalDataForVehicle(v){
         odo:Number(j.lastServiceOdo)||Number(j.odometer)||0,
         amount:b.gross,
         report:{
+          orNumber:j.orNumber||'', jo:j.no||'', tin:j.customerTin||'', siRef:j.siRef||'',
+          ingressOdo:Number(j.odometer)||0, lastOdo:Number(j.lastServiceOdo)||0,
           lines:(j.lines||[]).map(function(l){ return { type:l.type, sku:(l.type==='part'?(l.sku||''):''), desc:l.desc, qty:Number(l.qty)||0, price:Number(l.price)||0, total:lineTotal(l) }; }),
           addl:(j.addlWork||[]).filter(function(a){return a.approved;}).map(function(a){ return { desc:a.desc, amount:Number(a.amount)||0 }; }),
-          vatable:b.vatable, vat:b.vat, exempt:!!b.exempt, disc:b.disc, gross:b.gross, vatRate:Number((S.shop||{}).vatRate)||12
+          vatable:b.vatable, vat:b.vat, exempt:!!b.exempt, disc:b.disc, gross:b.gross, vatRate:Number((S.shop||{}).vatRate)||12,
+          supervisor:staffNameIfRole(j.approvedReleaseBy,'SV'), secretary:staffNameIfRole(j.paymentReceivedBy,'Secretary')
         }
       };
     }),
@@ -90,18 +93,32 @@ function portalReportHTML(h, d){
       : '<div class="p-l2"><span>VATable Sales</span><span>'+peso(r.vatable)+'</span></div><div class="p-l2"><span>VAT ('+(r.vatRate||12)+'%)</span><span>'+peso(r.vat)+'</span></div>')
     + (r.disc? '<div class="p-l2"><span>Discount</span><span>−'+peso(r.disc)+'</span></div>':'')
     + '<div class="p-l2 p-grand"><span>Total Amount Due</span><span>'+peso(r.gross)+'</span></div>';
+  function kvp(k,v){ return '<div class="p-kv"><span>'+esc(k)+'</span><span>'+esc(v)+'</span></div>'; }
+  var meta='<div class="p-meta">'+
+    kvp('OR #', r.orNumber||'—')+ kvp('JO #', r.jo||h.no||'—')+
+    kvp('Date', fmtDate(h.dateISO))+ kvp('SI reference', r.siRef||'—')+
+    kvp('Vehicle', (d.year+' '+d.make+' '+d.model).trim()+(d.variant?' '+d.variant:''))+ kvp('Plate', d.plate)+
+    kvp('Ingress Odo', num(r.ingressOdo)+' km')+ kvp('Last Service Odo', r.lastOdo?num(r.lastOdo)+' km':'—')+
+    (r.tin?kvp('TIN', r.tin):'')+
+  '</div>';
+  var sig=(r.supervisor||r.secretary)? '<div class="p-card"><div class="p-card-t">Released / received by</div>'+
+    (r.supervisor?kvp('Approved for release (Supervisor)', r.supervisor):'')+
+    (r.secretary?kvp('Payment received (Secretary)', r.secretary):'')+
+    kvp('Unit received (Customer)', d.owner||'')+'</div>' : '';
   return '<div class="portal">'+
     '<div class="p-head"><img class="p-lockup" src="'+LOGO_LOCKUP+'" alt="Basic by JMSI"/></div>'+
     '<button class="p-back" onclick="portalViewHome()">‹ Back to history</button>'+
-    '<div class="p-veh"><div class="p-plate">Final Job Report</div>'+
-      '<div class="p-model">'+esc(h.no||'')+(h.orNumber?' · OR '+esc(h.orNumber):'')+'</div>'+
-      '<div class="p-owner">'+esc(fmtDate(h.dateISO))+' · '+esc((d.year+' '+d.make+' '+d.model).trim())+' · '+esc(d.plate)+'</div></div>'+
+    '<div class="p-veh"><div class="p-plate">Final Billing Receipt</div>'+
+      '<div class="p-model">'+esc(h.no||'')+(r.orNumber?' · OR '+esc(r.orNumber):'')+'</div>'+
+      '<div class="p-owner">'+esc(d.owner||'')+'</div></div>'+
+    '<div class="p-card"><div class="p-card-t">Details</div>'+meta+'</div>'+
     '<div class="p-card"><div class="p-card-t">Parts</div>'+
       '<table class="p-tbl"><thead><tr><th>SKU</th><th>Part</th><th class="r">Qty</th><th class="r">Unit</th><th class="r">Amount</th></tr></thead><tbody>'+lineRows(rowsP,true)+'</tbody></table></div>'+
     '<div class="p-card"><div class="p-card-t">Labor</div>'+
       '<table class="p-tbl"><thead><tr><th>Description</th><th class="r">Qty</th><th class="r">Unit</th><th class="r">Amount</th></tr></thead><tbody>'+lineRows(rowsL,false)+'</tbody></table></div>'+
     (addlRows?'<div class="p-card"><div class="p-card-t">Additional work</div><table class="p-tbl"><tbody>'+addlRows+'</tbody></table></div>':'')+
     '<div class="p-card">'+tot+'</div>'+
+    sig+
     '<div class="p-foot">'+esc(sh.name)+' · '+esc(sh.address)+'<br>THIS DOCUMENT IS NOT VALID FOR CLAIM OF INPUT TAX</div>'+
   '</div>';
 }

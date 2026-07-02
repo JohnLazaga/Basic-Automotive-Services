@@ -129,9 +129,12 @@ function docPostJob(j){
 function printPostJob(id){ printDoc(docPostJob(jobById(id))); }
 
 /* ---- Final Billing: BIR VAT invoice --------------------------------------- */
-function docBilling(j){
+function docBilling(j){ return docShell('Billing '+(j.orNumber||j.no), billingBody(j)); }
+/* The receipt body only (no <html> shell) — reused by the customer portal so it
+   shows the exact same Final Billing document as the desktop printout. */
+function billingBody(j){
   var sh=S.shop;
-  var body=docHeader('FINAL BILLING RECEIPT · '+(j.orNumber||''))+
+  return docHeader('FINAL BILLING RECEIPT · '+(j.orNumber||''))+
     metaCols(
       [['Plate', esc(j.plate)],['Owner', esc(j.owner)],['Contact', esc(j.contactPerson+' · '+j.contactNumber)],
        ['Vehicle', esc((j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:''))],['Chassis #', esc(j.chassis)],
@@ -144,7 +147,6 @@ function docBilling(j){
       '<div class="sigline">Unit Received by (Customer)<br>'+esc(j.owner||'')+'</div></div>'+
     '<div class="foot">THIS DOCUMENT IS NOT VALID FOR CLAIM OF INPUT TAX<br>'+
       esc(sh.name)+' · TIN '+esc(sh.tin)+' · '+esc(sh.address)+'</div>';
-  return docShell('Billing '+(j.orNumber||j.no), body);
 }
 function printBilling(id){ printDoc(docBilling(jobById(id))); }
 
