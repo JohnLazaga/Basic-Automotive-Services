@@ -271,6 +271,20 @@ await (async function(){
   ok('consecutive EST #s are unique', e1.no!==e2.no);
 })();
 
+/* --------------------------------------------- Public portal snapshot */
+section('Public portal doc: minimal, no sensitive fields');
+await (async function(){
+  const s=fresh(); const v=s.vehicles[0];
+  const d=M.portalDataForVehicle(v);
+  ok('doc has plate + next service', d.plate===v.plate && 'nextServiceDate' in d);
+  ok('doc has history array', Array.isArray(d.history));
+  const keys=Object.keys(d);
+  ok('no chassis exposed', keys.indexOf('chassis')<0);
+  ok('no customer contact number exposed', keys.indexOf('contactNumber')<0 && JSON.stringify(d).indexOf(v.contactNumber||'~none~')<0);
+  ok('no prices in history', d.history.every(h=>!('price' in h) && !('amount' in h)));
+  ok('renders from doc (public)', M.portalCardsHTML(d).indexOf('p-plate')>-1);
+})();
+
 /* ---------------------------------------------------------------- RBAC */
 section('RBAC permission engine');
 (function(){

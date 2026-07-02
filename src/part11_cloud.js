@@ -30,42 +30,54 @@ function initFirebase(){
    waits for the deferred Firebase SDK to finish loading before wiring auth.
    This keeps first paint fast on mobile — the SDK downloads in the background. */
 function cloudStart(){
-  // Public QR portal links (#v=<id>) must never dump a customer into the staff
-  // sign-in screen. Data stays protected — show a portal notice instead.
-  if (typeof isPortalRoute==='function' && isPortalRoute()){ renderPortalLocked(); }
-  else renderLogin(null, null, true);         // instant first paint
+  // Public QR portal links (#v=<id>) are served WITHOUT sign-in: they read only
+  // the minimal public `portal/<id>` snapshot — never the protected database.
+  var portal = (typeof isPortalRoute==='function' && isPortalRoute());
+  if (portal){ renderPortalLoading(); } else renderLogin(null, null, true);
   whenFirebaseReady(function(ok){
     if (!ok){
+      if (portal){ renderPortalError('This portal is offline. Please check your connection or contact the shop.'); return; }
       renderCloudError('Couldn’t load the sign-in service.',
         'Check your internet connection and reload.');
       return;
     }
     if (!initFirebase()){
+      if (portal){ renderPortalError('This portal is temporarily unavailable.'); return; }
       renderCloudError('Firebase failed to initialize.', 'The configuration may be incomplete.');
       return;
     }
+    if (portal){ loadPublicPortal(); return; }   // public read, no auth
     FB.auth.onAuthStateChanged(function(user){
       FB.user = user;
       if (user) onSignedIn(user);
-      else if (typeof isPortalRoute==='function' && isPortalRoute()) renderPortalLocked();
       else renderLogin();
     });
   });
 }
-/* Shown when a signed-out visitor opens a #v=<id> portal link in cloud mode.
-   The shop's data requires an active account, so we present a neutral notice
-   rather than the staff sign-in form (which would look like a data leak). */
-function renderPortalLocked(){
+/* Fetch and render the public portal snapshot for the vehicle in the URL. */
+function loadPublicPortal(){
+  var id = (typeof portalVehicleId==='function') ? portalVehicleId() : null;
+  if(!id){ renderPortalError('No vehicle specified.'); return; }
+  FB.db.collection('portal').doc(id).get().then(function(doc){
+    var app=document.getElementById('app'); if(!app) return;
+    if(!doc.exists){ renderPortalError('No service record found for this vehicle yet.'); return; }
+    app.innerHTML = '<div class="portal-page">'+portalCardsHTML(doc.data())+'</div>';
+  }).catch(function(){
+    renderPortalError('Couldn’t load this vehicle’s service record.');
+  });
+}
+function renderPortalLoading(){
   var app=(typeof document!=='undefined') && document.getElementById('app'); if(!app) return;
-  var sh=(typeof S!=='undefined' && S && S.shop) ? S.shop : {};
+  app.innerHTML='<div class="login-bg"><div class="login-card">'+
+    '<img class="login-logo" src="'+LOGO_LOCKUP+'" alt="Basic by JMSI"/>'+
+    '<div class="login-sub">Vehicle Service Portal</div><div class="cloud-spin"></div></div></div>';
+}
+function renderPortalError(msg){
+  var app=(typeof document!=='undefined') && document.getElementById('app'); if(!app) return;
   app.innerHTML='<div class="login-bg"><div class="login-card">'+
     '<img class="login-logo" src="'+LOGO_LOCKUP+'" alt="Basic by JMSI"/>'+
     '<div class="login-sub">Vehicle Service Portal</div>'+
-    '<div class="lg-msg" style="background:#f5f5f7;color:#1d1d1f">This service record can only be viewed by shop staff. '+
-      'Please ask our front desk to pull up your vehicle’s history.</div>'+
-    (sh.contact?'<a class="btn primary full" href="tel:'+esc(String(sh.contact).replace(/[^0-9+]/g,''))+'">Call the shop</a>':'')+
-    '<div class="lg-link" style="cursor:default">'+esc(sh.name||'Basic by JMSI')+'</div>'+
-  '</div></div>';
+    '<div class="lg-msg" style="background:#f5f5f7;color:#1d1d1f">'+esc(msg)+'</div></div></div>';
 }
 /* Poll briefly for the deferred Firebase SDK to become available. */
 function whenFirebaseReady(cb){

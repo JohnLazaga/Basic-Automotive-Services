@@ -69,7 +69,8 @@ VIEWS.vehicle = function(id){
         (v.nextServiceOdo?'<div class="muted small">or at '+odo(v.nextServiceOdo)+' (now '+odo(v.odometer)+')</div>':'')+'</div></div>'+
       '<div class="card center"><h2>Customer QR portal</h2><div id="vehQR" class="qrbox"></div>'+
         '<div class="row gap center mt8"><button class="btn sm ghost" onclick="printQRSticker(\''+v.id+'\')">⎙ Print sticker</button>'+
-        '<button class="btn sm ghost" onclick="previewPortal(\''+v.id+'\')">Preview portal</button></div>'+
+        '<button class="btn sm ghost" onclick="previewPortal(\''+v.id+'\')">Preview portal</button>'+
+        '<button class="btn sm ghost" onclick="publishPortalNow(\''+v.id+'\')">↑ Publish/refresh</button></div>'+
         '<div class="muted small mt8">Scans resolve once hosted at:<br><code class="qr-url">'+esc(portalLink(v.id))+'</code></div></div>'+
       '<div class="card"><h2>Owner / Vehicle</h2><div class="ksmall">'+
         kv('Owner',esc(v.owner))+kv('Address',esc(v.address||'—'))+kv('Contact',esc(v.contactPerson+' · '+v.contactNumber))+
@@ -131,8 +132,23 @@ function saveVehicle(){
   var data={ plate:(val('vehPlate')||'').toUpperCase(), owner:val('vehOwner'), contactPerson:val('vehCP'), contactNumber:val('vehContact'),
     chassis:val('vehChassis'), year:val('vehYear'), make:val('vehMake'), model:val('vehModel'), variant:val('vehVariant'),
     odometer:Number(val('vehOdo'))||0, nextServiceDate:val('vehNextDate'), nextServiceOdo:Number(val('vehNextOdo'))||'', address:val('vehAddr') };
-  if(vehCtx){ Object.assign(vehicleById(vehCtx),data); } else { data.id=uid('vh'); S.vehicles.push(data); }
-  persist(); closeModal(); toast('Vehicle saved'); render();
+  var vid;
+  if(vehCtx){ Object.assign(vehicleById(vehCtx),data); vid=vehCtx; } else { data.id=uid('vh'); S.vehicles.push(data); vid=data.id; }
+  persist(); if(typeof publishPortalDoc==='function') publishPortalDoc(vid);   // refresh public portal
+  closeModal(); toast('Vehicle saved'); render();
+}
+/* Publish this vehicle's public portal snapshot on demand. */
+function publishPortalNow(id){
+  if(typeof cloudOn!=='function' || !cloudOn()){ toast('Portal publishing is available in cloud mode only'); return; }
+  if(typeof FB==='undefined' || !FB || !FB.ready || !FB.user){ toast('Sign in to publish the portal','err'); return; }
+  publishPortalDoc(id); toast('Portal snapshot published ✓');
+}
+/* Admin: publish every vehicle's snapshot (one-time backfill / bulk refresh). */
+function publishAllPortals(){
+  if(typeof cloudOn!=='function' || !cloudOn()){ toast('Cloud mode only'); return; }
+  if(typeof FB==='undefined' || !FB || !FB.ready || !FB.user){ toast('Sign in first','err'); return; }
+  var n=0; (S.vehicles||[]).forEach(function(v){ publishPortalDoc(v.id); n++; });
+  toast('Published '+n+' vehicle portals ✓');
 }
 function sendReminder(id){
   var v=vehicleById(id);

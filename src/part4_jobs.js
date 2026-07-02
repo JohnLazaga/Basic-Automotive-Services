@@ -724,7 +724,8 @@ function releaseJob(id){
   var v=vehicleById(j.vehicleId); if(v){ var reading=Number(j.lastServiceOdo)||(j.inspection&&j.inspection.odometer)||j.odometer||0;
     v.odometer=Math.max(v.odometer||0, reading);
     var nd=new Date(); nd.setMonth(nd.getMonth()+6); v.nextServiceDate=todayISO(nd); v.nextServiceOdo=(v.odometer||0)+5000; }
-  persist(); toast('Vehicle released ✓'); render();
+  persist(); if(v && typeof publishPortalDoc==='function') publishPortalDoc(v.id);   // refresh public portal
+  toast('Vehicle released ✓'); render();
 }
 
 /* afterRender hook (kept as a base no-op; part12_rbac.js chains onto it). */

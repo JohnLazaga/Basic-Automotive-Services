@@ -1002,11 +1002,13 @@ function bindKeys(){
 var _mounted=false, _mode=null;
 function render(){
   if (typeof document==='undefined') return;
-  // In cloud mode, once the auth layer is initialized the login/portal-locked
-  // screens own the DOM until a session exists — don't let a hashchange paint
-  // the app (or an empty portal) over them. (No-op in local/test mode where
-  // FB is never initialized.)
-  if (typeof cloudOn==='function' && cloudOn() && typeof FB!=='undefined' && FB && FB.ready && !FB.user) return;
+  // In cloud mode, until a staff session exists the auth/portal screens own the
+  // DOM. A signed-out visitor on a #v= link gets the public portal snapshot;
+  // any other route just keeps the login screen. (No-op in local/test mode.)
+  if (typeof cloudOn==='function' && cloudOn() && typeof FB!=='undefined' && FB && FB.ready && !FB.user){
+    if (typeof isPortalRoute==='function' && isPortalRoute() && typeof loadPublicPortal==='function') loadPublicPortal();
+    return;
+  }
   bindKeys();
   var mode = isPortalRoute() ? 'portal' : 'app';
   if (!_mounted || mode!==_mode){
@@ -2167,7 +2169,8 @@ function releaseJob(id){
   var v=vehicleById(j.vehicleId); if(v){ var reading=Number(j.lastServiceOdo)||(j.inspection&&j.inspection.odometer)||j.odometer||0;
     v.odometer=Math.max(v.odometer||0, reading);
     var nd=new Date(); nd.setMonth(nd.getMonth()+6); v.nextServiceDate=todayISO(nd); v.nextServiceOdo=(v.odometer||0)+5000; }
-  persist(); toast('Vehicle released ✓'); render();
+  persist(); if(v && typeof publishPortalDoc==='function') publishPortalDoc(v.id);   // refresh public portal
+  toast('Vehicle released ✓'); render();
 }
 
 /* afterRender hook (kept as a base no-op; part12_rbac.js chains onto it). */
@@ -2353,7 +2356,8 @@ VIEWS.vehicle = function(id){
         (v.nextServiceOdo?'<div class="muted small">or at '+odo(v.nextServiceOdo)+' (now '+odo(v.odometer)+')</div>':'')+'</div></div>'+
       '<div class="card center"><h2>Customer QR portal</h2><div id="vehQR" class="qrbox"></div>'+
         '<div class="row gap center mt8"><button class="btn sm ghost" onclick="printQRSticker(\''+v.id+'\')">⎙ Print sticker</button>'+
-        '<button class="btn sm ghost" onclick="previewPortal(\''+v.id+'\')">Preview portal</button></div>'+
+        '<button class="btn sm ghost" onclick="previewPortal(\''+v.id+'\')">Preview portal</button>'+
+        '<button class="btn sm ghost" onclick="publishPortalNow(\''+v.id+'\')">↑ Publish/refresh</button></div>'+
         '<div class="muted small mt8">Scans resolve once hosted at:<br><code class="qr-url">'+esc(portalLink(v.id))+'</code></div></div>'+
       '<div class="card"><h2>Owner / Vehicle</h2><div class="ksmall">'+
         kv('Owner',esc(v.owner))+kv('Address',esc(v.address||'—'))+kv('Contact',esc(v.contactPerson+' · '+v.contactNumber))+
@@ -2415,8 +2419,23 @@ function saveVehicle(){
   var data={ plate:(val('vehPlate')||'').toUpperCase(), owner:val('vehOwner'), contactPerson:val('vehCP'), contactNumber:val('vehContact'),
     chassis:val('vehChassis'), year:val('vehYear'), make:val('vehMake'), model:val('vehModel'), variant:val('vehVariant'),
     odometer:Number(val('vehOdo'))||0, nextServiceDate:val('vehNextDate'), nextServiceOdo:Number(val('vehNextOdo'))||'', address:val('vehAddr') };
-  if(vehCtx){ Object.assign(vehicleById(vehCtx),data); } else { data.id=uid('vh'); S.vehicles.push(data); }
-  persist(); closeModal(); toast('Vehicle saved'); render();
+  var vid;
+  if(vehCtx){ Object.assign(vehicleById(vehCtx),data); vid=vehCtx; } else { data.id=uid('vh'); S.vehicles.push(data); vid=data.id; }
+  persist(); if(typeof publishPortalDoc==='function') publishPortalDoc(vid);   // refresh public portal
+  closeModal(); toast('Vehicle saved'); render();
+}
+/* Publish this vehicle's public portal snapshot on demand. */
+function publishPortalNow(id){
+  if(typeof cloudOn!=='function' || !cloudOn()){ toast('Portal publishing is available in cloud mode only'); return; }
+  if(typeof FB==='undefined' || !FB || !FB.ready || !FB.user){ toast('Sign in to publish the portal','err'); return; }
+  publishPortalDoc(id); toast('Portal snapshot published ✓');
+}
+/* Admin: publish every vehicle's snapshot (one-time backfill / bulk refresh). */
+function publishAllPortals(){
+  if(typeof cloudOn!=='function' || !cloudOn()){ toast('Cloud mode only'); return; }
+  if(typeof FB==='undefined' || !FB || !FB.ready || !FB.user){ toast('Sign in first','err'); return; }
+  var n=0; (S.vehicles||[]).forEach(function(v){ publishPortalDoc(v.id); n++; });
+  toast('Published '+n+' vehicle portals ✓');
 }
 function sendReminder(id){
   var v=vehicleById(id);
@@ -2919,7 +2938,9 @@ VIEWS.settings = function(){
 
     '<div class="card"><h2>Customer QR portal</h2>'+
       field('Portal base URL','<input id="shPortal" value="'+attr(sh.portalUrl)+'">','Vehicle QR encodes <portalUrl>/#v=<id>. Host this file there for scans to resolve.')+
-      '<button class="btn ghost" onclick="saveShop()">Save</button></div>'+
+      '<div class="row gap"><button class="btn ghost" onclick="saveShop()">Save</button>'+
+      '<button class="btn ghost" onclick="publishAllPortals()">↑ Publish all portals</button></div>'+
+      '<p class="muted small">Publishing writes a minimal public snapshot (plate, service history, next service) per vehicle so customers can scan their QR without signing in. No prices, chassis, TIN or contact numbers are exposed.</p></div>'+
 
     '<div class="card"><h2>Commission</h2>'+
       field('Default rate % of labor','<input id="shComm" type="number" step="0.1" value="'+attr(sh.mechCommissionRate)+'">','Fallback rate for staff with no individual rate. Set per-staff rates (admin only) on the Staff page.')+
@@ -3301,34 +3322,65 @@ function portalVehicleId(){
 }
 function isPortalRoute(){ return !!portalVehicleId(); }
 
+/* Minimal, PUBLIC-safe snapshot of one vehicle — the ONLY shape ever written to
+   the public `portal` collection. Deliberately excludes prices, chassis/VIN,
+   TIN, customer contact number and photos. */
+function portalDataForVehicle(v){
+  var hist=S.jobs.filter(function(j){return j.vehicleId===v.id||(j.plate||'').toUpperCase()===(v.plate||'').toUpperCase();})
+    .filter(function(j){return j.stage==='Released'||j.stage==='Final Billing';})
+    .sort(function(a,b){return (b.billedAt||b.dateIn||'')<(a.billedAt||a.dateIn||'')?-1:1;});
+  var sh=S.shop||{};
+  return {
+    plate:v.plate||'', year:v.year||'', make:v.make||'', model:v.model||'', variant:v.variant||'',
+    owner:v.owner||'',
+    nextServiceDate:v.nextServiceDate||'', nextServiceOdo:Number(v.nextServiceOdo)||0,
+    history: hist.map(function(j){
+      var work=(j.lines||[]).filter(function(l){return l.type==='labor';}).map(function(l){return l.desc;}).filter(Boolean).join(' · ')
+        || (j.lines||[]).map(function(l){return l.desc;}).filter(Boolean).join(' · ') || 'Service';
+      return { dateISO:(j.billedAt||j.dateIn||''), work:work, odo:Number(j.lastServiceOdo)||Number(j.odometer)||0 };
+    }),
+    shop:{ name:sh.name||'', address:sh.address||'', contact:sh.contact||'' },
+    updatedAt:new Date().toISOString()
+  };
+}
+/* Shared portal markup, rendered from a portal-data object (live for staff, or
+   the fetched public doc for customers). */
+function portalCardsHTML(d){
+  var sh=d.shop||{};
+  var due = d.nextServiceDate && d.nextServiceDate<=todayISO();
+  var timeline=(d.history&&d.history.length)? d.history.map(function(h){
+    return '<div class="p-item"><div class="p-date">'+esc(fmtDate(h.dateISO))+'</div>'+
+      '<div class="p-work">'+esc(h.work||'Service')+'</div>'+
+      '<div class="p-odo">'+num(h.odo)+' km</div></div>';
+  }).join('') : '<div class="p-empty">No service records yet.</div>';
+  return '<div class="portal">'+
+    '<div class="p-head"><img class="p-lockup" src="'+LOGO_LOCKUP+'" alt="Basic by JMSI"/></div>'+
+    '<div class="p-veh"><div class="p-plate">'+esc(d.plate)+'</div>'+
+      '<div class="p-model">'+esc((d.year+' '+d.make+' '+d.model).trim()+(d.variant?' '+d.variant:''))+'</div>'+
+      '<div class="p-owner">'+esc(d.owner)+'</div></div>'+
+    '<div class="p-card '+(due?'p-due':'')+'"><div class="p-card-t">Next service</div>'+
+      '<div class="p-big">'+(d.nextServiceDate? (due?'⚠ Overdue · ':'')+fmtDate(d.nextServiceDate) : 'Not scheduled')+'</div>'+
+      (d.nextServiceOdo?'<div class="p-card-s">or at '+num(d.nextServiceOdo)+' km</div>':'')+'</div>'+
+    '<div class="p-card"><div class="p-card-t">Service history</div>'+timeline+'</div>'+
+    '<div class="p-card"><div class="p-card-t">Contact</div><div class="p-contact">'+esc(sh.name)+'<br>'+esc(sh.address)+'<br>'+esc(sh.contact)+'</div>'+
+      (sh.contact?'<a class="p-btn" href="tel:'+esc(String(sh.contact).replace(/[^0-9+]/g,''))+'">Call the shop</a>':'')+'</div>'+
+    '<div class="p-foot">Read-only customer portal · powered by '+esc(sh.name)+'</div>'+
+  '</div>';
+}
 function portalHTML(){
   var v=vehicleById(portalVehicleId());
   if(!v) return '<div class="portal"><div class="p-head"><img class="p-lockup" src="'+LOGO_LOCKUP+'" alt="Basic by JMSI"/></div>'+
     '<div class="p-card">Vehicle not found.</div></div>';
-  var hist=S.jobs.filter(function(j){return j.vehicleId===v.id||(j.plate||'').toUpperCase()===(v.plate||'').toUpperCase();})
-    .filter(function(j){return j.stage==='Released'||j.stage==='Final Billing';})
-    .sort(function(a,b){return (b.dateIn||'')<(a.dateIn||'')?-1:1;});
-  var photos=[]; hist.forEach(function(j){ (j.photos||[]).forEach(function(p){ photos.push(p); }); });
-  var timeline=hist.length? hist.map(function(j){
-    return '<div class="p-item"><div class="p-date">'+esc(fmtDate(j.billedAt||j.dateIn))+'</div>'+
-      '<div class="p-work">'+esc((j.lines||[]).map(function(l){return l.desc;}).join(' · ')||'Service')+'</div>'+
-      '<div class="p-odo">'+num(j.odometer)+' km</div></div>';
-  }).join('') : '<div class="p-empty">No service records yet.</div>';
-  var due = v.nextServiceDate && v.nextServiceDate<=todayISO();
-  return '<div class="portal">'+
-    '<div class="p-head"><img class="p-lockup" src="'+LOGO_LOCKUP+'" alt="Basic by JMSI"/></div>'+
-    '<div class="p-veh"><div class="p-plate">'+esc(v.plate)+'</div>'+
-      '<div class="p-model">'+esc(v.year+' '+v.make+' '+v.model)+'</div>'+
-      '<div class="p-owner">'+esc(v.owner)+'</div></div>'+
-    '<div class="p-card '+(due?'p-due':'')+'"><div class="p-card-t">Next service</div>'+
-      '<div class="p-big">'+(v.nextServiceDate? (due?'⚠ Overdue · ':'')+fmtDate(v.nextServiceDate) : 'Not scheduled')+'</div>'+
-      (v.nextServiceOdo?'<div class="p-card-s">or at '+num(v.nextServiceOdo)+' km</div>':'')+'</div>'+
-    '<div class="p-card"><div class="p-card-t">Service history</div>'+timeline+'</div>'+
-    (photos.length?'<div class="p-card"><div class="p-card-t">Photos</div><div class="p-photos">'+photos.slice(0,12).map(function(p){return '<img src="'+(p.url||p.data)+'"/>';}).join('')+'</div></div>':'')+
-    '<div class="p-card"><div class="p-card-t">Contact</div><div class="p-contact">'+esc(S.shop.name)+'<br>'+esc(S.shop.address)+'<br>'+esc(S.shop.contact)+'</div>'+
-      '<a class="p-btn" href="tel:'+esc((S.shop.contact||'').replace(/[^0-9+]/g,''))+'">Call the shop</a></div>'+
-    '<div class="p-foot">Read-only customer portal · powered by '+esc(S.shop.name)+'</div>'+
-  '</div>';
+  return portalCardsHTML(portalDataForVehicle(v));
+}
+/* Publish (or refresh) a vehicle's public portal snapshot to Firestore. Best
+   effort: only in cloud mode with an active session; a write failure is
+   swallowed so it never blocks the caller. */
+function publishPortalDoc(vehicleId){
+  if(typeof cloudOn!=='function' || !cloudOn()) return;
+  if(typeof FB==='undefined' || !FB || !FB.ready || !FB.db || !FB.user) return;
+  var v=vehicleById(vehicleId); if(!v) return;
+  try { FB.db.collection('portal').doc(vehicleId).set(portalDataForVehicle(v)); } catch(e){ /* non-fatal */ }
 }
 function previewPortal(id){
   var v=vehicleById(id);
@@ -3371,6 +3423,7 @@ if (typeof module!=='undefined' && module.exports){
     deductInventory:deductInventory, receivePO:receivePO,
     importPartsText:importPartsText, importPartsFromArray:importPartsFromArray, parseCSV:parseCSV,
     portalHTML:portalHTML, isPortalRoute:isPortalRoute, setPortalId:function(fn){ portalVehicleId=fn; },
+    portalDataForVehicle:portalDataForVehicle, portalCardsHTML:portalCardsHTML,
     render:function(){ return render(); }, setRoute:function(v,a){ ROUTE.view=v; ROUTE.arg=a||null; },
     LOGO_URI:function(){ return LOGO_URI; }, LOGO_LOCKUP:function(){ return LOGO_LOCKUP; },
     arJobs:arJobs, jobByNo:jobByNo, vehicleByPlate:vehicleByPlate, partById:partById,
@@ -3417,42 +3470,54 @@ function initFirebase(){
    waits for the deferred Firebase SDK to finish loading before wiring auth.
    This keeps first paint fast on mobile — the SDK downloads in the background. */
 function cloudStart(){
-  // Public QR portal links (#v=<id>) must never dump a customer into the staff
-  // sign-in screen. Data stays protected — show a portal notice instead.
-  if (typeof isPortalRoute==='function' && isPortalRoute()){ renderPortalLocked(); }
-  else renderLogin(null, null, true);         // instant first paint
+  // Public QR portal links (#v=<id>) are served WITHOUT sign-in: they read only
+  // the minimal public `portal/<id>` snapshot — never the protected database.
+  var portal = (typeof isPortalRoute==='function' && isPortalRoute());
+  if (portal){ renderPortalLoading(); } else renderLogin(null, null, true);
   whenFirebaseReady(function(ok){
     if (!ok){
+      if (portal){ renderPortalError('This portal is offline. Please check your connection or contact the shop.'); return; }
       renderCloudError('Couldn’t load the sign-in service.',
         'Check your internet connection and reload.');
       return;
     }
     if (!initFirebase()){
+      if (portal){ renderPortalError('This portal is temporarily unavailable.'); return; }
       renderCloudError('Firebase failed to initialize.', 'The configuration may be incomplete.');
       return;
     }
+    if (portal){ loadPublicPortal(); return; }   // public read, no auth
     FB.auth.onAuthStateChanged(function(user){
       FB.user = user;
       if (user) onSignedIn(user);
-      else if (typeof isPortalRoute==='function' && isPortalRoute()) renderPortalLocked();
       else renderLogin();
     });
   });
 }
-/* Shown when a signed-out visitor opens a #v=<id> portal link in cloud mode.
-   The shop's data requires an active account, so we present a neutral notice
-   rather than the staff sign-in form (which would look like a data leak). */
-function renderPortalLocked(){
+/* Fetch and render the public portal snapshot for the vehicle in the URL. */
+function loadPublicPortal(){
+  var id = (typeof portalVehicleId==='function') ? portalVehicleId() : null;
+  if(!id){ renderPortalError('No vehicle specified.'); return; }
+  FB.db.collection('portal').doc(id).get().then(function(doc){
+    var app=document.getElementById('app'); if(!app) return;
+    if(!doc.exists){ renderPortalError('No service record found for this vehicle yet.'); return; }
+    app.innerHTML = '<div class="portal-page">'+portalCardsHTML(doc.data())+'</div>';
+  }).catch(function(){
+    renderPortalError('Couldn’t load this vehicle’s service record.');
+  });
+}
+function renderPortalLoading(){
   var app=(typeof document!=='undefined') && document.getElementById('app'); if(!app) return;
-  var sh=(typeof S!=='undefined' && S && S.shop) ? S.shop : {};
+  app.innerHTML='<div class="login-bg"><div class="login-card">'+
+    '<img class="login-logo" src="'+LOGO_LOCKUP+'" alt="Basic by JMSI"/>'+
+    '<div class="login-sub">Vehicle Service Portal</div><div class="cloud-spin"></div></div></div>';
+}
+function renderPortalError(msg){
+  var app=(typeof document!=='undefined') && document.getElementById('app'); if(!app) return;
   app.innerHTML='<div class="login-bg"><div class="login-card">'+
     '<img class="login-logo" src="'+LOGO_LOCKUP+'" alt="Basic by JMSI"/>'+
     '<div class="login-sub">Vehicle Service Portal</div>'+
-    '<div class="lg-msg" style="background:#f5f5f7;color:#1d1d1f">This service record can only be viewed by shop staff. '+
-      'Please ask our front desk to pull up your vehicle’s history.</div>'+
-    (sh.contact?'<a class="btn primary full" href="tel:'+esc(String(sh.contact).replace(/[^0-9+]/g,''))+'">Call the shop</a>':'')+
-    '<div class="lg-link" style="cursor:default">'+esc(sh.name||'Basic by JMSI')+'</div>'+
-  '</div></div>';
+    '<div class="lg-msg" style="background:#f5f5f7;color:#1d1d1f">'+esc(msg)+'</div></div></div>';
 }
 /* Poll briefly for the deferred Firebase SDK to become available. */
 function whenFirebaseReady(cb){

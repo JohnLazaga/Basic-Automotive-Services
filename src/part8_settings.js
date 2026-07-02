@@ -23,7 +23,9 @@ VIEWS.settings = function(){
 
     '<div class="card"><h2>Customer QR portal</h2>'+
       field('Portal base URL','<input id="shPortal" value="'+attr(sh.portalUrl)+'">','Vehicle QR encodes <portalUrl>/#v=<id>. Host this file there for scans to resolve.')+
-      '<button class="btn ghost" onclick="saveShop()">Save</button></div>'+
+      '<div class="row gap"><button class="btn ghost" onclick="saveShop()">Save</button>'+
+      '<button class="btn ghost" onclick="publishAllPortals()">↑ Publish all portals</button></div>'+
+      '<p class="muted small">Publishing writes a minimal public snapshot (plate, service history, next service) per vehicle so customers can scan their QR without signing in. No prices, chassis, TIN or contact numbers are exposed.</p></div>'+
 
     '<div class="card"><h2>Commission</h2>'+
       field('Default rate % of labor','<input id="shComm" type="number" step="0.1" value="'+attr(sh.mechCommissionRate)+'">','Fallback rate for staff with no individual rate. Set per-staff rates (admin only) on the Staff page.')+
