@@ -172,6 +172,11 @@ function bindKeys(){
 var _mounted=false, _mode=null;
 function render(){
   if (typeof document==='undefined') return;
+  // In cloud mode, once the auth layer is initialized the login/portal-locked
+  // screens own the DOM until a session exists — don't let a hashchange paint
+  // the app (or an empty portal) over them. (No-op in local/test mode where
+  // FB is never initialized.)
+  if (typeof cloudOn==='function' && cloudOn() && typeof FB!=='undefined' && FB && FB.ready && !FB.user) return;
   bindKeys();
   var mode = isPortalRoute() ? 'portal' : 'app';
   if (!_mounted || mode!==_mode){

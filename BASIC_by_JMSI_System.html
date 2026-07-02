@@ -1002,6 +1002,11 @@ function bindKeys(){
 var _mounted=false, _mode=null;
 function render(){
   if (typeof document==='undefined') return;
+  // In cloud mode, once the auth layer is initialized the login/portal-locked
+  // screens own the DOM until a session exists — don't let a hashchange paint
+  // the app (or an empty portal) over them. (No-op in local/test mode where
+  // FB is never initialized.)
+  if (typeof cloudOn==='function' && cloudOn() && typeof FB!=='undefined' && FB && FB.ready && !FB.user) return;
   bindKeys();
   var mode = isPortalRoute() ? 'portal' : 'app';
   if (!_mounted || mode!==_mode){
@@ -3412,7 +3417,10 @@ function initFirebase(){
    waits for the deferred Firebase SDK to finish loading before wiring auth.
    This keeps first paint fast on mobile — the SDK downloads in the background. */
 function cloudStart(){
-  renderLogin(null, null, true);              // instant first paint
+  // Public QR portal links (#v=<id>) must never dump a customer into the staff
+  // sign-in screen. Data stays protected — show a portal notice instead.
+  if (typeof isPortalRoute==='function' && isPortalRoute()){ renderPortalLocked(); }
+  else renderLogin(null, null, true);         // instant first paint
   whenFirebaseReady(function(ok){
     if (!ok){
       renderCloudError('Couldn’t load the sign-in service.',
@@ -3426,9 +3434,25 @@ function cloudStart(){
     FB.auth.onAuthStateChanged(function(user){
       FB.user = user;
       if (user) onSignedIn(user);
+      else if (typeof isPortalRoute==='function' && isPortalRoute()) renderPortalLocked();
       else renderLogin();
     });
   });
+}
+/* Shown when a signed-out visitor opens a #v=<id> portal link in cloud mode.
+   The shop's data requires an active account, so we present a neutral notice
+   rather than the staff sign-in form (which would look like a data leak). */
+function renderPortalLocked(){
+  var app=(typeof document!=='undefined') && document.getElementById('app'); if(!app) return;
+  var sh=(typeof S!=='undefined' && S && S.shop) ? S.shop : {};
+  app.innerHTML='<div class="login-bg"><div class="login-card">'+
+    '<img class="login-logo" src="'+LOGO_LOCKUP+'" alt="Basic by JMSI"/>'+
+    '<div class="login-sub">Vehicle Service Portal</div>'+
+    '<div class="lg-msg" style="background:#f5f5f7;color:#1d1d1f">This service record can only be viewed by shop staff. '+
+      'Please ask our front desk to pull up your vehicle’s history.</div>'+
+    (sh.contact?'<a class="btn primary full" href="tel:'+esc(String(sh.contact).replace(/[^0-9+]/g,''))+'">Call the shop</a>':'')+
+    '<div class="lg-link" style="cursor:default">'+esc(sh.name||'Basic by JMSI')+'</div>'+
+  '</div></div>';
 }
 /* Poll briefly for the deferred Firebase SDK to become available. */
 function whenFirebaseReady(cb){
