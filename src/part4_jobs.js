@@ -599,7 +599,9 @@ function advancePostJob(id){
         '<button class="btn primary" onclick="closeModal();editJobDetails(\''+j.id+'\')">Edit Job Details</button>', width:'520px' });
     return;
   }
-  j.approvedReleaseBy = val('apvRel') || '';
+  var sup=staffById(val('apvRel'));
+  if(!sup || sup.role!=='SV'){ toast('Select the approving Supervisor first','err'); return; }
+  j.approvedReleaseBy = sup.id;
   deductInventory(j);
   j.stage='Post Job Report';
   persist(); toast('Post Job Report created · inventory deducted'); render();

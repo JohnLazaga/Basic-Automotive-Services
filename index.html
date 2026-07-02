@@ -675,6 +675,10 @@ function mechanicStaff(){ return (S.staff||[]).filter(function(s){return isMecha
 /* ---- Lookups -------------------------------------------------------------- */
 function staffById(id){ return (S.staff||[]).find(function(s){return s.id===id;}) || null; }
 function staffName(id){ if(!id||id==='TBA') return 'TBA'; var s=staffById(id); return s?s.name:'—'; }
+/* Name only if the referenced staff actually holds the given role — guards
+   signature blocks against stale references (e.g. an SA stored in a field
+   that must be a Supervisor). Wrong-role references print as blank. */
+function staffNameIfRole(id, role){ var s=staffById(id); return (s && s.role===role) ? s.name : ''; }
 function staffByRole(role){ return (S.staff||[]).filter(function(s){return s.role===role;}); }
 function bayById(id){ return (S.bays||[]).find(function(b){return b.id===id;}) || null; }
 function bayName(id){ if(!id||id==='TBA') return 'TBA'; var b=bayById(id); return b?b.name:'—'; }
@@ -2012,7 +2016,9 @@ function advancePostJob(id){
         '<button class="btn primary" onclick="closeModal();editJobDetails(\''+j.id+'\')">Edit Job Details</button>', width:'520px' });
     return;
   }
-  j.approvedReleaseBy = val('apvRel') || '';
+  var sup=staffById(val('apvRel'));
+  if(!sup || sup.role!=='SV'){ toast('Select the approving Supervisor first','err'); return; }
+  j.approvedReleaseBy = sup.id;
   deductInventory(j);
   j.stage='Post Job Report';
   persist(); toast('Post Job Report created · inventory deducted'); render();
@@ -3045,7 +3051,7 @@ function docPostJob(j){
     pricedLinesTable(j,{sku:true})+ totalsBox(j,{discount:false})+
     (j.notes?'<div class="notes"><b>Service notes:</b> '+esc(j.notes)+'</div>':'')+
     '<div class="sig-grid"><div class="sigline">Checked by (Service Adviser)<br>'+esc(staffName(j.saId))+'</div>'+
-      '<div class="sigline">Approved for release by (Supervisor)<br>'+esc(staffName(j.approvedReleaseBy))+'</div>'+
+      '<div class="sigline">Approved for release by (Supervisor)<br>'+esc(staffNameIfRole(j.approvedReleaseBy,'SV'))+'</div>'+
       '<div class="sigline">Customer<br>'+esc(j.owner||'')+'</div></div>'+
     '<div class="foot">Post Job Report — first document showing prices. Parts have been deducted from inventory.</div>';
   return docShell('Post Job Report '+j.no, body);
@@ -3062,8 +3068,8 @@ function docBilling(j){
       [['Date', fmtDate(j.billedAt)],['TIN', esc(j.customerTin||'—')],['SI reference', esc(j.siRef||'—')],['JO #', esc(j.no)],
        ['Ingress Odo', num(j.odometer)+' km'],['Last Service Odo', j.lastServiceOdo?num(j.lastServiceOdo)+' km':'—']] )+
     pricedLinesTable(j,{sku:true})+ totalsBox(j,{discount:true})+
-    '<div class="sig-grid"><div class="sigline">Approved for release by (Supervisor)<br>'+esc(staffName(j.approvedReleaseBy))+'</div>'+
-      '<div class="sigline">Payment received by (Secretary)<br>'+esc(staffName(j.paymentReceivedBy))+'</div>'+
+    '<div class="sig-grid"><div class="sigline">Approved for release by (Supervisor)<br>'+esc(staffNameIfRole(j.approvedReleaseBy,'SV'))+'</div>'+
+      '<div class="sigline">Payment received by (Secretary)<br>'+esc(staffNameIfRole(j.paymentReceivedBy,'Secretary'))+'</div>'+
       '<div class="sigline">Unit Received by (Customer)<br>'+esc(j.owner||'')+'</div></div>'+
     '<div class="foot">THIS DOCUMENT IS NOT VALID FOR CLAIM OF INPUT TAX<br>'+
       esc(sh.name)+' · TIN '+esc(sh.tin)+' · '+esc(sh.address)+'</div>';
