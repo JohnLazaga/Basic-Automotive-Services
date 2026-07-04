@@ -887,13 +887,36 @@ var NAV = [
 ];
 function navAllowed(it){ return (typeof can!=='function') || !it.cap || can(it.cap); }
 
-function go(view, arg){
+var NAV_STACK = [];      // breadcrumb of visited pages for ESC "back"
+function _navTo(view, arg){
   ROUTE.view = view; ROUTE.arg = arg||null;
   if (typeof document!=='undefined'){
     var sb = document.getElementById('sidebar'); if (sb) sb.classList.remove('open');
     window.scrollTo(0,0);
   }
   render();
+}
+function go(view, arg){
+  // Remember the page we're leaving so ESC can step back to it. Skip no-op
+  // navigations and consecutive duplicates.
+  if (ROUTE.view && !(ROUTE.view===view && (ROUTE.arg||null)===(arg||null))){
+    var top=NAV_STACK[NAV_STACK.length-1];
+    if (!top || top.view!==ROUTE.view || (top.arg||null)!==(ROUTE.arg||null)){
+      NAV_STACK.push({ view:ROUTE.view, arg:ROUTE.arg });
+      if (NAV_STACK.length>50) NAV_STACK.shift();
+    }
+  }
+  _navTo(view, arg);
+}
+/* ESC "back": step to the previous page; the Operations Board is the last stop. */
+function goBack(){
+  while (NAV_STACK.length){
+    var prev = NAV_STACK.pop();
+    if (prev && !(prev.view===ROUTE.view && (prev.arg||null)===(ROUTE.arg||null))){
+      _navTo(prev.view, prev.arg); return;
+    }
+  }
+  if (ROUTE.view!=='board') _navTo('board');   // nothing left to go back to → Board
 }
 
 /* ---- View dispatch (filled by later parts) -------------------------------- */
@@ -975,10 +998,10 @@ function bindKeys(){
   if (_keysBound || typeof document==='undefined' || !document.addEventListener) return;
   _keysBound=true;
   document.addEventListener('keydown', function(e){
-    // ESC = close any open modal, otherwise jump to the Operations Board
+    // ESC = close any open modal, otherwise step back a page (Board is last stop)
     if (e.key==='Escape' || e.keyCode===27){
       if (document.querySelector && document.querySelector('#modalRoot .modal-back')){ e.preventDefault(); closeModal(); return; }
-      if (ROUTE.view!=='board'){ e.preventDefault(); go('board'); }
+      if (ROUTE.view!=='board' || NAV_STACK.length){ e.preventDefault(); goBack(); }
       return;
     }
     // ENTER = advance to next field (or submit on the last one)
