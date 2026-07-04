@@ -47,6 +47,15 @@ function portalDataForVehicle(v){
 }
 /* Shared portal markup, rendered from a portal-data object (live for staff, or
    the fetched public doc for customers). */
+/* A shop "contact" often lists several numbers (e.g. "(02) 8555-0100 · 0917 555
+   0100"). Pick ONE dialable number for the tel: link — prefer a mobile — instead
+   of concatenating every digit into a bogus number. */
+function firstPhone(s){
+  var parts=String(s||'').split(/[·,;\/|\n]+/).map(function(t){return t.trim();}).filter(Boolean);
+  var mobile=parts.filter(function(p){ return /(^|\D)(09\d|\+?639)/.test(p); })[0];
+  var pick=mobile||parts[0]||String(s||'');
+  return pick.replace(/[^0-9+]/g,'');
+}
 var PORTAL_LAST=null;   // last-rendered portal data, for the report drill-down
 function portalCardsHTML(d){
   PORTAL_LAST=d;
@@ -72,7 +81,7 @@ function portalCardsHTML(d){
       (d.nextServiceOdo?'<div class="p-card-s">or at '+num(d.nextServiceOdo)+' km</div>':'')+'</div>'+
     '<div class="p-card"><div class="p-card-t">Service history</div>'+timeline+'</div>'+
     '<div class="p-card"><div class="p-card-t">Contact</div><div class="p-contact">'+esc(sh.name)+'<br>'+esc(sh.address)+'<br>'+esc(sh.contact)+'</div>'+
-      (sh.contact?'<a class="p-btn" href="tel:'+esc(String(sh.contact).replace(/[^0-9+]/g,''))+'">Call the shop</a>':'')+'</div>'+
+      (sh.contact?'<a class="p-btn" href="tel:'+esc(firstPhone(sh.contact))+'">Call the shop</a>':'')+'</div>'+
     '<div class="p-foot">Read-only customer portal · powered by '+esc(sh.name)+'</div>'+
   '</div>';
 }
