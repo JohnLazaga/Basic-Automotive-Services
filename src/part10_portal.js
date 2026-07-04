@@ -234,6 +234,7 @@ function previewPortal(id){
 /* ---- Boot ----------------------------------------------------------------- */
 async function boot(){
   if (typeof window!=='undefined'){ window.addEventListener('hashchange', render); }
+  if (typeof startUpdateChecker==='function') startUpdateChecker();   // self-update prompt
   // Cloud mode: paint the login screen immediately, load Firebase in the
   // background (deferred SDK), then wire auth — so the page never blocks on it.
   if (typeof cloudOn==='function' && cloudOn()){ cloudStart(); return; }

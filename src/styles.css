@@ -293,6 +293,9 @@ textarea{resize:vertical} .chk{display:flex;align-items:center;gap:8px;font-size
 .lg-msg.ok{background:rgba(52,199,89,.16);color:#7fe6a0;border:1px solid rgba(52,199,89,.3)}
 .cloud-spin{width:26px;height:26px;margin:18px auto 4px;border:3px solid rgba(255,255,255,.15);border-top-color:var(--brand);border-radius:50%;animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
+#updBanner{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:100000;display:flex;align-items:center;gap:12px;background:#1D1D1F;color:#fff;padding:10px 12px 10px 16px;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.35);font-size:13px;max-width:92vw}
+#updBanner .upd-go{background:var(--brand);color:#fff;border:0;border-radius:9px;padding:7px 14px;font-weight:700;cursor:pointer}
+#updBanner .upd-x{background:none;border:0;color:#bbb;font-size:15px;cursor:pointer;padding:2px 6px}
 .lg-ver{margin-top:10px;font-size:10.5px;letter-spacing:.03em;color:#6a6a70}
 .appver{opacity:.85}
 .lg-status{margin-top:16px;font-size:11px;color:#7a7a80}

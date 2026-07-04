@@ -111,6 +111,34 @@ function sidebarHTML(){
   '</aside>';
 }
 
+/* ---- Auto-update check ---------------------------------------------------- */
+/* Poll the deployed version.txt; if it differs from the running APP_VERSION a new
+   build is live, so prompt a reload. This lets every branch self-update instead
+   of relying on someone remembering to hard-refresh. */
+var _updShown=false;
+function startUpdateChecker(){
+  if (typeof window==='undefined' || typeof fetch!=='function') return;
+  if (typeof cloudOn==='function' && !cloudOn()) return;   // skip the local/dev build
+  function check(){
+    fetch('version.txt?v='+Date.now(), { cache:'no-store' })
+      .then(function(r){ return r.ok ? r.text() : null; })
+      .then(function(t){
+        if (!t) return; t=t.trim();
+        if (t && typeof APP_VERSION!=='undefined' && t!==APP_VERSION && !_updShown){ _updShown=true; showUpdateBanner(t); }
+      }).catch(function(){ /* offline / not found — ignore */ });
+  }
+  setTimeout(check, 15000);      // shortly after load
+  setInterval(check, 300000);    // then every 5 minutes
+}
+function showUpdateBanner(ver){
+  if (typeof document==='undefined' || document.getElementById('updBanner')) return;
+  var b=document.createElement('div'); b.id='updBanner';
+  b.innerHTML='<span>🔄 A new version ('+esc(ver)+') is available.</span>'+
+    '<button class="upd-go" onclick="location.reload()">Reload now</button>'+
+    '<button class="upd-x" onclick="this.parentNode.remove()" aria-label="Later">✕</button>';
+  document.body.appendChild(b);
+}
+
 /* ---- Top bar -------------------------------------------------------------- */
 function topbarHTML(){
   var openJobs = S.jobs.filter(function(j){return j.stage!=='Released';}).length;
