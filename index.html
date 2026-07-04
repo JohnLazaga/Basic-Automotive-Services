@@ -3374,7 +3374,7 @@ function portalDataForVehicle(v){
   var sh=S.shop||{};
   return {
     plate:v.plate||'', year:v.year||'', make:v.make||'', model:v.model||'', variant:v.variant||'',
-    owner:v.owner||'',
+    owner:v.owner||'', contact:pickContact(v.contactNumber),
     nextServiceDate:v.nextServiceDate||'', nextServiceOdo:Number(v.nextServiceOdo)||0,
     history: hist.map(function(j){
       var work=(j.lines||[]).filter(function(l){return l.type==='labor';}).map(function(l){return l.desc;}).filter(Boolean).join(' · ')
@@ -3405,10 +3405,14 @@ function portalDataForVehicle(v){
    0100"). Pick ONE dialable number for the tel: link — prefer a mobile — instead
    of concatenating every digit into a bogus number. */
 function firstPhone(s){
+  return pickContact(s).replace(/[^0-9+]/g,'');
+}
+/* Choose a single contact number (prefer a mobile) from a field that may list
+   several — returned in its original readable form. */
+function pickContact(s){
   var parts=String(s||'').split(/[·,;\/|\n]+/).map(function(t){return t.trim();}).filter(Boolean);
   var mobile=parts.filter(function(p){ return /(^|\D)(09\d|\+?639)/.test(p); })[0];
-  var pick=mobile||parts[0]||String(s||'');
-  return pick.replace(/[^0-9+]/g,'');
+  return mobile||parts[0]||'';
 }
 var PORTAL_LAST=null;   // last-rendered portal data, for the report drill-down
 function portalCardsHTML(d){
@@ -3509,7 +3513,7 @@ function portalApptForm(){
       '<div class="p-model">'+esc((d.year+' '+d.make+' '+d.model).trim()+(d.variant?' '+d.variant:''))+(d.plate?' · '+esc(d.plate):'')+'</div></div>'+
     '<div class="p-card">'+
       '<label class="p-fld"><span>Your name</span><input id="paName" value="'+attr(d.owner||'')+'"></label>'+
-      '<label class="p-fld"><span>Contact number</span><input id="paContact" type="tel" placeholder="09xx xxx xxxx"></label>'+
+      '<label class="p-fld"><span>Contact number</span><input id="paContact" type="tel" value="'+attr(d.contact||'')+'" placeholder="09xx xxx xxxx"></label>'+
       '<label class="p-fld"><span>Preferred date</span><input id="paDate" type="date" value="'+attr(todayISO())+'"></label>'+
       '<label class="p-fld"><span>What do you need?</span><textarea id="paNotes" rows="3" placeholder="e.g. PMS / oil change / brake check"></textarea></label>'+
       '<button class="p-btn" onclick="portalApptSubmit()">Send request</button>'+

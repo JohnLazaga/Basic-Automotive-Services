@@ -280,7 +280,9 @@ await (async function(){
   ok('doc has history array', Array.isArray(d.history));
   const keys=Object.keys(d);
   ok('no chassis exposed', keys.indexOf('chassis')<0);
-  ok('no customer contact number exposed', keys.indexOf('contactNumber')<0 && JSON.stringify(d).indexOf(v.contactNumber||'~none~')<0);
+  // A single chosen contact is included (for appointment prefill); the raw multi-number field is not.
+  ok('single chosen contact present, raw field absent', keys.indexOf('contact')>=0 && keys.indexOf('contactNumber')<0);
+  ok('chosen contact is one of the vehicle numbers', !d.contact || String(v.contactNumber||'').indexOf(d.contact)>=0);
   ok('no prices in history', d.history.every(h=>!('price' in h) && !('amount' in h)));
   ok('renders from doc (public)', M.portalCardsHTML(d).indexOf('p-plate')>-1);
   // With a billed job, history carries a report and the portal exposes a View button
