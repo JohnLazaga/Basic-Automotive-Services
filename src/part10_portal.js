@@ -80,6 +80,7 @@ function portalCardsHTML(d){
       '<div class="p-big">'+(d.nextServiceDate? (due?'⚠ Overdue · ':'')+fmtDate(d.nextServiceDate) : 'Not scheduled')+'</div>'+
       (d.nextServiceOdo?'<div class="p-card-s">or at '+num(d.nextServiceOdo)+' km</div>':'')+'</div>'+
     '<div class="p-card"><div class="p-card-t">Service history</div>'+timeline+'</div>'+
+    '<button class="p-btn" onclick="portalApptForm()">📅 Make an appointment</button>'+
     '<div class="p-card"><div class="p-card-t">Contact</div><div class="p-contact">'+esc(sh.name)+'<br>'+esc(sh.address)+'<br>'+esc(sh.contact)+'</div>'+
       (sh.contact?'<a class="p-btn" href="tel:'+esc(firstPhone(sh.contact))+'">Call the shop</a>':'')+'</div>'+
     '<div class="p-foot">Read-only customer portal · powered by '+esc(sh.name)+'</div>'+
@@ -141,6 +142,54 @@ function portalViewReport(i){
 function portalViewHome(){
   var app=(typeof document!=='undefined')&&document.getElementById('app'); if(!app||!PORTAL_LAST) return;
   app.innerHTML='<div class="portal-page">'+portalCardsHTML(PORTAL_LAST)+'</div>';
+  if(typeof window!=='undefined'&&window.scrollTo) window.scrollTo(0,0);
+}
+/* Customer appointment request — form + submit to the public appt_requests
+   collection, which the staff app watches live. */
+function portalApptForm(){
+  var d=PORTAL_LAST||{}; var app=(typeof document!=='undefined')&&document.getElementById('app'); if(!app) return;
+  app.innerHTML='<div class="portal-page"><div class="portal">'+
+    '<div class="p-head"><img class="p-lockup" src="'+LOGO_LOCKUP+'" alt="Basic by JMSI"/></div>'+
+    '<button class="p-back" onclick="portalViewHome()">‹ Back</button>'+
+    '<div class="p-veh"><div class="p-plate">Make an appointment</div>'+
+      '<div class="p-model">'+esc((d.year+' '+d.make+' '+d.model).trim()+(d.variant?' '+d.variant:''))+(d.plate?' · '+esc(d.plate):'')+'</div></div>'+
+    '<div class="p-card">'+
+      '<label class="p-fld"><span>Your name</span><input id="paName" value="'+attr(d.owner||'')+'"></label>'+
+      '<label class="p-fld"><span>Contact number</span><input id="paContact" type="tel" placeholder="09xx xxx xxxx"></label>'+
+      '<label class="p-fld"><span>Preferred date</span><input id="paDate" type="date" value="'+attr(todayISO())+'"></label>'+
+      '<label class="p-fld"><span>What do you need?</span><textarea id="paNotes" rows="3" placeholder="e.g. PMS / oil change / brake check"></textarea></label>'+
+      '<button class="p-btn" onclick="portalApptSubmit()">Send request</button>'+
+      '<div id="paMsg" class="p-muted" style="margin-top:8px"></div>'+
+    '</div></div></div>';
+  if(typeof window!=='undefined'&&window.scrollTo) window.scrollTo(0,0);
+}
+function portalApptSubmit(){
+  var d=PORTAL_LAST||{};
+  function g(id){ var e=document.getElementById(id); return e?String(e.value||'').trim():''; }
+  var name=g('paName'), contact=g('paContact'), date=g('paDate'), notes=g('paNotes');
+  var msg=document.getElementById('paMsg');
+  if(!name||!contact){ if(msg){ msg.textContent='Please enter your name and contact number.'; msg.style.color='var(--brand)'; } return; }
+  var req={ plate:d.plate||'', vehicleId:(typeof portalVehicleId==='function'?portalVehicleId():'')||'',
+    vehicle:(d.year+' '+d.make+' '+d.model).trim()+(d.variant?' '+d.variant:''),
+    name:name, contact:contact, preferredDate:date||'', notes:notes||'', status:'new', source:'portal', createdAt:new Date().toISOString() };
+  if(typeof cloudOn==='function' && cloudOn() && typeof FB!=='undefined' && FB && FB.ready && FB.db){
+    if(msg){ msg.textContent='Sending…'; msg.style.color=''; }
+    FB.db.collection('appt_requests').add(req).then(function(){ portalApptDone(true); }).catch(function(){ portalApptDone(false); });
+  } else {
+    portalApptDone(true);   // local/preview
+  }
+}
+function portalApptDone(ok){
+  var app=(typeof document!=='undefined')&&document.getElementById('app'); if(!app) return;
+  var sh=(PORTAL_LAST&&PORTAL_LAST.shop)||{};
+  app.innerHTML='<div class="portal-page"><div class="portal">'+
+    '<div class="p-head"><img class="p-lockup" src="'+LOGO_LOCKUP+'" alt="Basic by JMSI"/></div>'+
+    '<div class="p-card" style="text-align:center">'+
+      (ok? '<div class="p-big">✓ Request sent</div><p class="p-muted">Thank you! Our team will contact you shortly to confirm your appointment.</p>'
+         : '<div class="p-big">Couldn’t send</div><p class="p-muted">Please call the shop to book your appointment.</p>'+
+           (sh.contact?'<a class="p-btn" href="tel:'+esc(firstPhone(sh.contact))+'">Call the shop</a>':''))+
+      '<button class="p-back" onclick="portalViewHome()" style="margin-top:10px">‹ Back to portal</button>'+
+    '</div></div></div>';
   if(typeof window!=='undefined'&&window.scrollTo) window.scrollTo(0,0);
 }
 function portalHTML(){

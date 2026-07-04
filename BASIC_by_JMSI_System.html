@@ -263,6 +263,7 @@ textarea{resize:vertical} .chk{display:flex;align-items:center;gap:8px;font-size
 .p-tbl{width:100%;border-collapse:collapse;font-size:12.5px} .p-tbl th,.p-tbl td{text-align:left;padding:5px 6px;border-bottom:1px solid var(--hair)} .p-tbl th{font-size:10.5px;text-transform:uppercase;color:var(--ink2)} .p-tbl .r{text-align:right}
 .p-muted{color:var(--ink2);text-align:center}
 .p-l2{display:flex;justify-content:space-between;padding:3px 0;font-size:13px} .p-grand{border-top:2px solid var(--ink);font-weight:800;font-size:15px;padding-top:6px;margin-top:4px}
+.p-fld{display:block;margin-bottom:10px} .p-fld span{display:block;font-size:11.5px;font-weight:600;color:var(--ink2);margin-bottom:4px} .p-fld input,.p-fld textarea{width:100%;border:1px solid var(--hair);border-radius:9px;padding:9px 10px;font-size:14px;font-family:inherit}
 .p-meta{display:grid;grid-template-columns:1fr 1fr;gap:4px 14px} .p-kv{display:flex;justify-content:space-between;gap:8px;font-size:12.5px;padding:2px 0} .p-kv span:first-child{color:var(--ink2)} .p-kv span:last-child{font-weight:600;text-align:right}
 
 /* ---- Responsive ---- */
@@ -3433,6 +3434,7 @@ function portalCardsHTML(d){
       '<div class="p-big">'+(d.nextServiceDate? (due?'⚠ Overdue · ':'')+fmtDate(d.nextServiceDate) : 'Not scheduled')+'</div>'+
       (d.nextServiceOdo?'<div class="p-card-s">or at '+num(d.nextServiceOdo)+' km</div>':'')+'</div>'+
     '<div class="p-card"><div class="p-card-t">Service history</div>'+timeline+'</div>'+
+    '<button class="p-btn" onclick="portalApptForm()">📅 Make an appointment</button>'+
     '<div class="p-card"><div class="p-card-t">Contact</div><div class="p-contact">'+esc(sh.name)+'<br>'+esc(sh.address)+'<br>'+esc(sh.contact)+'</div>'+
       (sh.contact?'<a class="p-btn" href="tel:'+esc(firstPhone(sh.contact))+'">Call the shop</a>':'')+'</div>'+
     '<div class="p-foot">Read-only customer portal · powered by '+esc(sh.name)+'</div>'+
@@ -3494,6 +3496,54 @@ function portalViewReport(i){
 function portalViewHome(){
   var app=(typeof document!=='undefined')&&document.getElementById('app'); if(!app||!PORTAL_LAST) return;
   app.innerHTML='<div class="portal-page">'+portalCardsHTML(PORTAL_LAST)+'</div>';
+  if(typeof window!=='undefined'&&window.scrollTo) window.scrollTo(0,0);
+}
+/* Customer appointment request — form + submit to the public appt_requests
+   collection, which the staff app watches live. */
+function portalApptForm(){
+  var d=PORTAL_LAST||{}; var app=(typeof document!=='undefined')&&document.getElementById('app'); if(!app) return;
+  app.innerHTML='<div class="portal-page"><div class="portal">'+
+    '<div class="p-head"><img class="p-lockup" src="'+LOGO_LOCKUP+'" alt="Basic by JMSI"/></div>'+
+    '<button class="p-back" onclick="portalViewHome()">‹ Back</button>'+
+    '<div class="p-veh"><div class="p-plate">Make an appointment</div>'+
+      '<div class="p-model">'+esc((d.year+' '+d.make+' '+d.model).trim()+(d.variant?' '+d.variant:''))+(d.plate?' · '+esc(d.plate):'')+'</div></div>'+
+    '<div class="p-card">'+
+      '<label class="p-fld"><span>Your name</span><input id="paName" value="'+attr(d.owner||'')+'"></label>'+
+      '<label class="p-fld"><span>Contact number</span><input id="paContact" type="tel" placeholder="09xx xxx xxxx"></label>'+
+      '<label class="p-fld"><span>Preferred date</span><input id="paDate" type="date" value="'+attr(todayISO())+'"></label>'+
+      '<label class="p-fld"><span>What do you need?</span><textarea id="paNotes" rows="3" placeholder="e.g. PMS / oil change / brake check"></textarea></label>'+
+      '<button class="p-btn" onclick="portalApptSubmit()">Send request</button>'+
+      '<div id="paMsg" class="p-muted" style="margin-top:8px"></div>'+
+    '</div></div></div>';
+  if(typeof window!=='undefined'&&window.scrollTo) window.scrollTo(0,0);
+}
+function portalApptSubmit(){
+  var d=PORTAL_LAST||{};
+  function g(id){ var e=document.getElementById(id); return e?String(e.value||'').trim():''; }
+  var name=g('paName'), contact=g('paContact'), date=g('paDate'), notes=g('paNotes');
+  var msg=document.getElementById('paMsg');
+  if(!name||!contact){ if(msg){ msg.textContent='Please enter your name and contact number.'; msg.style.color='var(--brand)'; } return; }
+  var req={ plate:d.plate||'', vehicleId:(typeof portalVehicleId==='function'?portalVehicleId():'')||'',
+    vehicle:(d.year+' '+d.make+' '+d.model).trim()+(d.variant?' '+d.variant:''),
+    name:name, contact:contact, preferredDate:date||'', notes:notes||'', status:'new', source:'portal', createdAt:new Date().toISOString() };
+  if(typeof cloudOn==='function' && cloudOn() && typeof FB!=='undefined' && FB && FB.ready && FB.db){
+    if(msg){ msg.textContent='Sending…'; msg.style.color=''; }
+    FB.db.collection('appt_requests').add(req).then(function(){ portalApptDone(true); }).catch(function(){ portalApptDone(false); });
+  } else {
+    portalApptDone(true);   // local/preview
+  }
+}
+function portalApptDone(ok){
+  var app=(typeof document!=='undefined')&&document.getElementById('app'); if(!app) return;
+  var sh=(PORTAL_LAST&&PORTAL_LAST.shop)||{};
+  app.innerHTML='<div class="portal-page"><div class="portal">'+
+    '<div class="p-head"><img class="p-lockup" src="'+LOGO_LOCKUP+'" alt="Basic by JMSI"/></div>'+
+    '<div class="p-card" style="text-align:center">'+
+      (ok? '<div class="p-big">✓ Request sent</div><p class="p-muted">Thank you! Our team will contact you shortly to confirm your appointment.</p>'
+         : '<div class="p-big">Couldn’t send</div><p class="p-muted">Please call the shop to book your appointment.</p>'+
+           (sh.contact?'<a class="p-btn" href="tel:'+esc(firstPhone(sh.contact))+'">Call the shop</a>':''))+
+      '<button class="p-back" onclick="portalViewHome()" style="margin-top:10px">‹ Back to portal</button>'+
+    '</div></div></div>';
   if(typeof window!=='undefined'&&window.scrollTo) window.scrollTo(0,0);
 }
 function portalHTML(){
@@ -3651,6 +3701,49 @@ function loadPublicPortal(){
     renderPortalError('Couldn’t load this vehicle’s service record.');
   });
 }
+/* Watch the public appt_requests collection; prompt staff immediately when a
+   new customer appointment request arrives. */
+var _apptReqData={}, _apptReqQueue=[], _apptReqShowing=false, _apptReqSub=null;
+function subscribeApptRequests(){
+  if(typeof FB==='undefined'||!FB||!FB.db||_apptReqSub) return;
+  try{
+    _apptReqSub=FB.db.collection('appt_requests').where('status','==','new').onSnapshot(function(snap){
+      snap.docChanges().forEach(function(ch){
+        if(ch.type==='added'){ var id=ch.doc.id; if(_apptReqData[id]) return; _apptReqData[id]=ch.doc.data(); _apptReqQueue.push(id); }
+      });
+      pumpApptReqPrompt();
+    }, function(){ /* ignore listen errors */ });
+  }catch(e){ /* non-fatal */ }
+}
+function pumpApptReqPrompt(){
+  if(_apptReqShowing || !_apptReqQueue.length || typeof openModal!=='function') return;
+  var id=_apptReqQueue.shift(); var r=_apptReqData[id]||{}; _apptReqShowing=true;
+  openModal('📅 New appointment request',
+    '<div class="ksmall">'+
+      kv('Name', esc(r.name||'—'))+ kv('Contact', esc(r.contact||'—'))+
+      kv('Vehicle', esc(r.vehicle||'—'))+ kv('Plate', esc(r.plate||'—'))+
+      kv('Preferred date', esc(r.preferredDate||'—'))+ kv('Request', esc(r.notes||'—'))+
+    '</div><p class="muted small">Requested from the customer portal.</p>',
+    { footer:'<button class="btn ghost" onclick="dismissApptRequest(\''+id+'\')">Dismiss</button>'+
+      '<button class="btn primary" onclick="acceptApptRequest(\''+id+'\')">Add to appointments</button>', width:'460px' });
+}
+function _apptReqNext(){ _apptReqShowing=false; if(typeof closeModal==='function') closeModal(); pumpApptReqPrompt(); }
+function acceptApptRequest(id){
+  var r=_apptReqData[id]||{};
+  S.appointments.push({ id:uid('ap'), date:r.preferredDate||todayISO(), time:'', plate:r.plate||'',
+    customer:r.name||'', contactNumber:r.contact||'', vehicle:r.vehicle||'', service:r.notes||'',
+    assignedTo:'TBA', bayId:'TBA', status:'Booked', notes:'From customer portal request', jobId:null });
+  persist();
+  if(FB&&FB.db){ try{ FB.db.collection('appt_requests').doc(id).set({status:'accepted', handledAt:new Date().toISOString()},{merge:true}); }catch(e){} }
+  delete _apptReqData[id];
+  if(typeof toast==='function') toast('Appointment added');
+  _apptReqNext(); if(typeof render==='function') render();
+}
+function dismissApptRequest(id){
+  if(FB&&FB.db){ try{ FB.db.collection('appt_requests').doc(id).set({status:'dismissed', handledAt:new Date().toISOString()},{merge:true}); }catch(e){} }
+  delete _apptReqData[id];
+  _apptReqNext();
+}
 function renderPortalLoading(){
   var app=(typeof document!=='undefined') && document.getElementById('app'); if(!app) return;
   app.innerHTML='<div class="login-bg"><div class="login-card">'+
@@ -3700,6 +3793,7 @@ async function onSignedIn(user){
   }
   applyTheme((S.shop && S.shop.theme) || 'light');
   cloudSubscribe();
+  subscribeApptRequests();          // live customer appointment requests
   render();
   updateUserChip();
   if (typeof loadCatalog==='function') loadCatalog();   // preload parts catalog in the background

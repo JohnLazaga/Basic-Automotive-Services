@@ -74,6 +74,49 @@ function loadPublicPortal(){
     renderPortalError('Couldn’t load this vehicle’s service record.');
   });
 }
+/* Watch the public appt_requests collection; prompt staff immediately when a
+   new customer appointment request arrives. */
+var _apptReqData={}, _apptReqQueue=[], _apptReqShowing=false, _apptReqSub=null;
+function subscribeApptRequests(){
+  if(typeof FB==='undefined'||!FB||!FB.db||_apptReqSub) return;
+  try{
+    _apptReqSub=FB.db.collection('appt_requests').where('status','==','new').onSnapshot(function(snap){
+      snap.docChanges().forEach(function(ch){
+        if(ch.type==='added'){ var id=ch.doc.id; if(_apptReqData[id]) return; _apptReqData[id]=ch.doc.data(); _apptReqQueue.push(id); }
+      });
+      pumpApptReqPrompt();
+    }, function(){ /* ignore listen errors */ });
+  }catch(e){ /* non-fatal */ }
+}
+function pumpApptReqPrompt(){
+  if(_apptReqShowing || !_apptReqQueue.length || typeof openModal!=='function') return;
+  var id=_apptReqQueue.shift(); var r=_apptReqData[id]||{}; _apptReqShowing=true;
+  openModal('📅 New appointment request',
+    '<div class="ksmall">'+
+      kv('Name', esc(r.name||'—'))+ kv('Contact', esc(r.contact||'—'))+
+      kv('Vehicle', esc(r.vehicle||'—'))+ kv('Plate', esc(r.plate||'—'))+
+      kv('Preferred date', esc(r.preferredDate||'—'))+ kv('Request', esc(r.notes||'—'))+
+    '</div><p class="muted small">Requested from the customer portal.</p>',
+    { footer:'<button class="btn ghost" onclick="dismissApptRequest(\''+id+'\')">Dismiss</button>'+
+      '<button class="btn primary" onclick="acceptApptRequest(\''+id+'\')">Add to appointments</button>', width:'460px' });
+}
+function _apptReqNext(){ _apptReqShowing=false; if(typeof closeModal==='function') closeModal(); pumpApptReqPrompt(); }
+function acceptApptRequest(id){
+  var r=_apptReqData[id]||{};
+  S.appointments.push({ id:uid('ap'), date:r.preferredDate||todayISO(), time:'', plate:r.plate||'',
+    customer:r.name||'', contactNumber:r.contact||'', vehicle:r.vehicle||'', service:r.notes||'',
+    assignedTo:'TBA', bayId:'TBA', status:'Booked', notes:'From customer portal request', jobId:null });
+  persist();
+  if(FB&&FB.db){ try{ FB.db.collection('appt_requests').doc(id).set({status:'accepted', handledAt:new Date().toISOString()},{merge:true}); }catch(e){} }
+  delete _apptReqData[id];
+  if(typeof toast==='function') toast('Appointment added');
+  _apptReqNext(); if(typeof render==='function') render();
+}
+function dismissApptRequest(id){
+  if(FB&&FB.db){ try{ FB.db.collection('appt_requests').doc(id).set({status:'dismissed', handledAt:new Date().toISOString()},{merge:true}); }catch(e){} }
+  delete _apptReqData[id];
+  _apptReqNext();
+}
 function renderPortalLoading(){
   var app=(typeof document!=='undefined') && document.getElementById('app'); if(!app) return;
   app.innerHTML='<div class="login-bg"><div class="login-card">'+
@@ -123,6 +166,7 @@ async function onSignedIn(user){
   }
   applyTheme((S.shop && S.shop.theme) || 'light');
   cloudSubscribe();
+  subscribeApptRequests();          // live customer appointment requests
   render();
   updateUserChip();
   if (typeof loadCatalog==='function') loadCatalog();   // preload parts catalog in the background
