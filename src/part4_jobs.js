@@ -726,7 +726,8 @@ function releaseJob(id){
   // record the last service odometer on the vehicle and schedule next service
   var v=vehicleById(j.vehicleId); if(v){ var reading=Number(j.lastServiceOdo)||(j.inspection&&j.inspection.odometer)||j.odometer||0;
     v.odometer=Math.max(v.odometer||0, reading);
-    var nd=new Date(); nd.setMonth(nd.getMonth()+6); v.nextServiceDate=todayISO(nd); v.nextServiceOdo=(v.odometer||0)+5000; }
+    // Next service: 3 months after the last service (release) date, and 5,000 km after the last service odometer.
+    var nd=new Date(); nd.setMonth(nd.getMonth()+3); v.nextServiceDate=todayISO(nd); v.nextServiceOdo=(reading||v.odometer||0)+5000; }
   persist(); if(v && typeof publishPortalDoc==='function') publishPortalDoc(v.id);   // refresh public portal
   toast('Vehicle released ✓'); render();
 }

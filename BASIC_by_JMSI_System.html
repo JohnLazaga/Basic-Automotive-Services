@@ -263,7 +263,8 @@ textarea{resize:vertical} .chk{display:flex;align-items:center;gap:8px;font-size
 .p-tbl{width:100%;border-collapse:collapse;font-size:12.5px} .p-tbl th,.p-tbl td{text-align:left;padding:5px 6px;border-bottom:1px solid var(--hair)} .p-tbl th{font-size:10.5px;text-transform:uppercase;color:var(--ink2)} .p-tbl .r{text-align:right}
 .p-muted{color:var(--ink2);text-align:center}
 .p-l2{display:flex;justify-content:space-between;padding:3px 0;font-size:13px} .p-grand{border-top:2px solid var(--ink);font-weight:800;font-size:15px;padding-top:6px;margin-top:4px}
-.p-fld{display:block;margin-bottom:10px} .p-fld span{display:block;font-size:11.5px;font-weight:600;color:var(--ink2);margin-bottom:4px} .p-fld input,.p-fld textarea{width:100%;border:1px solid var(--hair);border-radius:9px;padding:9px 10px;font-size:14px;font-family:inherit}
+.p-fld{display:block;margin-bottom:10px} .p-fld span{display:block;font-size:11.5px;font-weight:600;color:var(--ink2);margin-bottom:4px} .p-fld input,.p-fld textarea{display:block;width:100%;box-sizing:border-box;border:1px solid var(--hair);border-radius:9px;padding:9px 10px;font-size:14px;font-family:inherit;-webkit-appearance:none;appearance:none;background:#fff;min-height:40px;line-height:1.3;text-align:left}
+.p-fld input[type=date]{min-width:0}
 .p-meta{display:grid;grid-template-columns:1fr 1fr;gap:4px 14px} .p-kv{display:flex;justify-content:space-between;gap:8px;font-size:12.5px;padding:2px 0} .p-kv span:first-child{color:var(--ink2)} .p-kv span:last-child{font-weight:600;text-align:right}
 
 /* ---- Responsive ---- */
@@ -2205,7 +2206,8 @@ function releaseJob(id){
   // record the last service odometer on the vehicle and schedule next service
   var v=vehicleById(j.vehicleId); if(v){ var reading=Number(j.lastServiceOdo)||(j.inspection&&j.inspection.odometer)||j.odometer||0;
     v.odometer=Math.max(v.odometer||0, reading);
-    var nd=new Date(); nd.setMonth(nd.getMonth()+6); v.nextServiceDate=todayISO(nd); v.nextServiceOdo=(v.odometer||0)+5000; }
+    // Next service: 3 months after the last service (release) date, and 5,000 km after the last service odometer.
+    var nd=new Date(); nd.setMonth(nd.getMonth()+3); v.nextServiceDate=todayISO(nd); v.nextServiceOdo=(reading||v.odometer||0)+5000; }
   persist(); if(v && typeof publishPortalDoc==='function') publishPortalDoc(v.id);   // refresh public portal
   toast('Vehicle released ✓'); render();
 }
