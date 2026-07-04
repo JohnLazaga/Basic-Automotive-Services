@@ -58,10 +58,18 @@ function cloudStart(){
 function loadPublicPortal(){
   var id = (typeof portalVehicleId==='function') ? portalVehicleId() : null;
   if(!id){ renderPortalError('No vehicle specified.'); return; }
-  FB.db.collection('portal').doc(id).get().then(function(doc){
+  Promise.all([
+    FB.db.collection('portal').doc(id).get(),
+    FB.db.collection('portal').doc('_shop').get().catch(function(){ return null; })
+  ]).then(function(res){
+    var doc=res[0], shopDoc=res[1];
     var app=document.getElementById('app'); if(!app) return;
     if(!doc.exists){ renderPortalError('No service record found for this vehicle yet.'); return; }
-    app.innerHTML = '<div class="portal-page">'+portalCardsHTML(doc.data())+'</div>';
+    var data=doc.data();
+    // Always use the current shared shop details when available (Settings edits
+    // reflect immediately without re-publishing every vehicle).
+    if(shopDoc && shopDoc.exists){ data.shop=shopDoc.data(); }
+    app.innerHTML = '<div class="portal-page">'+portalCardsHTML(data)+'</div>';
   }).catch(function(){
     renderPortalError('Couldn’t load this vehicle’s service record.');
   });

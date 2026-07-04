@@ -149,6 +149,7 @@ function publishAllPortals(){
   if(typeof cloudOn!=='function' || !cloudOn()){ toast('Cloud mode only'); return; }
   if(typeof FB==='undefined' || !FB || !FB.ready || !FB.user){ toast('Sign in first','err'); return; }
   var n=0; (S.vehicles||[]).forEach(function(v){ publishPortalDoc(v.id); n++; });
+  if(typeof publishPortalShop==='function') publishPortalShop();
   toast('Published '+n+' vehicle portals ✓');
 }
 function sendReminder(id){

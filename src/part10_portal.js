@@ -158,6 +158,14 @@ function publishPortalDoc(vehicleId){
   var v=vehicleById(vehicleId); if(!v) return;
   try { FB.db.collection('portal').doc(vehicleId).set(portalDataForVehicle(v)); } catch(e){ /* non-fatal */ }
 }
+/* Shared, always-current shop details for the portal. Written to portal/_shop so
+   the customer portal reflects Settings edits without re-publishing every vehicle. */
+function publishPortalShop(){
+  if(typeof cloudOn!=='function' || !cloudOn()) return;
+  if(typeof FB==='undefined' || !FB || !FB.ready || !FB.db || !FB.user) return;
+  var sh=S.shop||{};
+  try { FB.db.collection('portal').doc('_shop').set({ name:sh.name||'', address:sh.address||'', contact:sh.contact||'', updatedAt:new Date().toISOString() }); } catch(e){ /* non-fatal */ }
+}
 function previewPortal(id){
   var v=vehicleById(id);
   // temporarily fake the portal id so portalHTML() targets this vehicle

@@ -60,7 +60,8 @@ function saveShop(){
   if(document.getElementById('shPortal')) sh.portalUrl=val('shPortal');
   if(document.getElementById('shComm')) sh.mechCommissionRate=Number(val('shComm'))||0;
   if(document.getElementById('shSource')){ sh.partsSource=val('shSource'); sh.partsApi=val('shApi'); }
-  persist(); toast('Settings saved'); render();
+  persist(); if(typeof publishPortalShop==='function') publishPortalShop();   // sync shop details to the portal
+  toast('Settings saved'); render();
 }
 function addBay(){ var n=val('bayNew'); if(!n) return; S.bays.push({ id:uid('bay'), name:n }); persist(); render(); }
 function delBay(id){ S.bays=S.bays.filter(function(b){return b.id!==id;}); persist(); render(); }

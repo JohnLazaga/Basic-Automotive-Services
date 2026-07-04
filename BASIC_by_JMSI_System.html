@@ -2472,6 +2472,7 @@ function publishAllPortals(){
   if(typeof cloudOn!=='function' || !cloudOn()){ toast('Cloud mode only'); return; }
   if(typeof FB==='undefined' || !FB || !FB.ready || !FB.user){ toast('Sign in first','err'); return; }
   var n=0; (S.vehicles||[]).forEach(function(v){ publishPortalDoc(v.id); n++; });
+  if(typeof publishPortalShop==='function') publishPortalShop();
   toast('Published '+n+' vehicle portals ✓');
 }
 function sendReminder(id){
@@ -3012,7 +3013,8 @@ function saveShop(){
   if(document.getElementById('shPortal')) sh.portalUrl=val('shPortal');
   if(document.getElementById('shComm')) sh.mechCommissionRate=Number(val('shComm'))||0;
   if(document.getElementById('shSource')){ sh.partsSource=val('shSource'); sh.partsApi=val('shApi'); }
-  persist(); toast('Settings saved'); render();
+  persist(); if(typeof publishPortalShop==='function') publishPortalShop();   // sync shop details to the portal
+  toast('Settings saved'); render();
 }
 function addBay(){ var n=val('bayNew'); if(!n) return; S.bays.push({ id:uid('bay'), name:n }); persist(); render(); }
 function delBay(id){ S.bays=S.bays.filter(function(b){return b.id!==id;}); persist(); render(); }
@@ -3509,6 +3511,14 @@ function publishPortalDoc(vehicleId){
   var v=vehicleById(vehicleId); if(!v) return;
   try { FB.db.collection('portal').doc(vehicleId).set(portalDataForVehicle(v)); } catch(e){ /* non-fatal */ }
 }
+/* Shared, always-current shop details for the portal. Written to portal/_shop so
+   the customer portal reflects Settings edits without re-publishing every vehicle. */
+function publishPortalShop(){
+  if(typeof cloudOn!=='function' || !cloudOn()) return;
+  if(typeof FB==='undefined' || !FB || !FB.ready || !FB.db || !FB.user) return;
+  var sh=S.shop||{};
+  try { FB.db.collection('portal').doc('_shop').set({ name:sh.name||'', address:sh.address||'', contact:sh.contact||'', updatedAt:new Date().toISOString() }); } catch(e){ /* non-fatal */ }
+}
 function previewPortal(id){
   var v=vehicleById(id);
   // temporarily fake the portal id so portalHTML() targets this vehicle
@@ -3625,10 +3635,18 @@ function cloudStart(){
 function loadPublicPortal(){
   var id = (typeof portalVehicleId==='function') ? portalVehicleId() : null;
   if(!id){ renderPortalError('No vehicle specified.'); return; }
-  FB.db.collection('portal').doc(id).get().then(function(doc){
+  Promise.all([
+    FB.db.collection('portal').doc(id).get(),
+    FB.db.collection('portal').doc('_shop').get().catch(function(){ return null; })
+  ]).then(function(res){
+    var doc=res[0], shopDoc=res[1];
     var app=document.getElementById('app'); if(!app) return;
     if(!doc.exists){ renderPortalError('No service record found for this vehicle yet.'); return; }
-    app.innerHTML = '<div class="portal-page">'+portalCardsHTML(doc.data())+'</div>';
+    var data=doc.data();
+    // Always use the current shared shop details when available (Settings edits
+    // reflect immediately without re-publishing every vehicle).
+    if(shopDoc && shopDoc.exists){ data.shop=shopDoc.data(); }
+    app.innerHTML = '<div class="portal-page">'+portalCardsHTML(data)+'</div>';
   }).catch(function(){
     renderPortalError('Couldn’t load this vehicle’s service record.');
   });
