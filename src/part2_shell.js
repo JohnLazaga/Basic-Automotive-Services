@@ -107,7 +107,7 @@ function sidebarHTML(){
     '<div class="brandlock"><img class="lockup" src="'+LOGO_LOCKUP+'" alt="Basic by JMSI"/>'+
       '<div class="brandsub">Fairview, Quezon City</div></div>'+
     '<nav class="navwrap">'+nav+'</nav>'+
-    '<div class="sidefoot">Shop Operations · offline-ready</div>'+
+    '<div class="sidefoot">Shop Operations · offline-ready<br><span class="appver">'+esc(APP_VERSION)+'</span></div>'+
   '</aside>';
 }
 

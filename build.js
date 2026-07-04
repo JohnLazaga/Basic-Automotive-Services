@@ -12,8 +12,14 @@ function read(f){ return fs.readFileSync(path.join(SRC,f),'utf8'); }
 //       "dev"            = isolated LOCAL build (no cloud, own private storage).
 const MODE = process.argv[2] === 'dev' ? 'dev' : 'prod';
 
+// Version stamp: semantic version from the VERSION file + build date.
+const semver = fs.readFileSync(path.join(__dirname, 'VERSION'), 'utf8').trim() || '0.0.0';
+const buildDate = new Date().toISOString().slice(0, 10);
+const APP_VERSION = 'v' + semver + ' · ' + buildDate;
+
 const css = read('styles.css');
 let js = PARTS.map(read).join('\n\n/* ===== */\n\n');
+js = js.replace('__APP_VERSION__', APP_VERSION);
 
 if (MODE === 'dev') {
   // Local mode: turn cloud OFF so the dev build uses local storage only and
@@ -51,7 +57,9 @@ if (MODE === 'dev') {
   fs.writeFileSync(path.join(__dirname, 'index.html'), out, 'utf8');
   // Also emit the concatenated JS as a CommonJS bundle for the Node smoke test.
   fs.writeFileSync(path.join(__dirname, '_bundle.js'), js, 'utf8');
-  console.log('Built ' + dest);
+  // A tiny version marker at the site root — for a future auto-update check.
+  fs.writeFileSync(path.join(__dirname, 'version.txt'), APP_VERSION, 'utf8');
+  console.log('Built ' + dest + '  (' + APP_VERSION + ')');
   console.log('  CSS  : ' + css.length.toLocaleString() + ' bytes');
   console.log('  JS   : ' + js.length.toLocaleString() + ' bytes');
   console.log('  HTML : ' + out.length.toLocaleString() + ' bytes');

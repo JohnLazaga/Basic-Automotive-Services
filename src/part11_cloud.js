@@ -353,6 +353,7 @@ function renderLogin(msg, kind, connecting){
       '<button class="btn primary full lg-btn" onclick="doLogin()">Sign in</button>'+
       '<div class="lg-link" style="cursor:default">Forgot your password? Ask your administrator.</div>'+
       status+
+      '<div class="lg-ver">'+esc(typeof APP_VERSION!=='undefined'?APP_VERSION:'')+'</div>'+
     '</div></div>';
   setTimeout(function(){ var e=document.getElementById('lgEmail'); if(e&&e.focus) e.focus(); }, 30);
 }

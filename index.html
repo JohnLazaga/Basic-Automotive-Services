@@ -304,6 +304,8 @@ textarea{resize:vertical} .chk{display:flex;align-items:center;gap:8px;font-size
 .lg-msg.ok{background:rgba(52,199,89,.16);color:#7fe6a0;border:1px solid rgba(52,199,89,.3)}
 .cloud-spin{width:26px;height:26px;margin:18px auto 4px;border:3px solid rgba(255,255,255,.15);border-top-color:var(--brand);border-radius:50%;animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
+.lg-ver{margin-top:10px;font-size:10.5px;letter-spacing:.03em;color:#6a6a70}
+.appver{opacity:.85}
 .lg-status{margin-top:16px;font-size:11px;color:#7a7a80}
 .lg-status.ok b{color:#9a9a9f}
 .userchip{font-size:12px;color:var(--ink2);background:var(--canvas);padding:3px 10px;border-radius:20px;max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -402,6 +404,11 @@ var FIREBASE_CONFIG = {
    ========================================================================== */
 
 'use strict';
+
+/* App version — stamped by build.js from the VERSION file + build date. Shown on
+   the login screen and in the sidebar so each branch's installed version is
+   visible (branches update by refreshing the page). */
+var APP_VERSION = 'v1.0.0 · 2026-07-04';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -949,7 +956,7 @@ function sidebarHTML(){
     '<div class="brandlock"><img class="lockup" src="'+LOGO_LOCKUP+'" alt="Basic by JMSI"/>'+
       '<div class="brandsub">Fairview, Quezon City</div></div>'+
     '<nav class="navwrap">'+nav+'</nav>'+
-    '<div class="sidefoot">Shop Operations · offline-ready</div>'+
+    '<div class="sidefoot">Shop Operations · offline-ready<br><span class="appver">'+esc(APP_VERSION)+'</span></div>'+
   '</aside>';
 }
 
@@ -3986,6 +3993,7 @@ function renderLogin(msg, kind, connecting){
       '<button class="btn primary full lg-btn" onclick="doLogin()">Sign in</button>'+
       '<div class="lg-link" style="cursor:default">Forgot your password? Ask your administrator.</div>'+
       status+
+      '<div class="lg-ver">'+esc(typeof APP_VERSION!=='undefined'?APP_VERSION:'')+'</div>'+
     '</div></div>';
   setTimeout(function(){ var e=document.getElementById('lgEmail'); if(e&&e.focus) e.focus(); }, 30);
 }

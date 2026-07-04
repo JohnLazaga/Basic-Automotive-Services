@@ -6,6 +6,11 @@
 
 'use strict';
 
+/* App version — stamped by build.js from the VERSION file + build date. Shown on
+   the login screen and in the sidebar so each branch's installed version is
+   visible (branches update by refreshing the page). */
+var APP_VERSION = '__APP_VERSION__';
+
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
 
