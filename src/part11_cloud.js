@@ -18,8 +18,11 @@ function initFirebase(){
     FB.auth = firebase.auth();
     FB.db = firebase.firestore();
     try { FB.storage = firebase.storage(); } catch(e){}
-    // offline cache (best-effort; ignored if unsupported / multi-tab)
-    try { FB.db.enablePersistence({ synchronizeTabs:true }).catch(function(){}); } catch(e){}
+    // NOTE: multi-tab IndexedDB persistence was DISABLED — a wedged/locked local
+    // cache (common with several tabs/stations open) made collection queries hang
+    // forever, stranding users on "Loading shop data" (looked like "can't log in").
+    // Reads now go straight to the network, which is reliable. Re-enable a durable
+    // offline cache only as part of the deliberate offline-mode decision.
     FB.ready = true;
     return true;
   } catch(e){ console.error('Firebase init failed:', e); return false; }
