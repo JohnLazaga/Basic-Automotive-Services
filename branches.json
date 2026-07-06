@@ -6,7 +6,8 @@
     "localUrl": "http://main.basic.local",
     "publicUrl": "https://basicautomotiveservices.com",
     "partsUrl": "http://main.basic.local:8790",
-    "partsSource": "cloud"
+    "partsSource": "cloud",
+    "dataSource": "cloud"
   },
   "cebu": {
     "id": "cebu",
@@ -15,6 +16,7 @@
     "localUrl": "http://cebu.basic.local",
     "publicUrl": "https://cebu.basicautomotiveservices.com",
     "partsUrl": "http://cebu.basic.local:8790",
-    "partsSource": "local"
+    "partsSource": "local",
+    "dataSource": "cloud"
   }
 }

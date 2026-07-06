@@ -33,6 +33,8 @@ const path = require('path');
 const crypto = require('crypto');
 const zlib = require('zlib');
 const { spawnSync } = require('child_process');
+const { createStore } = require('./store');
+const sse = require('./sse');
 
 const PORT = Number(process.env.PORT) || 8790;
 const BRANCH = process.env.BRANCH || 'branch';
@@ -41,6 +43,7 @@ const APP_DIR = process.env.APP_DIR || '';   // optional: also serve the branch 
 const SQL_CONFIG_FILE = path.join(__dirname, 'sql-config.json');
 const TSV_FILE = path.join(__dirname, 'parts.tsv');
 const PS_FILE = path.join(os.tmpdir(), 'bjmsi_partsquery.ps1');
+const store = createStore(path.join(__dirname, 'data.sqlite'));   // operational data (Phase 3)
 
 // Sensible defaults matching this shop's SQL Server (see sync/export-sql.ps1).
 const DEFAULT_SQL = {
@@ -259,6 +262,48 @@ const server = http.createServer(async function (req, res) {
       catch (e) { LAST_ERROR = e.message; return send(res, 200, { ok: false, error: e.message }); }
     }
     return send(res, 404, { error: 'unknown_admin_route' });
+  }
+
+  // ---- operational data (Phase 3): full-state load, per-record writes, SSE, counters ----
+  if (p === '/events' || p.indexOf('/data') === 0) {
+    if (p === '/events' && req.method === 'GET') return sse.addClient(req, res);
+    if (p === '/data' && req.method === 'GET') return send(res, 200, store.getState());
+    if (p === '/data/import' && req.method === 'POST') {
+      var st = await readBody(req);
+      try { var n = store.importState(st); sse.broadcast('reload', { reason: 'import' }); return send(res, 200, { ok: true, count: n }); }
+      catch (e) { return send(res, 200, { ok: false, error: e.message }); }
+    }
+    var cm = p.match(/^\/data\/counter\/([^/]+)$/);        // POST /data/counter/:name  -> {value}
+    if (cm && req.method === 'POST') {
+      var cbody = await readBody(req);
+      try { return send(res, 200, { ok: true, value: store.allocCounter(decodeURIComponent(cm[1]), cbody.seed) }); }
+      catch (e) { return send(res, 200, { ok: false, error: e.message }); }
+    }
+    var mm = p.match(/^\/data\/meta\/([^/]+)$/);            // POST /data/meta/:key
+    if (mm && req.method === 'POST') {
+      var mbody = await readBody(req);
+      var mkey = decodeURIComponent(mm[1]);
+      store.setMeta(mkey, mbody.value);
+      sse.broadcast('meta', { key: mkey, value: mbody.value, origin: mbody.origin || null });
+      return send(res, 200, { ok: true });
+    }
+    var rm = p.match(/^\/data\/([^/]+)\/(.+)$/);            // POST/DELETE /data/:coll/:id
+    if (rm) {
+      var coll = decodeURIComponent(rm[1]), id = decodeURIComponent(rm[2]);
+      if (store.collections.indexOf(coll) < 0) return send(res, 400, { error: 'unknown_collection', coll: coll });
+      if (req.method === 'POST') {
+        var rbody = await readBody(req);
+        store.upsert(coll, id, rbody.rec);
+        sse.broadcast('upsert', { coll: coll, id: id, rec: rbody.rec, origin: rbody.origin || null });
+        return send(res, 200, { ok: true });
+      }
+      if (req.method === 'DELETE') {
+        store.remove(coll, id);
+        sse.broadcast('delete', { coll: coll, id: id, origin: u.searchParams.get('origin') || null });
+        return send(res, 200, { ok: true });
+      }
+    }
+    return send(res, 404, { error: 'unknown_data_route', path: p });
   }
 
   // ---- optionally serve the branch app itself (self-contained mini-PC) ----
