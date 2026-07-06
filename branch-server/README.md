@@ -18,13 +18,25 @@ independent from every other branch.
    node server.js
    ```
    Optional settings (environment variables):
-   | Var        | Default              | Purpose                          |
-   |------------|----------------------|----------------------------------|
-   | `PORT`     | `8790`               | Port to listen on                |
-   | `BRANCH`   | `branch`             | Branch name/id (shown in /health)|
-   | `DATA_FILE`| `./parts.tsv`        | Path to the catalog file         |
+   | Var          | Default        | Purpose                                        |
+   |--------------|----------------|------------------------------------------------|
+   | `PORT`       | `8790`         | Port to listen on                              |
+   | `BRANCH`     | `branch`       | Branch name/id (shown in /health)              |
+   | `DATA_FILE`  | `./parts.tsv`  | Path to the catalog file (fallback source)     |
+   | `APP_DIR`    | *(unset)*      | If set to `dist/<slug>`, also serves the app at `/` |
+   | `ADMIN_TOKEN`| *(unset)*      | If set, `/admin/*` requires header `X-Admin-Token` |
 
-   Example (Windows): `set BRANCH=Main& node server.js`
+   Example (Windows): `set BRANCH=Main& set APP_DIR=..\dist\main& node server.js`
+
+## Parts source: SQL Server (recommended) or parts.tsv
+The catalog can come straight from **SQL Server** — configured **in the app**
+(Settings → *Parts catalog — SQL Server* → Test → Attach). The app posts the
+connection details here; this server connects via .NET SqlClient (PowerShell,
+Windows-only) exactly like `sync/export-sql.ps1`, so **no npm packages** and
+Windows/Integrated auth works. It also snapshots to `parts.tsv` so the branch
+keeps working if SQL Server is later offline. Admin endpoints:
+`GET /admin/sql/status`, `POST /admin/sql/test|save|sync`. Saved connection
+(incl. password) lives in `sql-config.json` — local to the mini-PC, git-ignored.
 
 ## Keep it running
 On the mini-PC, run it as an auto-start service so it survives reboots — e.g.

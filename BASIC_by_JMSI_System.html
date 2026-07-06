@@ -3044,6 +3044,8 @@ VIEWS.settings = function(){
       '<pre class="codeblk">'+esc(sampleJSON)+'</pre><pre class="codeblk">'+esc(sampleQuery)+'</pre>'+
       '<p class="muted small">Browsers can\'t open raw SQL — expose this query as a JSON HTTP endpoint. Field names are mapped tolerantly (sku, srp, buying_price, quantity, min…).</p></details></div>'+
 
+    sqlServerCard()+
+
   '</div><div class="colside">'+
     '<div class="card"><h2>Service Bays</h2><div class="tags">'+bays+'</div>'+
       '<div class="row gap mt8"><input id="bayNew" placeholder="Bay name"><button class="btn sm" onclick="addBay()">Add</button></div></div>'+
@@ -3068,6 +3070,78 @@ function saveShop(){
   persist(); if(typeof publishPortalShop==='function') publishPortalShop();   // sync shop details to the portal
   toast('Settings saved'); render();
 }
+/* ---- Attach the parts catalog straight from SQL Server (branch server) ----
+   Shown only on a local-parts branch build. The app never talks to SQL directly;
+   it posts the connection details to this branch's parts server, which connects
+   via .NET SqlClient (see branch-server/server.js) and syncs the catalog. */
+var SQL_DEFAULTS = {
+  server:'localhost\\MSSQLSERVER01', database:'jasRegaladoDB', auth:'integrated', user:'',
+  query:'SELECT ap.fldStockCode AS sku, p.fldPartDesc AS part_name, ap.fldNetPrice AS net_price, ap.fldSRPExc AS srp FROM tblAutoPart ap LEFT JOIN tblPart p ON ap.fldPartNameCode = p.fldPartNameCode WHERE ap.fldIsActive = 1 ORDER BY ap.fldStockCode'
+};
+function partsServerBase(){ return (typeof BRANCH!=='undefined'&&BRANCH.partsUrl)?String(BRANCH.partsUrl).replace(/\/+$/,''):''; }
+function sqlServerCard(){
+  if (!(typeof BRANCH!=='undefined' && BRANCH && BRANCH.partsSource==='local')) return '';
+  var d=SQL_DEFAULTS;
+  return '<div class="card"><h2>Parts catalog — SQL Server</h2>'+
+    '<p class="muted small">This branch’s parts server pulls the catalog directly from SQL Server. Values are pre-filled for JMSI — click <b>Test</b>, then <b>Attach</b>. A local snapshot is kept so parts keep working if SQL goes offline.</p>'+
+    '<div id="sqlStatus" class="muted small mb8">Checking branch server…</div>'+
+    field('SQL Server instance','<input id="sqlServer" value="'+attr(d.server)+'">')+
+    field('Database','<input id="sqlDb" value="'+attr(d.database)+'">')+
+    field('Authentication','<select id="sqlAuth"><option value="integrated">Windows (Integrated)</option><option value="sql">SQL login</option></select>')+
+    '<div class="grid2">'+field('Username','<input id="sqlUser" value="" placeholder="SQL login only">')+
+      field('Password','<input id="sqlPass" type="password" value="" placeholder="SQL login only">')+'</div>'+
+    '<details class="mt8"><summary class="muted small">Advanced: query</summary>'+
+      '<textarea id="sqlQuery" rows="5" class="full mono">'+esc(d.query)+'</textarea></details>'+
+    '<div class="row gap mt8"><button class="btn ghost" onclick="sqlTest()">Test connection</button>'+
+      '<button class="btn primary" onclick="sqlAttach()">Attach &amp; sync</button>'+
+      '<button class="btn ghost" onclick="sqlSyncNow()">Re-sync now</button></div></div>';
+}
+function sqlCfgFromForm(){ return { server:val('sqlServer'), database:val('sqlDb'), auth:val('sqlAuth'), user:val('sqlUser'), password:val('sqlPass'), query:val('sqlQuery') }; }
+function sqlSetStatus(html,cls){ var el=document.getElementById('sqlStatus'); if(el){ el.innerHTML=html; el.className=(cls||'muted')+' small mb8'; } }
+async function sqlLoadStatus(){
+  var base=partsServerBase(); if(!base){ sqlSetStatus('No parts server URL set for this branch.','err'); return; }
+  try{
+    var d=await (await fetch(base+'/admin/sql/status')).json();
+    var cfg=d.config||d.defaults||SQL_DEFAULTS;
+    if(document.getElementById('sqlServer')){ setVal('sqlServer',cfg.server||''); setVal('sqlDb',cfg.database||''); setVal('sqlAuth',cfg.auth||'integrated'); setVal('sqlUser',cfg.user||''); if(cfg.query) setVal('sqlQuery',cfg.query); }
+    var src = d.configured ? ('SQL Server ('+esc(d.source||'')+')') : (d.source&&d.source.indexOf('tsv')===0?'file snapshot':'not attached');
+    var cnt = Number(d.count||0);
+    sqlSetStatus('Branch server online · '+cnt.toLocaleString()+' SKUs · source: <b>'+src+'</b>'+(d.lastError?' · <span class="err">last error: '+esc(d.lastError)+'</span>':''),'ok');
+  }catch(e){ sqlSetStatus('Cannot reach branch parts server at '+esc(base)+' — is the mini-PC server running?','err'); }
+}
+async function sqlTest(){
+  var base=partsServerBase(); if(!base){toast('No parts server URL','err');return;}
+  sqlSetStatus('Testing connection…');
+  try{
+    var d=await (await fetch(base+'/admin/sql/test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(sqlCfgFromForm())})).json();
+    if(d.ok){ var s=(d.sample||[]).map(function(x){return esc(x.sku)+' — '+esc(x.name);}).join('<br>'); sqlSetStatus('✓ Connected · '+Number(d.count).toLocaleString()+' rows.<br><span class="muted">'+s+'</span>','ok'); toast('SQL OK: '+d.count+' rows'); }
+    else { sqlSetStatus('✗ '+esc(d.error||'failed'),'err'); toast('SQL test failed','err'); }
+  }catch(e){ sqlSetStatus('✗ Cannot reach branch server.','err'); toast('Cannot reach server','err'); }
+}
+async function sqlAttach(){
+  var base=partsServerBase(); if(!base){toast('No parts server URL','err');return;}
+  sqlSetStatus('Attaching & syncing the full catalog…');
+  try{
+    var d=await (await fetch(base+'/admin/sql/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(sqlCfgFromForm())})).json();
+    if(d.ok){ sqlSetStatus('✓ Attached · '+Number(d.count).toLocaleString()+' SKUs synced from SQL Server.','ok'); toast('Parts attached: '+d.count+' SKUs'); if(typeof loadCatalog==='function') loadCatalog(true); }
+    else { sqlSetStatus('✗ '+esc(d.error||'failed'),'err'); toast('Attach failed','err'); }
+  }catch(e){ sqlSetStatus('✗ Cannot reach branch server.','err'); toast('Cannot reach server','err'); }
+}
+async function sqlSyncNow(){
+  var base=partsServerBase(); if(!base) return;
+  sqlSetStatus('Re-syncing from SQL Server…');
+  try{
+    var d=await (await fetch(base+'/admin/sql/sync',{method:'POST'})).json();
+    if(d.ok){ sqlSetStatus('✓ Synced '+Number(d.count).toLocaleString()+' SKUs.','ok'); toast('Synced '+d.count+' SKUs'); if(typeof loadCatalog==='function') loadCatalog(true); }
+    else { sqlSetStatus('✗ '+esc(d.error||'failed'),'err'); }
+  }catch(e){ sqlSetStatus('✗ Cannot reach branch server.','err'); }
+}
+/* populate the SQL card status/fields whenever the Settings page renders */
+if (typeof afterRender==='function'){
+  var _settingsAfterRender = afterRender;
+  afterRender = function(){ _settingsAfterRender(); if (typeof ROUTE!=='undefined' && ROUTE.view==='settings' && document.getElementById('sqlStatus')) sqlLoadStatus(); };
+}
+
 function addBay(){ var n=val('bayNew'); if(!n) return; S.bays.push({ id:uid('bay'), name:n }); persist(); render(); }
 function delBay(id){ S.bays=S.bays.filter(function(b){return b.id!==id;}); persist(); render(); }
 function renameBay(id){ var b=bayById(id); if(!b) return; var n=prompt('Rename service bay', b.name); if(n===null) return; n=n.trim(); if(!n) return; b.name=n; persist(); render(); }

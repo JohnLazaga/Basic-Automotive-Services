@@ -5,8 +5,9 @@ _bundle.js
 # Generated per-branch build artifacts
 dist/
 
-# Branch server: catalog data dropped onto a branch's mini-PC (not source)
+# Branch server: catalog data & saved SQL credentials (mini-PC local, NEVER commit)
 branch-server/parts.tsv
+branch-server/sql-config.json
 branch-server/node_modules/
 
 # OS cruft
