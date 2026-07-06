@@ -95,7 +95,10 @@ h2{font-size:16px;font-weight:700;letter-spacing:-.01em;margin:0 0 10px}
 .colmain,.colside{min-width:0}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px 16px}
 .grid2cards{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-.ksmall{display:grid;grid-template-columns:1fr 1fr;gap:6px 18px}
+.ksmall{display:grid;grid-template-columns:1fr 1fr;gap:12px 20px;align-items:start}
+.ksmall .kv{display:flex;flex-direction:column;gap:2px;min-width:0;padding:0}
+.ksmall .kv-k{color:var(--ink2);font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:.03em}
+.ksmall .kv-v{font-weight:600;text-align:left;min-width:0;overflow-wrap:anywhere;line-height:1.35}
 
 /* ---- KPI ---- */
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin-bottom:18px}
@@ -411,7 +414,7 @@ var FIREBASE_CONFIG = {
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.0.2 · 2026-07-04';
+var APP_VERSION = 'v1.0.2 · 2026-07-06';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
