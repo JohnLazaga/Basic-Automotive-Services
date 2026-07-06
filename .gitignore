@@ -2,6 +2,13 @@
 _*.html
 _bundle.js
 
+# Generated per-branch build artifacts
+dist/
+
+# Branch server: catalog data dropped onto a branch's mini-PC (not source)
+branch-server/parts.tsv
+branch-server/node_modules/
+
 # OS cruft
 Thumbs.db
 .DS_Store

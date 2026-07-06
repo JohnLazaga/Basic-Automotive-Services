@@ -1,0 +1,20 @@
+{
+  "main": {
+    "id": "main",
+    "slug": "main",
+    "name": "Basic by JMSI — Main",
+    "localUrl": "http://main.basic.local",
+    "publicUrl": "https://basicautomotiveservices.com",
+    "partsUrl": "http://main.basic.local:8790",
+    "partsSource": "cloud"
+  },
+  "cebu": {
+    "id": "cebu",
+    "slug": "cebu",
+    "name": "Basic by JMSI — Cebu",
+    "localUrl": "http://cebu.basic.local",
+    "publicUrl": "https://cebu.basicautomotiveservices.com",
+    "partsUrl": "http://cebu.basic.local:8790",
+    "partsSource": "local"
+  }
+}

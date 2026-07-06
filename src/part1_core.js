@@ -408,7 +408,7 @@ function seedState(){
     shop:{ name:'Basic by JMSI', legal:'Jowil Motor Sales Inc.',
       address:'Commonwealth Ave., Fairview, Quezon City', contact:'(02) 8555-0100 · 0917 555 0100',
       tin:'009-123-456-000', businessStyle:'Basic by JMSI', vatReg:true, vatRate:12, orNext:1001,
-      portalUrl:'https://basicautomotiveservices.com', mechCommissionRate:5,
+      portalUrl:(typeof BRANCH!=='undefined'&&BRANCH.publicUrl)||'https://basicautomotiveservices.com', mechCommissionRate:5,
       partsSource:'local', partsApi:'', partsSyncedAt:null, theme:'light',
       checkpoints:['09:00','11:00','13:00','15:00','16:30'] },
     staff:[sv,sa,sm,m1,m2,ps],
