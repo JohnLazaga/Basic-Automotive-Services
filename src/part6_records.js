@@ -75,7 +75,8 @@ VIEWS.vehicle = function(id){
         '<div class="muted small mt8">Scans resolve once hosted at:<br><code class="qr-url">'+esc(portalLink(v.id))+'</code></div></div>'+
       '<div class="card"><h2>Owner / Vehicle</h2><div class="ksmall">'+
         kv('Owner',esc(v.owner))+kv('Address',esc(v.address||'—'))+kv('Contact',esc(v.contactPerson+' · '+v.contactNumber))+
-        kv('Chassis #',esc(v.chassis||'—'))+kv('Year/Make/Model',esc(v.year+' '+v.make+' '+v.model))+kv('Variant',esc(v.variant||'—'))+kv('Last service odo',odo(v.odometer))+'</div></div>'+
+        kv('Chassis #',esc(v.chassis||'—'))+kv('Year/Make/Model',esc(v.year+' '+v.make+' '+v.model))+kv('Variant',esc(v.variant||'—'))+kv('Last service odo',odo(v.odometer))+
+        kv('Portal PIN',esc(v.portalPin||'— (customer sets on first scan)'))+'</div></div>'+
     '</div></div></div>';
 };
 
@@ -103,6 +104,7 @@ function editVehicle(id){
     field('Last service odometer','<input id="vehOdo" type="number" value="'+attr(v.odometer||0)+'">')+
     field('Next service odometer','<input id="vehNextOdo" type="number" value="'+attr(v.nextServiceOdo||'')+'">')+
     field('Next service date','<input id="vehNextDate" type="date" value="'+attr(v.nextServiceDate||'')+'">')+
+    field('Portal PIN','<input id="vehPin" inputmode="numeric" maxlength="6" value="'+attr(v.portalPin||'')+'" placeholder="blank = customer sets it on first scan">','Customers enter this to open their QR portal. You can view or change it here.')+
     '</div>',
     vehicleModalOpts(id));
   vehCtx=id||null;
@@ -132,7 +134,8 @@ var vehCtx=null;
 function saveVehicle(){
   var data={ plate:(val('vehPlate')||'').toUpperCase(), owner:val('vehOwner'), contactPerson:val('vehCP'), contactNumber:val('vehContact'),
     chassis:val('vehChassis'), year:val('vehYear'), make:val('vehMake'), model:val('vehModel'), variant:val('vehVariant'),
-    odometer:Number(val('vehOdo'))||0, nextServiceDate:val('vehNextDate'), nextServiceOdo:Number(val('vehNextOdo'))||'', address:val('vehAddr') };
+    odometer:Number(val('vehOdo'))||0, nextServiceDate:val('vehNextDate'), nextServiceOdo:Number(val('vehNextOdo'))||'', address:val('vehAddr'),
+    portalPin:(val('vehPin')||'').replace(/\D/g,'').slice(0,6) };
   var vid;
   if(vehCtx){ Object.assign(vehicleById(vehCtx),data); vid=vehCtx; } else { data.id=uid('vh'); S.vehicles.push(data); vid=data.id; }
   persist(); if(typeof publishPortalDoc==='function') publishPortalDoc(vid);   // refresh public portal
@@ -140,14 +143,20 @@ function saveVehicle(){
 }
 /* Publish this vehicle's public portal snapshot on demand. */
 function publishPortalNow(id){
-  if(typeof cloudOn!=='function' || !cloudOn()){ toast('Portal publishing is available in cloud mode only'); return; }
-  if(typeof FB==='undefined' || !FB || !FB.ready || !FB.user){ toast('Sign in to publish the portal','err'); return; }
+  var local = (typeof dataLocal==='function' && dataLocal());
+  if(!local){
+    if(typeof cloudOn!=='function' || !cloudOn()){ toast('Portal publishing is available in cloud mode only'); return; }
+    if(typeof FB==='undefined' || !FB || !FB.ready || !FB.user){ toast('Sign in to publish the portal','err'); return; }
+  }
   publishPortalDoc(id); toast('Portal snapshot published ✓');
 }
 /* Admin: publish every vehicle's snapshot (one-time backfill / bulk refresh). */
 function publishAllPortals(){
-  if(typeof cloudOn!=='function' || !cloudOn()){ toast('Cloud mode only'); return; }
-  if(typeof FB==='undefined' || !FB || !FB.ready || !FB.user){ toast('Sign in first','err'); return; }
+  var local = (typeof dataLocal==='function' && dataLocal());
+  if(!local){
+    if(typeof cloudOn!=='function' || !cloudOn()){ toast('Cloud mode only'); return; }
+    if(typeof FB==='undefined' || !FB || !FB.ready || !FB.user){ toast('Sign in first','err'); return; }
+  }
   var n=0; (S.vehicles||[]).forEach(function(v){ publishPortalDoc(v.id); n++; });
   if(typeof publishPortalShop==='function') publishPortalShop();
   toast('Published '+n+' vehicle portals ✓');

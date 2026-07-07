@@ -335,7 +335,7 @@ const server = http.createServer(async function (req, res) {
     var pgm = p.match(/^\/data\/portal\/(.+)$/);            // POST /data/portal/:id  (staff publishes a snapshot)
     if (pgm && req.method === 'POST') {
       var pgbody = await readBody(req);
-      store.setPortal(decodeURIComponent(pgm[1]), pgbody.data || {});
+      store.setPortal(decodeURIComponent(pgm[1]), { data: pgbody.data || {}, pin: pgbody.pin != null ? String(pgbody.pin) : '' });
       return send(res, 200, { ok: true });
     }
     var rm = p.match(/^\/data\/([^/]+)\/(.+)$/);            // POST/DELETE /data/:coll/:id
@@ -357,13 +357,44 @@ const server = http.createServer(async function (req, res) {
     return send(res, 404, { error: 'unknown_data_route', path: p });
   }
 
-  // ---- public customer portal (no auth): GET /portal/:id ----
-  if (p.indexOf('/portal/') === 0 && req.method === 'GET') {
-    var vid = decodeURIComponent(p.replace(/^\/portal\//, ''));
-    var snap = store.getPortal(vid);
-    if (!snap) return send(res, 404, { error: 'no_record' });
-    var shopSnap = store.getPortal('_shop'); if (shopSnap) snap.shop = shopSnap;
-    return send(res, 200, snap);
+  // ---- public customer portal (no auth): PIN-gated ----
+  if (p.indexOf('/portal/') === 0) {
+    // Build the customer-facing payload (vehicle data + current shop details).
+    function portalPayload(id){
+      var s = store.getPortal(id); if (!s) return null;
+      var out = s.data || {};
+      var shopE = store.getPortal('_shop'); if (shopE && shopE.data) out.shop = shopE.data;
+      return out;
+    }
+    var pvm = p.match(/^\/portal\/([^/]+)\/verify$/);
+    var pcm = p.match(/^\/portal\/([^/]+)\/claim$/);
+    if (pvm && req.method === 'POST') {
+      var vsnap = store.getPortal(decodeURIComponent(pvm[1]));
+      if (!vsnap || !vsnap.pin) return send(res, 404, { error: 'no_record' });
+      var vb = await readBody(req);
+      if (String(vb.pin || '') === String(vsnap.pin)) return send(res, 200, { ok: true, data: portalPayload(decodeURIComponent(pvm[1])) });
+      return send(res, 401, { ok: false, error: 'bad_pin' });
+    }
+    if (pcm && req.method === 'POST') {
+      var cid = decodeURIComponent(pcm[1]);
+      var csnap = store.getPortal(cid);
+      if (!csnap) return send(res, 404, { error: 'no_record' });
+      if (csnap.pin) return send(res, 409, { ok: false, error: 'already_set' });
+      var cb = await readBody(req);
+      var newPin = String(cb.pin || '').replace(/\D/g, '').slice(0, 6);
+      if (newPin.length < 4) return send(res, 400, { ok: false, error: 'pin_too_short' });
+      csnap.pin = newPin; store.setPortal(cid, csnap);
+      // write the pin back onto the vehicle record so staff can view it (and it syncs live)
+      var veh = store.getRecord('vehicles', cid);
+      if (veh) { veh.portalPin = newPin; store.upsert('vehicles', cid, veh); sse.broadcast('upsert', { coll: 'vehicles', id: cid, rec: veh, origin: 'portal' }); }
+      return send(res, 200, { ok: true, data: portalPayload(cid) });
+    }
+    if (req.method === 'GET') {
+      var gid = decodeURIComponent(p.replace(/^\/portal\//, ''));
+      var gsnap = store.getPortal(gid);
+      if (!gsnap) return send(res, 404, { error: 'no_record' });
+      return send(res, 200, { state: gsnap.pin ? 'locked' : 'claim' });
+    }
   }
 
   // ---- job photos (Phase 3e): stored as files on the mini-PC ----

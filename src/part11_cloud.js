@@ -482,11 +482,47 @@ async function localLoadPublicPortal(){
   if(!id){ renderPortalError('No vehicle specified.'); return; }
   try {
     var res = await fetch(branchBase()+'/portal/'+encodeURIComponent(id));
-    if(!res.ok){ renderPortalError('No service record found for this vehicle yet.'); return; }
-    var data = await res.json();
-    var app = (typeof document!=='undefined') && document.getElementById('app'); if(!app) return;
-    app.innerHTML = '<div class="portal-page">'+portalCardsHTML(data)+'</div>';
+    if(res.status===404){ renderPortalError('No service record found for this vehicle yet.'); return; }
+    var d = await res.json();
+    if(d && d.state==='locked') return renderPortalPin(id,'locked');
+    if(d && d.state==='claim')  return renderPortalPin(id,'claim');
+    if(d && !d.state) return renderPortalData(d);       // (open portal fallback)
+    renderPortalError('This portal is unavailable right now.');
   } catch(e){ renderPortalError('Couldn’t load this vehicle’s service record.'); }
+}
+function renderPortalData(data){
+  var app=(typeof document!=='undefined') && document.getElementById('app'); if(!app) return;
+  app.innerHTML = '<div class="portal-page">'+portalCardsHTML(data)+'</div>';
+}
+function renderPortalPin(id, mode){
+  var app=(typeof document!=='undefined') && document.getElementById('app'); if(!app) return;
+  var title = mode==='claim' ? 'Create a PIN to protect your record' : 'Enter your PIN';
+  var sub   = mode==='claim' ? 'Choose a 4–6 digit PIN. You’ll use it to open this page next time.' : 'Enter the 4–6 digit PIN for this vehicle. Ask the shop if you’ve forgotten it.';
+  app.innerHTML='<div class="login-bg"><div class="login-card">'+
+    '<img class="login-logo" src="'+LOGO_LOCKUP+'" alt="Basic by JMSI"/>'+
+    '<div class="login-sub">Vehicle Service Portal</div>'+
+    '<div class="lg-msg" id="pinMsg" style="background:#f5f5f7;color:#1d1d1f">'+esc(title)+'<br><span class="muted small">'+esc(sub)+'</span></div>'+
+    '<label class="lg-field"><span>PIN</span><input id="portalPin" type="password" inputmode="numeric" maxlength="6" autocomplete="off" placeholder="••••"></label>'+
+    '<button class="btn primary full lg-btn" onclick="portalSubmitPin(\''+id+'\',\''+mode+'\')">'+(mode==='claim'?'Set PIN &amp; view':'View my record')+'</button>'+
+    '</div></div>';
+  setTimeout(function(){ var e=document.getElementById('portalPin'); if(e&&e.focus) e.focus(); },30);
+}
+function portalSubmitPin(id, mode){
+  var pin=(val('portalPin')||'').replace(/\D/g,'').slice(0,6);
+  var msg=document.getElementById('pinMsg');
+  if(pin.length<4){ if(msg) msg.innerHTML='<b>Please enter a 4–6 digit PIN.</b>'; return; }
+  var btnLabel = mode==='claim'?'Set PIN & view':'View my record';
+  var btn=document.querySelector('.lg-btn'); if(btn){ btn.textContent='Please wait…'; btn.disabled=true; }
+  fetch(branchBase()+'/portal/'+encodeURIComponent(id)+'/'+(mode==='claim'?'claim':'verify'),
+    { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({pin:pin}) })
+    .then(function(r){ return r.json().then(function(j){ return {status:r.status,j:j}; }); })
+    .then(function(res){
+      if(res.j && res.j.ok && res.j.data){ renderPortalData(res.j.data); return; }
+      if(res.status===409){ renderPortalPin(id,'locked'); return; }     // claimed by someone first
+      if(msg) msg.innerHTML = (mode==='claim') ? '<b>Couldn’t set that PIN — please try again.</b>' : '<b>Incorrect PIN — please try again.</b>';
+      if(btn){ btn.textContent=btnLabel; btn.disabled=false; }
+    })
+    .catch(function(){ if(msg) msg.innerHTML='<b>Connection problem — please try again.</b>'; if(btn){ btn.textContent=btnLabel; btn.disabled=false; } });
 }
 function localLogin(){
   var id=(val('lgEmail')||'').trim(), pw=val('lgPass')||'';

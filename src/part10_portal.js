@@ -208,7 +208,7 @@ function portalHTML(){
 function publishPortalDoc(vehicleId){
   var v=vehicleById(vehicleId); if(!v) return;
   if (typeof dataLocal==='function' && dataLocal()){
-    try { _postJSON(branchBase()+'/data/portal/'+encodeURIComponent(vehicleId), { data: portalDataForVehicle(v) }); } catch(e){ /* non-fatal */ }
+    try { _postJSON(branchBase()+'/data/portal/'+encodeURIComponent(vehicleId), { data: portalDataForVehicle(v), pin: v.portalPin||'' }); } catch(e){ /* non-fatal */ }
     return;
   }
   if(typeof cloudOn!=='function' || !cloudOn()) return;

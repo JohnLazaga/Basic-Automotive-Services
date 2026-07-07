@@ -19,6 +19,7 @@ function createStore(file) {
   const qUpsert = db.prepare('INSERT INTO records (coll,id,json,updatedAt) VALUES (?,?,?,?) ON CONFLICT(coll,id) DO UPDATE SET json=excluded.json, updatedAt=excluded.updatedAt');
   const qDelete = db.prepare('DELETE FROM records WHERE coll=? AND id=?');
   const qAll    = db.prepare('SELECT coll,id,json FROM records');
+  const qOne    = db.prepare('SELECT json FROM records WHERE coll=? AND id=?');
   const qMetaAll = db.prepare('SELECT k,json FROM meta');
   const qMetaSet = db.prepare('INSERT INTO meta (k,json) VALUES (?,?) ON CONFLICT(k) DO UPDATE SET json=excluded.json');
   const qCntGet  = db.prepare('SELECT value FROM counters WHERE name=?');
@@ -55,6 +56,7 @@ function createStore(file) {
     },
 
     upsert(coll, id, rec) { qUpsert.run(coll, String(id), JSON.stringify(rec), nowISO()); },
+    getRecord(coll, id) { var r = qOne.get(coll, String(id)); if (!r) return null; try { return JSON.parse(r.json); } catch (e) { return null; } },
     remove(coll, id) { qDelete.run(coll, String(id)); },
     setMeta(key, value) { qMetaSet.run(key, JSON.stringify(value)); },
 
