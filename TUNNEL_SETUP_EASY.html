@@ -1,0 +1,139 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Basic by JMSI — Open Your App From Anywhere (Easy Tunnel Guide)</title>
+<style>
+:root{--ink:#1d1d1f;--ink2:#5f5f66;--brand:#d10000;--hair:#e4e4e7;--bg:#f4f4f6;--panel:#fff;
+--tipbg:#eef7ee;--tipbd:#2e7d32;--warnbg:#fff5e6;--warnbd:#c77700;--seebg:#eef2ff;--seebd:#3949ab;--stopbg:#fdeaea;--stopbd:#c62828;--codebg:#101014}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16.5px/1.65 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+.wrap{max-width:820px;margin:0 auto;padding:34px 22px 90px}
+.cover{background:#101014;color:#fff;border-radius:18px;padding:34px 30px;margin-bottom:26px}
+.cover .brand{color:var(--brand);font-weight:800;letter-spacing:.6px;font-size:14px}
+.cover h1{margin:6px 0 8px;font-size:28px}
+.cover p{margin:0;color:#cfcfd6;font-size:15px}
+h2{font-size:22px;margin:34px 0 6px;border-bottom:3px solid var(--brand);padding-bottom:6px}
+h3{font-size:17px;margin:22px 0 6px}
+p{margin:9px 0}a{color:var(--brand)}
+code{background:#ececf0;border:1px solid var(--hair);border-radius:5px;padding:1px 6px;font:14px/1.5 Consolas,Menlo,monospace}
+.part{font:700 13px -apple-system,Segoe UI,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:var(--brand);margin:30px 0 -4px}
+.step{background:var(--panel);border:1px solid var(--hair);border-radius:14px;padding:6px 22px 18px;margin:16px 0;box-shadow:0 1px 0 var(--hair)}
+.step>h3{display:flex;align-items:center;gap:12px}
+.num{flex:none;width:34px;height:34px;border-radius:50%;background:var(--brand);color:#fff;font-weight:800;display:inline-flex;align-items:center;justify-content:center;font-size:16px}
+.type{background:var(--codebg);color:#eaeaea;border-radius:10px;padding:12px 14px;margin:10px 0;font:14px/1.6 Consolas,Menlo,monospace;white-space:pre-wrap;word-break:break-word}
+.type .lbl{display:block;color:#8aa0ff;font:700 11px -apple-system,Segoe UI,sans-serif;letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px}
+.box{border-radius:10px;padding:11px 15px;margin:12px 0;font-size:15px}
+.tip{background:var(--tipbg);border-left:4px solid var(--tipbd)}
+.warn{background:var(--warnbg);border-left:4px solid var(--warnbd)}
+.see{background:var(--seebg);border-left:4px solid var(--seebd)}
+.stop{background:var(--stopbg);border-left:4px solid var(--stopbd)}
+ul,ol{margin:8px 0;padding-left:24px}li{margin:5px 0}
+kbd{background:#fff;border:1px solid #bbb;border-bottom-width:2px;border-radius:5px;padding:1px 6px;font:13px Consolas,monospace}
+.tbl{width:100%;border-collapse:collapse;margin:12px 0;background:var(--panel);border-radius:8px;overflow:hidden}
+.tbl th,.tbl td{border:1px solid var(--hair);padding:8px 11px;text-align:left;font-size:15px;vertical-align:top}
+.tbl th{background:#fafafa}
+.foot{color:var(--ink2);font-size:13px;margin-top:30px;text-align:center}
+@media print{body{background:#fff}.wrap{padding:0}.step,.tbl{box-shadow:none}.cover{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style></head><body><div class="wrap">
+
+<div class="cover">
+  <div class="brand">BASIC by JMSI</div>
+  <h1>Open your shop app from anywhere</h1>
+  <p>A very simple guide to making a "tunnel" so you can open a branch's app from home or your phone — not just at the shop. Follow it slowly.</p>
+</div>
+
+<h2>What is this? (in kid-simple words)</h2>
+<p>Right now your shop app only works <b>at the shop</b>, on the shop Wi-Fi. A <b>tunnel</b> is like a safe, secret straw that reaches from the internet to the mini-PC at your shop. Once the straw is set up, you can open the app from <b>your house, or your phone on mobile data</b>, from anywhere in the world.</p>
+<p>We use a <b>free</b> tool called <b>Cloudflare</b> to make the straw.</p>
+
+<div class="box see"><b>Before you start:</b> the mini-PC must already be set up and running the app (from the "Easy Branch Setup" guide). Do everything below <b>on the mini-PC</b>.</div>
+
+<p class="part">There are two ways. Start with the Easy Way.</p>
+
+<h2>Easy Way — a temporary link (safe, 5 minutes)</h2>
+<p>This makes a link you can use <b>today</b> to check the app from your phone. It changes nothing on your website and can't break anything. The link is temporary — great for trying it out.</p>
+
+<div class="step"><h3><span class="num">1</span> Open the black typing window</h3>
+<p>On the mini-PC, press the <kbd>Windows</kbd> key, type <b>cmd</b>, and press <kbd>Enter</kbd>. A black window opens (the "Command Prompt").</p>
+</div>
+
+<div class="step"><h3><span class="num">2</span> Install the tunnel tool (once)</h3>
+<p>Type this and press <kbd>Enter</kbd>. Wait for it to finish (a minute or two):</p>
+<div class="type"><span class="lbl">Type this, then Enter</span>winget install --id Cloudflare.cloudflared</div>
+<div class="box tip">If it says it's already installed, that's fine — carry on.</div>
+</div>
+
+<div class="step"><h3><span class="num">3</span> Turn on the tunnel</h3>
+<p>Type this and press <kbd>Enter</kbd>:</p>
+<div class="type"><span class="lbl">Type this, then Enter</span>cloudflared tunnel --url http://localhost:8790</div>
+<div class="box see"><b>What you should see:</b> after a few seconds, a web link appears that looks like<br><code>https://some-random-words.trycloudflare.com</code></div>
+</div>
+
+<div class="step"><h3><span class="num">4</span> Use your link</h3>
+<ul>
+  <li>Open that <code>https://…trycloudflare.com</code> link on your phone (turn Wi-Fi <b>off</b> to prove it works on mobile data!). You'll see the shop's sign-in page.</li>
+  <li><b>Keep the black window open</b> — the link only works while it's open.</li>
+</ul>
+<div class="box warn"><b>Remember:</b> this link is <b>temporary</b>. It changes every time you run Step 3, and stops when you close the window or restart the mini-PC. Perfect for testing. For a permanent link that never changes, do the Permanent Way below.</div>
+</div>
+
+<h2>Permanent Way — a proper link like <code>pilot.basicautomotiveservices.com</code></h2>
+
+<div class="box stop"><b>Please read this first.</b> This way changes settings for your real website (<b>basicautomotiveservices.com</b>). If a setting is done wrong, your <b>main website can stop working</b> for a while. It is not hard, but go slowly — and it's best to do it <b>with someone helping</b>, or ask us to hop on a quick call and do it together. There is no rush; the Easy Way above works in the meantime.</div>
+
+<p>Here is what happens, in plain words (the exact commands are in the technical guide, <b>TUNNEL_SETUP.md</b>):</p>
+
+<div class="step"><h3><span class="num">1</span> Make a free Cloudflare account</h3>
+<p>Go to <a href="https://dash.cloudflare.com/sign-up">cloudflare.com</a> and sign up (it's free). Then click <b>"Add a site"</b> and type <b>basicautomotiveservices.com</b>.</p>
+</div>
+
+<div class="step"><h3><span class="num">2</span> Keep your old settings</h3>
+<p>Cloudflare will show a list of settings it found for your website. <b>Do not delete any of them.</b> These keep your current website alive. (Leave them marked "DNS only" — a grey cloud icon.)</p>
+<div class="box warn">This is the part where mistakes cause problems. If unsure, take a photo of the list and send it to us before changing anything.</div>
+</div>
+
+<div class="step"><h3><span class="num">3</span> Point your website name to Cloudflare</h3>
+<p>Cloudflare gives you <b>two "nameserver" addresses</b>. You type these into the company where you <b>bought your website name</b> (your domain seller). Save. Then wait — Cloudflare will say <b>"Active"</b> when it's ready (can take from a few minutes to a few hours).</p>
+</div>
+
+<div class="step"><h3><span class="num">4</span> Connect the mini-PC to Cloudflare</h3>
+<p>Back on the mini-PC's black window, you sign the tunnel tool in to your Cloudflare account, create a tunnel named after the branch, and point the address <code>pilot.basicautomotiveservices.com</code> at it. (Four short commands — see TUNNEL_SETUP.md, or do it with us.)</p>
+</div>
+
+<div class="step"><h3><span class="num">5</span> Make it always-on</h3>
+<p>One last command tells the tunnel to run by itself, even after restarts. Now the branch is reachable at <b>https://pilot.basicautomotiveservices.com</b> from anywhere.</p>
+</div>
+
+<h2>Now that it's on the internet — stay safe</h2>
+<ul>
+  <li><b>Change the admin password</b> (never leave it as <code>admin</code>).</li>
+  <li>Give staff <b>strong passwords</b>.</li>
+  <li>Optional extra lock: Cloudflare has a free feature called <b>Access</b> that asks for an email code before anyone even sees the sign-in page. Ask us to switch it on if you'd like.</li>
+</ul>
+
+<h2>Which link do staff use?</h2>
+<table class="tbl">
+  <tr><th>Where they are</th><th>What they open</th></tr>
+  <tr><td>At the shop (on shop Wi-Fi)</td><td><b>http://&lt;mini-PC address&gt;:8790/</b> — fastest, works even with no internet.</td></tr>
+  <tr><td>At home / on mobile data</td><td><b>https://pilot.basicautomotiveservices.com</b> — the permanent tunnel link.</td></tr>
+</table>
+
+<h2>If something goes wrong</h2>
+<table class="tbl">
+  <tr><th>Problem</th><th>Try this</th></tr>
+  <tr><td>The trycloudflare link doesn't open</td><td>Make sure the black window from Step 3 is still open, and the app itself works at <code>http://localhost:8790/</code> on the mini-PC.</td></tr>
+  <tr><td>"winget is not recognized"</td><td>Your Windows is older. Tell us — we'll give you a direct download link for the tool instead.</td></tr>
+  <tr><td>The permanent link doesn't work yet</td><td>Cloudflare may still be setting up ("Active" not shown yet). Wait a bit and try again.</td></tr>
+  <tr><td>The main website went down</td><td>Stop and contact us right away — a DNS setting likely needs fixing. This is why Step 2 says keep your old settings.</td></tr>
+</table>
+
+<h2>Plain-word glossary</h2>
+<table class="tbl">
+  <tr><td><b>Tunnel</b></td><td>A safe straw from the internet to the shop's mini-PC, so you can reach the app from anywhere.</td></tr>
+  <tr><td><b>Cloudflare</b></td><td>The free company/tool that makes the tunnel.</td></tr>
+  <tr><td><b>Domain / website name</b></td><td>Your address on the internet: <code>basicautomotiveservices.com</code>.</td></tr>
+  <tr><td><b>Nameservers</b></td><td>Two addresses that tell the internet "Cloudflare looks after this website now."</td></tr>
+  <tr><td><b>Mini-PC address</b></td><td>The shop computer's number on the shop network, like <code>192.168.1.50</code>.</td></tr>
+</table>
+
+<div class="foot">Basic by JMSI — Tunnel setup, made simple. The same steps work for any branch; just use that branch's name (e.g. <code>sudipen.basicautomotiveservices.com</code>).</div>
+
+</div></body></html>
