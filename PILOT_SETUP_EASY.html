@@ -1,0 +1,204 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Basic by JMSI — Easy Branch Setup</title>
+<style>
+:root{--ink:#1d1d1f;--ink2:#5f5f66;--brand:#d10000;--hair:#e4e4e7;--bg:#f4f4f6;--panel:#fff;
+--tipbg:#eef7ee;--tipbd:#2e7d32;--warnbg:#fff5e6;--warnbd:#c77700;--seebg:#eef2ff;--seebd:#3949ab;--codebg:#101014}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16.5px/1.65 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+.wrap{max-width:820px;margin:0 auto;padding:34px 22px 90px}
+.cover{background:#101014;color:#fff;border-radius:18px;padding:34px 30px;margin-bottom:26px}
+.cover .brand{color:var(--brand);font-weight:800;letter-spacing:.6px;font-size:14px}
+.cover h1{margin:6px 0 8px;font-size:30px}
+.cover p{margin:0;color:#cfcfd6;font-size:15px}
+h2{font-size:22px;margin:34px 0 6px;border-bottom:3px solid var(--brand);padding-bottom:6px}
+h3{font-size:17px;margin:22px 0 6px}
+p{margin:9px 0}
+a{color:var(--brand)}
+code{background:#ececf0;border:1px solid var(--hair);border-radius:5px;padding:1px 6px;font:14px/1.5 Consolas,Menlo,monospace}
+.step{background:var(--panel);border:1px solid var(--hair);border-radius:14px;padding:6px 22px 18px;margin:16px 0;box-shadow:0 1px 0 var(--hair);position:relative}
+.step>h3{display:flex;align-items:center;gap:12px}
+.num{flex:none;width:34px;height:34px;border-radius:50%;background:var(--brand);color:#fff;font-weight:800;display:inline-flex;align-items:center;justify-content:center;font-size:16px}
+.type{background:var(--codebg);color:#eaeaea;border-radius:10px;padding:12px 14px;margin:10px 0;font:14px/1.6 Consolas,Menlo,monospace;white-space:pre-wrap;word-break:break-word}
+.type .lbl{display:block;color:#8aa0ff;font:700 11px -apple-system,Segoe UI,sans-serif;letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px}
+.box{border-radius:10px;padding:11px 15px;margin:12px 0;font-size:15px}
+.tip{background:var(--tipbg);border-left:4px solid var(--tipbd)}
+.warn{background:var(--warnbg);border-left:4px solid var(--warnbd)}
+.see{background:var(--seebg);border-left:4px solid var(--seebd)}
+.box b{display:inline}
+ul,ol{margin:8px 0;padding-left:24px}li{margin:5px 0}
+kbd{background:#fff;border:1px solid #bbb;border-bottom-width:2px;border-radius:5px;padding:1px 6px;font:13px Consolas,monospace}
+.tbl{width:100%;border-collapse:collapse;margin:12px 0;background:var(--panel);border-radius:8px;overflow:hidden}
+.tbl th,.tbl td{border:1px solid var(--hair);padding:8px 11px;text-align:left;font-size:15px;vertical-align:top}
+.tbl th{background:#fafafa}
+.chk{list-style:none;padding-left:0}.chk li{padding-left:26px;position:relative}.chk li:before{content:"☐";position:absolute;left:0;color:var(--brand);font-weight:700}
+.foot{color:var(--ink2);font-size:13px;margin-top:30px;text-align:center}
+@media print{body{background:#fff}.wrap{padding:0}.step,.tbl{box-shadow:none}.cover{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style></head><body><div class="wrap">
+
+<div class="cover">
+  <div class="brand">BASIC by JMSI</div>
+  <h1>Setting up a branch — the easy way</h1>
+  <p>A step-by-step guide for the <b>Pilot</b> branch. No technical experience needed — just follow each step in order. Takes about 30–45 minutes.</p>
+</div>
+
+<h2>What this does (in plain words)</h2>
+<p>You are turning a small, always-on computer at the shop (we'll call it the <b>mini-PC</b>) into the shop's own private copy of the Basic by JMSI app. Once it's set up:</p>
+<ul>
+  <li>Staff open the app from their <b>own phones or computers</b> using the shop's Wi-Fi — nothing to install on their devices.</li>
+  <li>It keeps working <b>even if the internet goes down</b>, because everything lives on the mini-PC.</li>
+  <li>The parts price list comes from your existing <b>SQL Server</b> computer.</li>
+  <li>You (the owner) stay in control — staff can't change the app itself.</li>
+</ul>
+
+<h2>Before you start — what you need</h2>
+<ul class="chk">
+  <li>A <b>mini-PC</b> (a small Windows computer that can stay switched on all day) at the shop.</li>
+  <li>A <b>keyboard, mouse and monitor</b> connected to it — just for this setup.</li>
+  <li>The mini-PC connected to the shop's <b>internet / Wi-Fi</b>.</li>
+  <li>The <b>name or address of the computer that runs SQL Server</b> (your parts list). Ask whoever manages that PC if you're not sure. You can also do this part later.</li>
+  <li>About <b>30–45 minutes</b>.</li>
+</ul>
+<div class="box tip">Do everything below <b>on the mini-PC itself</b> (with its keyboard and monitor), unless a step says otherwise.</div>
+
+<h2>The steps</h2>
+
+<div class="step"><h3><span class="num">1</span> Install "Node" (the engine that runs the app)</h3>
+<ol>
+  <li>On the mini-PC, open a web browser (Edge or Chrome) and go to <a href="https://nodejs.org">nodejs.org</a>.</li>
+  <li>Click the big green button that says <b>"LTS"</b> (the recommended version). A file downloads.</li>
+  <li>Open the downloaded file. Click <b>Next → Next → (accept) → Install</b>. If Windows asks "Do you want to allow this app to make changes?", click <b>Yes</b>.</li>
+  <li>When it finishes, click <b>Finish</b>.</li>
+</ol>
+<div class="box see"><b>You don't need to see anything yet</b> — Node works quietly in the background.</div>
+</div>
+
+<div class="step"><h3><span class="num">2</span> Install "Git" (used to download and update the app)</h3>
+<ol>
+  <li>Go to <a href="https://git-scm.com/download/win">git-scm.com/download/win</a>. The download starts automatically.</li>
+  <li>Open the downloaded file. Keep clicking <b>Next</b> through every screen (the default choices are fine), then <b>Install</b>, then <b>Finish</b>. Click <b>Yes</b> if Windows asks permission.</li>
+</ol>
+</div>
+
+<div class="step"><h3><span class="num">3</span> Download the app onto the mini-PC</h3>
+<ol>
+  <li>Press the <kbd>Windows</kbd> key, type <b>cmd</b>, and press <kbd>Enter</kbd>. A black window opens — this is the <b>Command Prompt</b>. Don't worry, you only type two lines.</li>
+  <li>Type this line and press <kbd>Enter</kbd>:</li>
+</ol>
+<div class="type"><span class="lbl">Type this exactly, then Enter</span>cd C:\</div>
+<p>Then type this line and press <kbd>Enter</kbd>:</p>
+<div class="type"><span class="lbl">Type this exactly, then Enter</span>git clone https://github.com/JohnLazaga/Basic-Automotive-Services.git basic</div>
+<div class="box see"><b>What you should see:</b> lines of text scrolling, ending with something like "done." A new folder <code>C:\basic</code> now exists with the app inside. You can close the black window.</div>
+</div>
+
+<div class="step"><h3><span class="num">4</span> Create the branch's settings file</h3>
+<p>This tiny file tells the mini-PC that it is the <b>Pilot</b> branch.</p>
+<ol>
+  <li>Press <kbd>Windows</kbd>, type <b>Notepad</b>, press <kbd>Enter</kbd>.</li>
+  <li>Copy the five lines below into Notepad exactly:</li>
+</ol>
+<div class="type"><span class="lbl">Copy these 5 lines into Notepad</span>@echo off
+set "SLUG=pilot"
+set "BRANCH=Pilot"
+set "PORT=8790"
+set "APP_DIR=..\dist\pilot"</div>
+<ol start="3">
+  <li>In Notepad click <b>File → Save As</b>.</li>
+  <li>Navigate to the folder <code>C:\basic\branch-server</code>.</li>
+  <li>In the <b>"Save as type"</b> box at the bottom, choose <b>All Files (*.*)</b>. <span class="warn" style="padding:1px 6px;border-radius:4px">This is important.</span></li>
+  <li>In <b>"File name"</b> type exactly: <b>branch.config.cmd</b></li>
+  <li>Click <b>Save</b>. Close Notepad.</li>
+</ol>
+<div class="box warn"><b>Common mistake:</b> if you skip the "All Files" step, Windows secretly names the file <code>branch.config.cmd.txt</code> and it won't work. If unsure, open the <code>C:\basic\branch-server</code> folder and check the file is named exactly <b>branch.config.cmd</b> (no <code>.txt</code> on the end).</div>
+</div>
+
+<div class="step"><h3><span class="num">5</span> Start the app</h3>
+<ol>
+  <li>Open the folder <code>C:\basic\branch-server</code> (use File Explorer).</li>
+  <li>Find the file called <b>update.cmd</b> and <b>double-click it</b>.</li>
+  <li>A black window opens and does three things automatically: gets the latest app, builds the Pilot version, and starts it. Leave this window open — it's the app running.</li>
+</ol>
+<div class="box see"><b>What you should see:</b> a line in the window mentioning <code>admin</code> and <code>admin</code> — that's your first login. And a line like <code>listening on ... 8790</code>.</div>
+</div>
+
+<div class="step"><h3><span class="num">6</span> Open the app and sign in</h3>
+<ol>
+  <li>On the mini-PC, open a browser and go to: <b>http://localhost:8790/</b></li>
+  <li>You'll see the Basic by JMSI sign-in screen. Sign in with username <b>admin</b> and password <b>admin</b>.</li>
+</ol>
+<div class="box warn"><b>Do this immediately:</b> go to <b>Settings → change the admin password</b> to something only you know. Then open <b>Accounts &amp; Roles</b> and add each staff member their own login (name, username, password, role). Keep the admin account for yourself only.</div>
+</div>
+
+<div class="step"><h3><span class="num">7</span> Give the mini-PC a fixed address (so staff phones can find it)</h3>
+<p>Right now only the mini-PC can open the app. To let staff phones/computers open it, the mini-PC needs a fixed address on the shop network.</p>
+<ol>
+  <li>The easiest way: ask your internet installer / whoever set up the router to <b>"reserve a static IP" for this computer</b> — it's a 2-minute job for them.</li>
+  <li>Once you have that address (it looks like <code>192.168.1.50</code>), staff open the app on their phones at: <b>http://THAT-ADDRESS:8790/</b> (on the shop Wi-Fi).</li>
+</ol>
+<div class="box tip"><b>Good to know:</b> whatever address a device uses to open the app, everything just works — you don't set anything up on the phones. Bookmark the address on each phone's home screen.</div>
+</div>
+
+<div class="step"><h3><span class="num">8</span> Connect the parts price list (SQL Server)</h3>
+<p>This pulls your parts and prices from your existing SQL Server computer. If you're not ready, skip this for now — the app still works, you'll just type parts manually until it's connected.</p>
+<ol>
+  <li>In the app: <b>Settings → Parts catalog — SQL Server</b>.</li>
+  <li>Fill in the boxes (mostly pre-filled for you):</li>
+</ol>
+<table class="tbl">
+  <tr><th>Box</th><th>What to put</th></tr>
+  <tr><td>SQL Server instance</td><td>The parts computer's name, then <code>\MSSQLSERVER01</code> — for example <code>SHOP-SERVER\MSSQLSERVER01</code>. (Ask us for the exact value.)</td></tr>
+  <tr><td>Database</td><td><code>jasRegaladoDB</code> (already filled in)</td></tr>
+  <tr><td>Authentication</td><td>Choose <b>SQL login</b> and enter the username/password if the parts PC is a different computer. (Choose Windows only if told to.)</td></tr>
+</table>
+<ol start="3">
+  <li>Click <b>Test connection</b>. You should see a count of parts and a few samples.</li>
+  <li>Click <b>Attach &amp; sync</b>. Done — parts now auto-fill when staff type a code.</li>
+</ol>
+<div class="box warn"><b>If Test fails:</b> the parts computer usually needs a one-time setup (turning on network access + a firewall opening). Send us the error message and we'll walk you through it — it's quick.</div>
+</div>
+
+<div class="step"><h3><span class="num">9</span> Make the app start by itself when the mini-PC turns on</h3>
+<ol>
+  <li>Open the folder <code>C:\basic\branch-server</code>.</li>
+  <li>Right-click the file <b>start.cmd</b> → <b>Show more options</b> → <b>Create shortcut</b>. A shortcut appears.</li>
+  <li>Press <kbd>Windows</kbd> + <kbd>R</kbd>, type <b>shell:startup</b>, press <kbd>Enter</kbd>. A folder opens.</li>
+  <li>Drag the shortcut you made into that folder.</li>
+</ol>
+<div class="box see"><b>Now:</b> every time the mini-PC restarts, the app starts on its own. (You can close the black window and it stays running from now on.)</div>
+</div>
+
+<h2>Using it every day</h2>
+<ul>
+  <li><b>Staff:</b> open the bookmarked address on their phone (on shop Wi-Fi) and sign in with their own login.</li>
+  <li><b>The mini-PC:</b> just leave it switched on. That's it.</li>
+</ul>
+
+<h2>Updating the app (when we send an improvement)</h2>
+<p>On the mini-PC, open <code>C:\basic\branch-server</code> and double-click <b>update.cmd</b>. It fetches the latest version and restarts. Staff simply see a small "reload to update" prompt. Your shop's data is never touched by an update.</p>
+
+<h2>Opening the app from home / another location (optional)</h2>
+<p>To reach this branch over the internet (not just at the shop), there's a free tool called a "Cloudflare Tunnel." See the separate <b>Public URL — Cloudflare Tunnel</b> guide, or ask us to set it up with you.</p>
+
+<h2>If something goes wrong</h2>
+<table class="tbl">
+  <tr><th>Problem</th><th>Try this</th></tr>
+  <tr><td>Double-clicked update.cmd and it closed instantly / said "Missing branch.config.cmd"</td><td>Re-do <b>Step 4</b> — the settings file is missing or misnamed (check it isn't <code>branch.config.cmd.txt</code>).</td></tr>
+  <tr><td>Browser says "can't reach this page" at localhost:8790</td><td>Make sure the black window from <b>Step 5/9</b> is running. If not, double-click <b>start.cmd</b> in <code>C:\basic\branch-server</code>.</td></tr>
+  <tr><td>Staff phone can't open it</td><td>They must be on the <b>shop Wi-Fi</b>, and use the mini-PC's address from <b>Step 7</b> (not "localhost").</td></tr>
+  <tr><td>Forgot the admin password</td><td>Contact us — we can reset it on the mini-PC.</td></tr>
+  <tr><td>"git" or "node" not recognized</td><td>Node or Git didn't install. Re-do <b>Step 1</b> / <b>Step 2</b>, then restart the mini-PC.</td></tr>
+</table>
+
+<h2>Plain-word glossary</h2>
+<table class="tbl">
+  <tr><td><b>Mini-PC</b></td><td>The small always-on computer at the shop that runs the app.</td></tr>
+  <tr><td><b>Browser</b></td><td>Edge or Chrome — where you open web pages.</td></tr>
+  <tr><td><b>Command Prompt</b></td><td>The black window where you type a couple of setup lines.</td></tr>
+  <tr><td><b>LAN / Wi-Fi</b></td><td>The shop's local network. Devices on it can reach the mini-PC.</td></tr>
+  <tr><td><b>IP address</b></td><td>The mini-PC's "phone number" on the shop network, like <code>192.168.1.50</code>.</td></tr>
+  <tr><td><b>SQL Server</b></td><td>The computer that holds your parts list and prices.</td></tr>
+  <tr><td><b>admin</b></td><td>The first, all-powerful login. Change its password immediately and keep it to yourself.</td></tr>
+</table>
+
+<div class="foot">Basic by JMSI — Pilot branch setup. Same steps work for any future branch: just change <code>pilot</code> / <code>Pilot</code> in the settings file (Step 4) to the new branch name.</div>
+
+</div></body></html>
