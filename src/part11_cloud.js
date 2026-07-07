@@ -474,6 +474,20 @@ async function afterLocalLogin(){
   if (typeof updateUserChip==='function') updateUserChip();
   if (typeof loadCatalog==='function') loadCatalog();
 }
+/* Public customer portal for a local branch — reads the snapshot the branch
+   server holds (GET /portal/:id, no auth) and renders it. Mirrors loadPublicPortal. */
+async function localLoadPublicPortal(){
+  renderPortalLoading();
+  var id = (typeof portalVehicleId==='function') ? portalVehicleId() : null;
+  if(!id){ renderPortalError('No vehicle specified.'); return; }
+  try {
+    var res = await fetch(branchBase()+'/portal/'+encodeURIComponent(id));
+    if(!res.ok){ renderPortalError('No service record found for this vehicle yet.'); return; }
+    var data = await res.json();
+    var app = (typeof document!=='undefined') && document.getElementById('app'); if(!app) return;
+    app.innerHTML = '<div class="portal-page">'+portalCardsHTML(data)+'</div>';
+  } catch(e){ renderPortalError('Couldn’t load this vehicle’s service record.'); }
+}
 function localLogin(){
   var id=(val('lgEmail')||'').trim(), pw=val('lgPass')||'';
   if(!id||!pw){ renderLogin('Enter your username and password.','err'); return; }

@@ -14,6 +14,7 @@ function createStore(file) {
   db.exec('CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, json TEXT);');
   db.exec('CREATE TABLE IF NOT EXISTS counters (name TEXT PRIMARY KEY, value INTEGER NOT NULL);');
   db.exec('CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, username TEXT UNIQUE, name TEXT, role TEXT, isAdmin INTEGER, active INTEGER, salt TEXT, hash TEXT, createdAt TEXT);');
+  db.exec('CREATE TABLE IF NOT EXISTS portal (id TEXT PRIMARY KEY, json TEXT);');
 
   const qUpsert = db.prepare('INSERT INTO records (coll,id,json,updatedAt) VALUES (?,?,?,?) ON CONFLICT(coll,id) DO UPDATE SET json=excluded.json, updatedAt=excluded.updatedAt');
   const qDelete = db.prepare('DELETE FROM records WHERE coll=? AND id=?');
@@ -30,6 +31,8 @@ function createStore(file) {
   const qUsrPw     = db.prepare('UPDATE users SET salt=?, hash=? WHERE id=?');
   const qUsrDel    = db.prepare('DELETE FROM users WHERE id=?');
   const qUsrCount  = db.prepare('SELECT COUNT(*) AS n FROM users');
+  const qPortalGet = db.prepare('SELECT json FROM portal WHERE id=?');
+  const qPortalSet = db.prepare('INSERT INTO portal (id,json) VALUES (?,?) ON CONFLICT(id) DO UPDATE SET json=excluded.json');
 
   function nowISO() { return new Date().toISOString(); }
   function hashPw(pw, salt) { return crypto.scryptSync(String(pw), salt, 64).toString('hex'); }
@@ -118,6 +121,11 @@ function createStore(file) {
       return { ok: true };
     },
     deleteUser(id) { qUsrDel.run(id); return { ok: true }; },
+
+    /* ---- public customer portal snapshots (Phase 3e/local) ---- */
+    setPortal(id, data) { qPortalSet.run(String(id), JSON.stringify(data || {})); },
+    getPortal(id) { var r = qPortalGet.get(String(id)); if (!r) return null; try { return JSON.parse(r.json); } catch (e) { return null; } },
+
     countUsers() { return qUsrCount.get().n; },
     /* First run: create a default admin so the branch can be signed into. */
     bootstrapAdmin() {

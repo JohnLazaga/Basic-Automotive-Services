@@ -332,6 +332,12 @@ const server = http.createServer(async function (req, res) {
       sse.broadcast('meta', { key: mkey, value: mbody.value, origin: mbody.origin || null });
       return send(res, 200, { ok: true });
     }
+    var pgm = p.match(/^\/data\/portal\/(.+)$/);            // POST /data/portal/:id  (staff publishes a snapshot)
+    if (pgm && req.method === 'POST') {
+      var pgbody = await readBody(req);
+      store.setPortal(decodeURIComponent(pgm[1]), pgbody.data || {});
+      return send(res, 200, { ok: true });
+    }
     var rm = p.match(/^\/data\/([^/]+)\/(.+)$/);            // POST/DELETE /data/:coll/:id
     if (rm) {
       var coll = decodeURIComponent(rm[1]), id = decodeURIComponent(rm[2]);
@@ -349,6 +355,15 @@ const server = http.createServer(async function (req, res) {
       }
     }
     return send(res, 404, { error: 'unknown_data_route', path: p });
+  }
+
+  // ---- public customer portal (no auth): GET /portal/:id ----
+  if (p.indexOf('/portal/') === 0 && req.method === 'GET') {
+    var vid = decodeURIComponent(p.replace(/^\/portal\//, ''));
+    var snap = store.getPortal(vid);
+    if (!snap) return send(res, 404, { error: 'no_record' });
+    var shopSnap = store.getPortal('_shop'); if (shopSnap) snap.shop = shopSnap;
+    return send(res, 200, snap);
   }
 
   // ---- job photos (Phase 3e): stored as files on the mini-PC ----

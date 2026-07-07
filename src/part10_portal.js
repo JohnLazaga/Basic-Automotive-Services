@@ -206,18 +206,27 @@ function portalHTML(){
    effort: only in cloud mode with an active session; a write failure is
    swallowed so it never blocks the caller. */
 function publishPortalDoc(vehicleId){
+  var v=vehicleById(vehicleId); if(!v) return;
+  if (typeof dataLocal==='function' && dataLocal()){
+    try { _postJSON(branchBase()+'/data/portal/'+encodeURIComponent(vehicleId), { data: portalDataForVehicle(v) }); } catch(e){ /* non-fatal */ }
+    return;
+  }
   if(typeof cloudOn!=='function' || !cloudOn()) return;
   if(typeof FB==='undefined' || !FB || !FB.ready || !FB.db || !FB.user) return;
-  var v=vehicleById(vehicleId); if(!v) return;
   try { FB.db.collection('portal').doc(vehicleId).set(portalDataForVehicle(v)); } catch(e){ /* non-fatal */ }
 }
 /* Shared, always-current shop details for the portal. Written to portal/_shop so
    the customer portal reflects Settings edits without re-publishing every vehicle. */
 function publishPortalShop(){
+  var sh=S.shop||{};
+  var payload={ name:sh.name||'', address:sh.address||'', contact:sh.contact||'', updatedAt:new Date().toISOString() };
+  if (typeof dataLocal==='function' && dataLocal()){
+    try { _postJSON(branchBase()+'/data/portal/_shop', { data: payload }); } catch(e){ /* non-fatal */ }
+    return;
+  }
   if(typeof cloudOn!=='function' || !cloudOn()) return;
   if(typeof FB==='undefined' || !FB || !FB.ready || !FB.db || !FB.user) return;
-  var sh=S.shop||{};
-  try { FB.db.collection('portal').doc('_shop').set({ name:sh.name||'', address:sh.address||'', contact:sh.contact||'', updatedAt:new Date().toISOString() }); } catch(e){ /* non-fatal */ }
+  try { FB.db.collection('portal').doc('_shop').set(payload); } catch(e){ /* non-fatal */ }
 }
 function previewPortal(id){
   var v=vehicleById(id);
@@ -237,7 +246,11 @@ async function boot(){
   if (typeof startUpdateChecker==='function') startUpdateChecker();   // self-update prompt
   // Cloud mode: paint the login screen immediately, load Firebase in the
   // background (deferred SDK), then wire auth — so the page never blocks on it.
-  if (typeof dataLocal==='function' && dataLocal()){ await localBootStart(); return; }   // local branch: no cloud, load from mini-PC
+  if (typeof dataLocal==='function' && dataLocal()){
+    // Public customer QR portal (#v=<id>) resolves from the mini-PC, no sign-in.
+    if (typeof isPortalRoute==='function' && isPortalRoute()){ await localLoadPublicPortal(); return; }
+    await localBootStart(); return;   // staff: local login, load from mini-PC
+  }
   if (typeof cloudOn==='function' && cloudOn()){ cloudStart(); return; }
   await loadState();
   applyTheme((S.shop && S.shop.theme) || 'light');
