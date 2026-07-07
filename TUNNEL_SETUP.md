@@ -112,10 +112,10 @@ requires an **admin** session — but harden it:
 
 ---
 
-## Note on customer QR portals
-The **staff app** works over the tunnel immediately. The **public customer
-portal** (`#v=<id>` QR links) still reads its snapshot from the cloud (Firestore)
-— on a fully-local branch that path isn't wired to the mini-PC yet. Making QR
-portals resolve from the branch server is a small add-on (a public
-`/portal/:id` endpoint + portal handling in the local boot). Ask and it can be
-built; until then, use the tunnel for **remote staff access**.
+## Customer QR portals
+Both work over the tunnel: the **staff app** (sign-in protected) and the
+**public customer portal**. On a local branch, a `#v=<id>` QR link resolves
+straight from the mini-PC (public `GET /portal/:id`, no sign-in) — so once the
+tunnel is up, customer stickers pointing at `<slug>.basicautomotiveservices.com`
+work from anywhere. Staff publish/refresh a vehicle's portal snapshot from the
+app as usual (it's saved on the mini-PC).
