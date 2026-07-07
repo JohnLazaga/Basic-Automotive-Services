@@ -44,6 +44,9 @@ const SQL_CONFIG_FILE = path.join(__dirname, 'sql-config.json');
 const TSV_FILE = path.join(__dirname, 'parts.tsv');
 const PS_FILE = path.join(os.tmpdir(), 'bjmsi_partsquery.ps1');
 const store = createStore(path.join(__dirname, 'data.sqlite'));   // operational data (Phase 3)
+const sessions = new Map();   // token -> user (in-memory; re-login after a restart)
+function tokenFromReq(req, u) { return req.headers['x-session-token'] || (u && u.searchParams.get('token')) || ''; }
+function sessionUser(req, u) { var t = tokenFromReq(req, u); return t ? (sessions.get(t) || null) : null; }
 
 // Sensible defaults matching this shop's SQL Server (see sync/export-sql.ps1).
 const DEFAULT_SQL = {
@@ -199,7 +202,12 @@ function readBody(req) {
     req.on('end', function () { try { resolve(b ? JSON.parse(b) : {}); } catch (e) { resolve({}); } });
   });
 }
-function adminOK(req) { return !ADMIN_TOKEN || req.headers['x-admin-token'] === ADMIN_TOKEN; }
+function adminOK(req, u) {
+  if (ADMIN_TOKEN && req.headers['x-admin-token'] === ADMIN_TOKEN) return true;
+  var su = sessionUser(req, u); if (su && su.isAdmin) return true;
+  if (!ADMIN_TOKEN && store.countUsers() === 0) return true;   // fresh box, no accounts yet
+  return false;
+}
 
 const server = http.createServer(async function (req, res) {
   if (req.method === 'OPTIONS') { cors(res); res.writeHead(204); return res.end(); }
@@ -225,9 +233,40 @@ const server = http.createServer(async function (req, res) {
     return rec ? send(res, 200, rec) : send(res, 404, { error: 'not_found' });
   }
 
+  // ---- auth (Phase 3d): local staff login + admin account management ----
+  if (p.indexOf('/auth') === 0) {
+    if (p === '/auth/login' && req.method === 'POST') {
+      var lb = await readBody(req);
+      var vr = store.verifyLogin(lb.username, lb.password);
+      if (vr.error) return send(res, 200, { ok: false, error: vr.error });
+      var token = crypto.randomBytes(24).toString('hex');
+      sessions.set(token, vr.user);
+      return send(res, 200, { ok: true, token: token, user: vr.user });
+    }
+    if (p === '/auth/me' && req.method === 'GET') {
+      var su0 = sessionUser(req, u);
+      return send(res, 200, su0 ? { ok: true, user: su0 } : { ok: false });
+    }
+    if (p === '/auth/logout' && req.method === 'POST') {
+      var t = tokenFromReq(req, u); if (t) sessions.delete(t);
+      return send(res, 200, { ok: true });
+    }
+    // everything below is admin-only account management
+    var au = sessionUser(req, u);
+    if (!au || !au.isAdmin) return send(res, 403, { error: 'admin_only' });
+    if (p === '/auth/users' && req.method === 'GET') return send(res, 200, { ok: true, users: store.usersAll() });
+    if (p === '/auth/users' && req.method === 'POST') { var nb = await readBody(req); var cr = store.createUser(nb); return send(res, 200, cr.error ? { ok: false, error: cr.error } : { ok: true, user: cr.user }); }
+    var upm = p.match(/^\/auth\/users\/([^/]+)\/password$/);
+    if (upm && req.method === 'POST') { var pb = await readBody(req); var pr = store.setUserPassword(decodeURIComponent(upm[1]), pb.password); return send(res, 200, pr.error ? { ok: false, error: pr.error } : { ok: true }); }
+    var um2 = p.match(/^\/auth\/users\/([^/]+)$/);
+    if (um2 && req.method === 'POST') { var ub = await readBody(req); var ur = store.updateUser(decodeURIComponent(um2[1]), ub); return send(res, 200, ur.error ? { ok: false, error: ur.error } : { ok: true, user: ur.user }); }
+    if (um2 && req.method === 'DELETE') { store.deleteUser(decodeURIComponent(um2[1])); return send(res, 200, { ok: true }); }
+    return send(res, 404, { error: 'unknown_auth_route' });
+  }
+
   // ---- admin (SQL Server attach) ----
   if (p.indexOf('/admin/') === 0) {
-    if (!adminOK(req)) return send(res, 401, { error: 'unauthorized' });
+    if (!adminOK(req, u)) return send(res, 401, { error: 'unauthorized' });
 
     if (p === '/admin/sql/status' && req.method === 'GET') {
       var cfg = readSqlConfig();
@@ -266,6 +305,7 @@ const server = http.createServer(async function (req, res) {
 
   // ---- operational data (Phase 3): full-state load, per-record writes, SSE, counters ----
   if (p === '/events' || p.indexOf('/data') === 0) {
+    if (!sessionUser(req, u)) return send(res, 401, { error: 'auth_required' });
     if (p === '/events' && req.method === 'GET') return sse.addClient(req, res);
     if (p === '/data' && req.method === 'GET') return send(res, 200, store.getState());
     if (p === '/data/import' && req.method === 'POST') {
@@ -283,6 +323,8 @@ const server = http.createServer(async function (req, res) {
     if (mm && req.method === 'POST') {
       var mbody = await readBody(req);
       var mkey = decodeURIComponent(mm[1]);
+      var suM = sessionUser(req, u);
+      if (mkey === 'shop' && !(suM && suM.isAdmin)) return send(res, 403, { error: 'admin_only' });
       store.setMeta(mkey, mbody.value);
       sse.broadcast('meta', { key: mkey, value: mbody.value, origin: mbody.origin || null });
       return send(res, 200, { ok: true });
@@ -326,6 +368,8 @@ const server = http.createServer(async function (req, res) {
 });
 
 initialLoad();
+var _bootAdmin = store.bootstrapAdmin();
+if (_bootAdmin) console.log('[auth] created default admin — username "' + _bootAdmin.username + '" password "' + _bootAdmin.password + '"  (change it in the app: Accounts & Roles)');
 server.listen(PORT, function () {
   console.log('[parts] Branch "' + BRANCH + '" parts server on http://0.0.0.0:' + PORT + '  (source: ' + SOURCE + ', ' + LIST.length.toLocaleString() + ' SKUs)');
   if (ADMIN_TOKEN) console.log('[parts] admin endpoints require X-Admin-Token');

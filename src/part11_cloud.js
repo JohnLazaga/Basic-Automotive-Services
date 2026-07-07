@@ -346,13 +346,16 @@ function cloudUnsub(){ _cloudSubs.forEach(function(u){ try{u();}catch(e){} }); _
    ========================================================================== */
 var CLIENT_ID = (typeof Math!=='undefined') ? ('c'+Math.random().toString(36).slice(2)+Date.now().toString(36)) : 'c0';
 var _es = null;
+var SESSION_TOKEN = null;                 /* branch-server session (Phase 3d) */
+var SESSION_KEY = 'bas_session';
 
 function dataLocal(){ return typeof BRANCH!=='undefined' && BRANCH && BRANCH.dataSource==='local' && !!BRANCH.partsUrl; }
 function branchBase(){ return (typeof BRANCH!=='undefined' && BRANCH && BRANCH.partsUrl) ? String(BRANCH.partsUrl).replace(/\/+$/,'') : ''; }
-function _postJSON(url, obj){ return fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(obj) }).then(function(r){ return r.json(); }); }
+function authHeaders(extra){ var h=extra||{}; if(SESSION_TOKEN) h['X-Session-Token']=SESSION_TOKEN; return h; }
+function _postJSON(url, obj){ return fetch(url, { method:'POST', headers:authHeaders({'Content-Type':'application/json'}), body:JSON.stringify(obj) }).then(function(r){ return r.json(); }); }
 
 async function localLoadAll(){
-  var res = await fetch(branchBase()+'/data');
+  var res = await fetch(branchBase()+'/data', { headers: authHeaders() });
   if(!res.ok) throw new Error('branch server HTTP '+res.status);
   var d = await res.json();
   var empty = !d.shop && COLLECTIONS.every(function(c){ return !((d.collections&&d.collections[c])||[]).length; });
@@ -379,7 +382,7 @@ function _applyRemote(fn){ _applyingRemote = true; try{ fn(); }catch(e){ console
 function localSubscribe(){
   if (typeof EventSource==='undefined') return;
   if (_es){ try{ _es.close(); }catch(e){} }
-  _es = new EventSource(branchBase()+'/events');
+  _es = new EventSource(branchBase()+'/events?token='+encodeURIComponent(SESSION_TOKEN||''));
   _es.addEventListener('upsert', function(ev){ var m; try{m=JSON.parse(ev.data);}catch(e){return;} if(m.origin===CLIENT_ID) return;
     _applyRemote(function(){ var arr=S[m.coll]||(S[m.coll]=[]); var i=-1; for(var x=0;x<arr.length;x++){ if(String(arr[x].id)===String(m.id)){ i=x; break; } }
       if(i>=0) arr[i]=m.rec; else arr.push(m.rec); (_cloudSnap[m.coll]||(_cloudSnap[m.coll]={}))[m.id]=JSON.stringify(m.rec); });
@@ -396,8 +399,14 @@ function localSubscribe(){
 async function localPersist(){
   if (_applyingRemote) return;
   var base = branchBase();
+  var amAdmin = !(typeof isAdminUser==='function') || isAdminUser();
   var shopJSON = JSON.stringify(S.shop);
-  if (shopJSON !== _metaSnap.shop){ await _postJSON(base+'/data/meta/shop', { value:plain(S.shop), origin:CLIENT_ID }); _metaSnap.shop = shopJSON; }
+  if (shopJSON !== _metaSnap.shop){
+    // meta/shop (settings + permissions) is admin-only server-side; non-admins
+    // just acknowledge locally so the write is never retried (mirrors cloud).
+    if (amAdmin) await _postJSON(base+'/data/meta/shop', { value:plain(S.shop), origin:CLIENT_ID });
+    _metaSnap.shop = shopJSON;
+  }
   var cntJSON = JSON.stringify(S.counters);
   if (cntJSON !== _metaSnap.counters){ await _postJSON(base+'/data/meta/counters', { value:plain(S.counters), origin:CLIENT_ID }); _metaSnap.counters = cntJSON; }
   for (var i=0;i<COLLECTIONS.length;i++){
@@ -412,30 +421,61 @@ async function localPersist(){
     }
     var prevIds = Object.keys(prev);
     for (var d2=0; d2<prevIds.length; d2++){ var did=prevIds[d2];
-      if(!cur[did]){ try { await fetch(base+'/data/'+c+'/'+encodeURIComponent(did)+'?origin='+CLIENT_ID, { method:'DELETE' }); delete prev[did]; } catch(e){ console.error('local del '+c+'/'+did, e); } }
+      if(!cur[did]){ try { await fetch(base+'/data/'+c+'/'+encodeURIComponent(did)+'?origin='+CLIENT_ID, { method:'DELETE', headers:authHeaders() }); delete prev[did]; } catch(e){ console.error('local del '+c+'/'+did, e); } }
     }
   }
 }
 
-/* Boot for a local branch: no cloud/auth (Phase 3d adds local login). */
+/* Boot for a local branch: local staff login against the branch server. */
 async function localBootStart(){
+  try { SESSION_TOKEN = (typeof localStorage!=='undefined') ? localStorage.getItem(SESSION_KEY) : null; } catch(e){ SESSION_TOKEN=null; }
+  if (SESSION_TOKEN){
+    try {
+      var d = await fetch(branchBase()+'/auth/me?token='+encodeURIComponent(SESSION_TOKEN)).then(function(r){ return r.json(); });
+      if (d && d.ok){ CURRENT_USER = d.user; return afterLocalLogin(); }
+    } catch(e){ /* fall through to login */ }
+    SESSION_TOKEN=null; try{ localStorage.removeItem(SESSION_KEY); }catch(e){}
+  }
+  renderLogin();
+}
+/* After a successful local login: load data, subscribe, render. */
+async function afterLocalLogin(){
   renderCloudLoading();
-  if (typeof CURRENT_USER==='undefined' || !CURRENT_USER){ CURRENT_USER = { name:'Local', role:'Admin', isAdmin:true, active:true }; }
   try { await localLoadAll(); }
   catch(e){ renderCloudError('Couldn’t reach the branch server.', 'Is the mini-PC server running at '+branchBase()+'? ('+((e&&e.message)||'')+')'); return; }
   applyTheme((S.shop && S.shop.theme) || 'light');
   localSubscribe();
   render();
+  if (typeof updateUserChip==='function') updateUserChip();
   if (typeof loadCatalog==='function') loadCatalog();
+}
+function localLogin(){
+  var id=(val('lgEmail')||'').trim(), pw=val('lgPass')||'';
+  if(!id||!pw){ renderLogin('Enter your username and password.','err'); return; }
+  var btn=document.querySelector('.lg-btn'); if(btn){ btn.textContent='Signing in…'; btn.disabled=true; }
+  _postJSON(branchBase()+'/auth/login', { username:id, password:pw }).then(function(d){
+    if(!d || !d.ok){ renderLogin(d&&d.error==='inactive' ? 'Your account has been disabled. Contact your administrator.' : 'Incorrect username or password.','err'); return; }
+    SESSION_TOKEN=d.token; try{ localStorage.setItem(SESSION_KEY, d.token); }catch(e){}
+    CURRENT_USER=d.user;
+    afterLocalLogin();
+  }).catch(function(){ renderLogin('Couldn’t reach the branch server. Is the mini-PC on?','err'); });
+}
+function localLogout(){
+  var t=SESSION_TOKEN;
+  SESSION_TOKEN=null; CURRENT_USER=null; try{ localStorage.removeItem(SESSION_KEY); }catch(e){}
+  if(_es){ try{_es.close();}catch(e){} _es=null; }
+  if(t){ fetch(branchBase()+'/auth/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:t})}).catch(function(){}); }
+  renderLogin();
 }
 
 /* ---- Login screen --------------------------------------------------------- */
 function renderLogin(msg, kind, connecting){
   var app = (typeof document!=='undefined') && document.getElementById('app');
   if (!app) return;
-  var status = connecting
-    ? '<div class="lg-status ok">Connected to <b>'+esc(FIREBASE_CONFIG.projectId)+'</b></div>'
-    : (FB.ready ? '<div class="lg-status ok">Connected to <b>'+esc(FIREBASE_CONFIG.projectId)+'</b></div>' : '');
+  var local = (typeof dataLocal==='function' && dataLocal());
+  var status = local
+    ? '<div class="lg-status ok">'+esc((typeof BRANCH!=='undefined'&&BRANCH.name)||'Local branch')+' · on-site server</div>'
+    : (connecting || FB.ready ? '<div class="lg-status ok">Connected to <b>'+esc(FIREBASE_CONFIG.projectId)+'</b></div>' : '');
   app.innerHTML =
     '<div class="login-bg"><div class="login-card">'+
       '<img class="login-logo" src="'+LOGO_LOCKUP+'" alt="Basic by JMSI"/>'+
@@ -464,6 +504,7 @@ function renderCloudError(title, detail){
 }
 
 function doLogin(){
+  if (typeof dataLocal==='function' && dataLocal()){ return localLogin(); }
   var id=(val('lgEmail')||'').trim(), pw=val('lgPass')||'';
   if(!id||!pw){ renderLogin('Enter your username and password.','err'); return; }
   var email = (typeof loginIdToEmail==='function') ? loginIdToEmail(id) : id;  // username -> synthetic email; owner email kept as-is
@@ -474,6 +515,8 @@ function doLogin(){
 }
 function doLogout(){
   confirmModal('Sign out?','You will need to sign in again to use the app.', function(){
+    if (typeof closeModal==='function') closeModal();
+    if (typeof dataLocal==='function' && dataLocal()){ localLogout(); return; }
     if(FB.auth) FB.auth.signOut();
   },'Sign out');
 }
@@ -498,7 +541,8 @@ function friendlyAuthError(e){
 function updateUserChip(){
   if (typeof document==='undefined') return;
   var el=document.getElementById('userChip'); if(!el) return;
-  var name = FB.user ? (FB.user.email||'Signed in') : '';
+  var name = FB.user ? (FB.user.email||'Signed in')
+    : (typeof CURRENT_USER!=='undefined' && CURRENT_USER ? (CURRENT_USER.name||CURRENT_USER.username||'Signed in') : '');
   el.textContent = name;
 }
 function currentUserEmail(){ return FB.user ? FB.user.email : ''; }

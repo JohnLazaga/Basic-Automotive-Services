@@ -3,6 +3,7 @@
    snapshot) and an atomic counters table for OR/JO/EST/PO numbers.
    Single-process => all writes/counter allocations are naturally serialized. */
 const { DatabaseSync } = require('node:sqlite');
+const crypto = require('crypto');
 
 const COLLECTIONS = ['staff', 'bays', 'parts', 'labor', 'vehicles', 'estimates', 'jobs', 'appointments', 'purchaseOrders'];
 
@@ -12,6 +13,7 @@ function createStore(file) {
   db.exec('CREATE TABLE IF NOT EXISTS records (coll TEXT NOT NULL, id TEXT NOT NULL, json TEXT NOT NULL, updatedAt TEXT, PRIMARY KEY (coll, id));');
   db.exec('CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, json TEXT);');
   db.exec('CREATE TABLE IF NOT EXISTS counters (name TEXT PRIMARY KEY, value INTEGER NOT NULL);');
+  db.exec('CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, username TEXT UNIQUE, name TEXT, role TEXT, isAdmin INTEGER, active INTEGER, salt TEXT, hash TEXT, createdAt TEXT);');
 
   const qUpsert = db.prepare('INSERT INTO records (coll,id,json,updatedAt) VALUES (?,?,?,?) ON CONFLICT(coll,id) DO UPDATE SET json=excluded.json, updatedAt=excluded.updatedAt');
   const qDelete = db.prepare('DELETE FROM records WHERE coll=? AND id=?');
@@ -20,8 +22,18 @@ function createStore(file) {
   const qMetaSet = db.prepare('INSERT INTO meta (k,json) VALUES (?,?) ON CONFLICT(k) DO UPDATE SET json=excluded.json');
   const qCntGet  = db.prepare('SELECT value FROM counters WHERE name=?');
   const qCntSet  = db.prepare('INSERT INTO counters (name,value) VALUES (?,?) ON CONFLICT(name) DO UPDATE SET value=excluded.value');
+  const qUsrByName = db.prepare('SELECT * FROM users WHERE username=?');
+  const qUsrById   = db.prepare('SELECT * FROM users WHERE id=?');
+  const qUsrAll    = db.prepare('SELECT id,username,name,role,isAdmin,active,createdAt FROM users ORDER BY name');
+  const qUsrIns    = db.prepare('INSERT INTO users (id,username,name,role,isAdmin,active,salt,hash,createdAt) VALUES (?,?,?,?,?,?,?,?,?)');
+  const qUsrUpd    = db.prepare('UPDATE users SET name=?, role=?, isAdmin=?, active=? WHERE id=?');
+  const qUsrPw     = db.prepare('UPDATE users SET salt=?, hash=? WHERE id=?');
+  const qUsrDel    = db.prepare('DELETE FROM users WHERE id=?');
+  const qUsrCount  = db.prepare('SELECT COUNT(*) AS n FROM users');
 
   function nowISO() { return new Date().toISOString(); }
+  function hashPw(pw, salt) { return crypto.scryptSync(String(pw), salt, 64).toString('hex'); }
+  function pubUser(r) { return r ? { uid: r.id, id: r.id, username: r.username, name: r.name, role: r.role, isAdmin: !!r.isAdmin, active: r.active !== 0, createdAt: r.createdAt } : null; }
 
   return {
     collections: COLLECTIONS,
@@ -72,7 +84,49 @@ function createStore(file) {
       return this.count();
     },
 
-    count() { let n = 0; for (const _ of qAll.all()) n++; return n; }
+    count() { let n = 0; for (const _ of qAll.all()) n++; return n; },
+
+    /* ---- users / auth (Phase 3d) ---- */
+    usersAll() { return qUsrAll.all().map(function (r) { return pubUser(r); }); },
+    userById(id) { return pubUser(qUsrById.get(id)); },
+    verifyLogin(username, password) {
+      const r = qUsrByName.get(String(username || '').trim().toLowerCase());
+      if (!r) return { error: 'bad_credentials' };
+      if (r.active === 0) return { error: 'inactive' };
+      if (hashPw(password, r.salt) !== r.hash) return { error: 'bad_credentials' };
+      return { user: pubUser(r) };
+    },
+    createUser(u) {
+      const id = 'u' + crypto.randomBytes(6).toString('hex');
+      const salt = crypto.randomBytes(16).toString('hex');
+      try {
+        qUsrIns.run(id, String(u.username || '').trim().toLowerCase(), u.name || u.username || '', u.role || 'SA',
+          u.isAdmin ? 1 : 0, 1, salt, hashPw(u.password || '', salt), nowISO());
+      } catch (e) { if (String(e.message).indexOf('UNIQUE') >= 0) return { error: 'username_taken' }; throw e; }
+      return { user: pubUser(qUsrById.get(id)) };
+    },
+    updateUser(id, f) {
+      const r = qUsrById.get(id); if (!r) return { error: 'not_found' };
+      qUsrUpd.run(f.name != null ? f.name : r.name, f.role != null ? f.role : r.role,
+        f.isAdmin != null ? (f.isAdmin ? 1 : 0) : r.isAdmin, f.active != null ? (f.active ? 1 : 0) : r.active, id);
+      return { user: pubUser(qUsrById.get(id)) };
+    },
+    setUserPassword(id, password) {
+      const r = qUsrById.get(id); if (!r) return { error: 'not_found' };
+      const salt = crypto.randomBytes(16).toString('hex');
+      qUsrPw.run(salt, hashPw(password, salt), id);
+      return { ok: true };
+    },
+    deleteUser(id) { qUsrDel.run(id); return { ok: true }; },
+    countUsers() { return qUsrCount.get().n; },
+    /* First run: create a default admin so the branch can be signed into. */
+    bootstrapAdmin() {
+      if (qUsrCount.get().n > 0) return null;
+      const id = 'u' + crypto.randomBytes(6).toString('hex');
+      const salt = crypto.randomBytes(16).toString('hex');
+      qUsrIns.run(id, 'admin', 'Administrator', 'SV', 1, 1, salt, hashPw('admin', salt), nowISO());
+      return { username: 'admin', password: 'admin' };
+    }
   };
 }
 

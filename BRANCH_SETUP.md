@@ -49,6 +49,14 @@ So staff can type `http://davao.basic.local` instead of an IP:
   mDNS/Bonjour and use the PC's `<hostname>.local`.
 - (Optional) run the server on port 80 so no `:8790` is needed in the URL.
 
+## 4b. First sign-in (local staff accounts)
+On first start the server creates a default admin: **username `admin`, password
+`admin`**. Sign in with it, then **Accounts & Roles → change the password**
+immediately and add each staff member their own login (username + password +
+role). Accounts, passwords (hashed), and sessions all live on the mini-PC — no
+internet needed. Non-admins are limited by the role permission matrix, enforced
+both in the UI and on the server.
+
 ## 5. Attach the parts database (in the app) — the easy part
 1. Open the app on the LAN and sign in as an Admin.
 2. **Settings → Parts catalog — SQL Server.** Fields are pre-filled for JMSI
