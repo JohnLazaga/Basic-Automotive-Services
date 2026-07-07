@@ -75,9 +75,19 @@ function loadPublicPortal(){
     // PIN gating is OFF unless the shop enables it (portal/_shop.pinRequired).
     // Default path is byte-identical to before → live site unaffected.
     var pinRequired = !!(data.shop && data.shop.pinRequired);
-    if(!pinRequired){ renderPortalData(data); return; }
+    if(!pinRequired){ renderPortalData(data, id); return; }
     _cloudPortalDoc = data;
-    if(data.pinHash){ renderPortalPin(id,'locked'); } else { renderPortalPin(id,'claim'); }
+    if(data.pinHash){
+      var rp = portalRemembered(id);
+      if(rp){
+        portalHashPin(id, rp).then(function(h){
+          if(h===data.pinHash){ renderPortalData(data, id); }
+          else { portalForgetSilent(id); renderPortalPin(id,'locked'); }
+        }).catch(function(){ renderPortalPin(id,'locked'); });
+        return;
+      }
+      renderPortalPin(id,'locked');
+    } else { renderPortalPin(id,'claim'); }
   }).catch(function(){
     renderPortalError('Couldn’t load this vehicle’s service record.');
   });
@@ -513,15 +523,34 @@ async function localLoadPublicPortal(){
     var res = await fetch(branchBase()+'/portal/'+encodeURIComponent(id));
     if(res.status===404){ renderPortalError('No service record found for this vehicle yet.'); return; }
     var d = await res.json();
-    if(d && d.state==='locked') return renderPortalPin(id,'locked');
+    if(d && d.state==='locked'){
+      var rp = portalRemembered(id);
+      if(rp){
+        var vr = await fetch(branchBase()+'/portal/'+encodeURIComponent(id)+'/verify',{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({pin:rp}) }).then(function(r){ return r.json(); }).catch(function(){ return null; });
+        if(vr && vr.ok && vr.data) return renderPortalData(vr.data, id);
+        portalForgetSilent(id);                          // PIN changed by staff — drop stale
+      }
+      return renderPortalPin(id,'locked');
+    }
     if(d && d.state==='claim')  return renderPortalPin(id,'claim');
-    if(d && !d.state) return renderPortalData(d);       // (open portal fallback)
+    if(d && !d.state) return renderPortalData(d, id);   // (open portal fallback)
     renderPortalError('This portal is unavailable right now.');
   } catch(e){ renderPortalError('Couldn’t load this vehicle’s service record.'); }
 }
-function renderPortalData(data){
+/* "Remember on this device" — store the PIN locally so a returning customer
+   skips the prompt. It lives only in this browser's localStorage. */
+function portalRememberKey(id){ return 'bas_portal_pin_'+id; }
+function portalRemembered(id){ try{ return localStorage.getItem(portalRememberKey(id))||''; }catch(e){ return ''; } }
+function portalForgetSilent(id){ try{ localStorage.removeItem(portalRememberKey(id)); }catch(e){} }
+function portalForget(id){ portalForgetSilent(id); if(typeof location!=='undefined') location.reload(); return false; }
+function portalRememberIfChecked(id,pin){ var c=document.getElementById('portalRemember'); if(c&&c.checked){ try{ localStorage.setItem(portalRememberKey(id),pin); }catch(e){} } }
+
+function renderPortalData(data, id){
   var app=(typeof document!=='undefined') && document.getElementById('app'); if(!app) return;
-  app.innerHTML = '<div class="portal-page">'+portalCardsHTML(data)+'</div>';
+  var forget = (id && portalRemembered(id))
+    ? '<div class="muted small" style="text-align:center;padding:14px"><a href="#" onclick="return portalForget(\''+id+'\')">Forget PIN on this device</a></div>'
+    : '';
+  app.innerHTML = '<div class="portal-page">'+portalCardsHTML(data)+forget+'</div>';
 }
 function renderPortalPin(id, mode){
   var app=(typeof document!=='undefined') && document.getElementById('app'); if(!app) return;
@@ -532,6 +561,7 @@ function renderPortalPin(id, mode){
     '<div class="login-sub">Vehicle Service Portal</div>'+
     '<div class="lg-msg" id="pinMsg" style="background:#f5f5f7;color:#1d1d1f">'+esc(title)+'<br><span class="muted small">'+esc(sub)+'</span></div>'+
     '<label class="lg-field"><span>PIN</span><input id="portalPin" type="password" inputmode="numeric" maxlength="6" autocomplete="off" placeholder="••••"></label>'+
+    '<label class="chk" style="justify-content:center;margin:4px 0 10px"><input type="checkbox" id="portalRemember" checked> Remember on this device</label>'+
     '<button class="btn primary full lg-btn" onclick="portalSubmitPin(\''+id+'\',\''+mode+'\')">'+(mode==='claim'?'Set PIN &amp; view':'View my record')+'</button>'+
     '</div></div>';
   setTimeout(function(){ var e=document.getElementById('portalPin'); if(e&&e.focus) e.focus(); },30);
@@ -548,11 +578,11 @@ function portalSubmitPin(id, mode){
     function fail(m){ if(msg) msg.innerHTML='<b>'+m+'</b>'; if(btn){ btn.textContent=btnLabel; btn.disabled=false; } }
     if(mode==='claim'){
       FB.db.collection('portal_claims').add({ vehicleId:id, pin:pin, ts:new Date().toISOString() })
-        .then(function(){ renderPortalData(_cloudPortalDoc||{}); })
+        .then(function(){ portalRememberIfChecked(id,pin); renderPortalData(_cloudPortalDoc||{}, id); })
         .catch(function(){ fail('Couldn’t set that PIN — please try again.'); });
     } else {
       portalHashPin(id, pin).then(function(h){
-        if(_cloudPortalDoc && h===_cloudPortalDoc.pinHash){ renderPortalData(_cloudPortalDoc); }
+        if(_cloudPortalDoc && h===_cloudPortalDoc.pinHash){ portalRememberIfChecked(id,pin); renderPortalData(_cloudPortalDoc, id); }
         else fail('Incorrect PIN — please try again.');
       }).catch(function(){ fail('Something went wrong — please try again.'); });
     }
@@ -564,7 +594,7 @@ function portalSubmitPin(id, mode){
     { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({pin:pin}) })
     .then(function(r){ return r.json().then(function(j){ return {status:r.status,j:j}; }); })
     .then(function(res){
-      if(res.j && res.j.ok && res.j.data){ renderPortalData(res.j.data); return; }
+      if(res.j && res.j.ok && res.j.data){ portalRememberIfChecked(id,pin); renderPortalData(res.j.data, id); return; }
       if(res.status===409){ renderPortalPin(id,'locked'); return; }     // claimed by someone first
       if(msg) msg.innerHTML = (mode==='claim') ? '<b>Couldn’t set that PIN — please try again.</b>' : '<b>Incorrect PIN — please try again.</b>';
       if(btn){ btn.textContent=btnLabel; btn.disabled=false; }
