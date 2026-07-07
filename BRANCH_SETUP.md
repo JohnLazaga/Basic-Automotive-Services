@@ -76,8 +76,30 @@ live domain's DNS and a zero-risk Quick-Tunnel option for piloting — is in
 **[TUNNEL_SETUP.md](TUNNEL_SETUP.md)**.
 
 Staff on the LAN keep using the fast offline `http://<mini-pc-ip>:8790/`; remote
-staff use the public URL. (Customer QR portals over a local branch need one small
-add-on — see the note at the end of TUNNEL_SETUP.md.)
+staff use the public URL. Customer QR portals resolve straight from the mini-PC.
+
+## Customer portal PIN
+Each vehicle's QR portal is protected by a short **PIN (4–6 digits)** so only the
+owner sees their record.
+
+**What the customer sees**
+- **First scan (no PIN yet):** "Create a PIN to protect your record" — they set
+  one, and the record opens (self-claim, once).
+- **Every scan after:** "Enter your PIN" → correct PIN shows the record.
+- **Remember on this device** (checkbox, on by default): the PIN is stored on that
+  phone/browser, so future scans open the record with **no prompt**. A **"Forget
+  PIN on this device"** link under the record clears it (for shared devices).
+
+**What staff can do (app)**
+- View and edit each vehicle's PIN on the **Owner / Vehicle** card and in the
+  vehicle form. Blank = the customer sets it on first scan.
+- Change/reset a PIN anytime; customers with a stale remembered PIN are simply
+  re-prompted for the new one.
+
+**Where it applies**
+- **Local branches:** always on (served + verified by the mini-PC).
+- **Cloud/main site:** off until you deploy the rule and enable the toggle — see
+  section 3 of this pack (Firestore rule) / `FIRESTORE_RULES.md`.
 
 ## Cutover: move a live (cloud) branch onto its mini-PC
 1. In the **current cloud app**: Settings → **Export JSON backup** (downloads the
