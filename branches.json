@@ -2,40 +2,20 @@
   "main": {
     "id": "main",
     "slug": "main",
-    "name": "Basic by JMSI — Main",
-    "localUrl": "http://main.basic.local",
+    "name": "Basic by JMSI — Fairview (Main)",
+    "localUrl": "http://fairview.basic.local",
     "publicUrl": "https://basicautomotiveservices.com",
-    "partsUrl": "http://main.basic.local:8790",
+    "partsUrl": "http://fairview.basic.local:8790",
     "partsSource": "cloud",
     "dataSource": "cloud"
   },
-  "cebu": {
-    "id": "cebu",
-    "slug": "cebu",
-    "name": "Basic by JMSI — Cebu",
-    "localUrl": "http://cebu.basic.local",
-    "publicUrl": "https://cebu.basicautomotiveservices.com",
-    "partsUrl": "http://cebu.basic.local:8790",
-    "partsSource": "local",
-    "dataSource": "cloud"
-  },
-  "pilot": {
-    "id": "pilot",
-    "slug": "pilot",
-    "name": "Basic by JMSI — Pilot",
-    "localUrl": "http://pilot.basic.local",
-    "publicUrl": "https://pilot.basicautomotiveservices.com",
-    "partsUrl": "http://pilot.basic.local:8790",
-    "partsSource": "local",
-    "dataSource": "local"
-  },
-  "localtest": {
-    "id": "localtest",
-    "slug": "localtest",
-    "name": "Basic by JMSI — Local Test",
-    "localUrl": "http://localhost:8790",
-    "publicUrl": "http://localhost:8790",
-    "partsUrl": "http://localhost:8790",
+  "commonwealth": {
+    "id": "commonwealth",
+    "slug": "commonwealth",
+    "name": "Basic by JMSI — Commonwealth",
+    "localUrl": "http://commonwealth:8790",
+    "publicUrl": "https://commonwealth.basicautomotiveservices.com",
+    "partsUrl": "http://commonwealth:8790",
     "partsSource": "local",
     "dataSource": "local"
   },
@@ -46,6 +26,26 @@
     "localUrl": "http://Sudipen:8790",
     "publicUrl": "https://sudipen.basicautomotiveservices.com",
     "partsUrl": "http://Sudipen:8790",
+    "partsSource": "local",
+    "dataSource": "local"
+  },
+  "sandbox": {
+    "id": "sandbox",
+    "slug": "sandbox",
+    "name": "Basic by JMSI — Sandbox (training)",
+    "localUrl": "http://sandbox:8790",
+    "publicUrl": "https://sandbox.basicautomotiveservices.com",
+    "partsUrl": "http://sandbox:8790",
+    "partsSource": "local",
+    "dataSource": "local"
+  },
+  "localtest": {
+    "id": "localtest",
+    "slug": "localtest",
+    "name": "Basic by JMSI — Local Test (dev only)",
+    "localUrl": "http://localhost:8790",
+    "publicUrl": "http://localhost:8790",
+    "partsUrl": "http://localhost:8790",
     "partsSource": "local",
     "dataSource": "local"
   }
