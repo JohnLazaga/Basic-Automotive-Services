@@ -69,24 +69,15 @@ both in the UI and on the server.
 > server, which connects with the same .NET SqlClient your `export-sql.ps1` uses.
 > For SQL logins instead of Windows auth, choose "SQL login" and enter user/password.
 
-## 6. Public URL + customer portals (Cloudflare Tunnel)
+## 6. Public URL (Cloudflare Tunnel)
 Gives `https://<slug>.basicautomotiveservices.com` with HTTPS and **no router
-port-forwarding**, working behind the shop's NAT:
+port-forwarding**. Full walkthrough — including the important note about your
+live domain's DNS and a zero-risk Quick-Tunnel option for piloting — is in
+**[TUNNEL_SETUP.md](TUNNEL_SETUP.md)**.
 
-1. Point `basicautomotiveservices.com`'s DNS at **Cloudflare** (one-time, for the
-   whole domain).
-2. On the mini-PC: install `cloudflared`, `cloudflared login`, then create a
-   tunnel and route the subdomain to the local server:
-   ```
-   cloudflared tunnel create davao
-   cloudflared tunnel route dns davao davao.basicautomotiveservices.com
-   cloudflared tunnel run --url http://localhost:8790 davao
-   ```
-3. Run `cloudflared` as a service so it stays up.
-
-Now: staff on the LAN use the fast offline `*.basic.local` URL; remote staff and
-customers (QR portal) use the public `*.basicautomotiveservices.com`. If the
-internet drops, the branch keeps running locally.
+Staff on the LAN keep using the fast offline `http://<mini-pc-ip>:8790/`; remote
+staff use the public URL. (Customer QR portals over a local branch need one small
+add-on — see the note at the end of TUNNEL_SETUP.md.)
 
 ## Cutover: move a live (cloud) branch onto its mini-PC
 1. In the **current cloud app**: Settings → **Export JSON backup** (downloads the
