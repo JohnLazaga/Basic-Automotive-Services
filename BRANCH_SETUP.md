@@ -116,10 +116,45 @@ branch at a time; keep app + server in step only when you change the data API.
 - Scheduled: a Task Scheduler job that POSTs `/admin/sql/sync` (e.g. nightly):
   `curl -X POST http://localhost:8790/admin/sql/sync`
 
+## Branch security checklist
+Goal: **branch users can never change the app, and every update comes only from
+the owner.** Three layers deliver that — the first two are built in, the third
+is how you set up the mini-PC.
+
+**A. In the app (built in — nothing to do but use it right)**
+- [ ] On first sign-in, **change the default `admin`/`admin`** password.
+- [ ] Create staff as **non-admin roles** (SV/SA/SM/Mechanic/Parts/Secretary).
+      Keep the **only admin account for yourself.** Then no branch user can reach
+      Settings, Accounts, permissions, prices, or SQL config — enforced on the
+      server (401/403), not just hidden.
+- [ ] There is **no code-editing surface** in the app; the most an account can do
+      is what its role allows.
+
+**B. Updates come only from you (built in)**
+- [ ] App code is built from **your GitHub repo**. `update.cmd` only ever
+      `git pull`s *your* code — no one at a branch can inject their own.
+- [ ] Keep **push access to the repo restricted to you.** That is the control
+      that makes "all updates come from me" true.
+- [ ] (Optional) a scheduled `git pull` on the mini-PC auto-reverts any local
+      file tampering back to your version — ask to enable.
+
+**C. Lock down the mini-PC (your IT step — the real dependency)**
+The app files and data (`data.sqlite`, `sql-config.json` with the DB password)
+sit on the mini-PC's disk. Anyone with **Windows admin / file-write access** to
+that box could edit code or read data directly. So:
+- [ ] Staff use the app from **their own phones/PCs over the LAN** — they never
+      log into the mini-PC's Windows. Keep it headless in a locked spot.
+- [ ] If anyone must use the box, give them a **standard (non-admin) Windows
+      account**, and make `C:\basic` writable only by an owner/admin account.
+- [ ] Run the server (Task Scheduler / service) under an **owner account**, not a
+      staff user.
+- [ ] Consider **BitLocker** on the drive so data + the SQL password are
+      protected at rest.
+
 ## Security notes
 - `sql-config.json` (holds the DB password) stays on the mini-PC and is
   git-ignored. Set `ADMIN_TOKEN` on the server to require a token for `/admin/*`
   if untrusted devices share the LAN.
 - The public tunnel exposes the app (sign-in protected) and the read-only
   customer portal; the parts admin endpoints should be kept LAN-only or
-  token-protected.
+  token-protected. (See TUNNEL_SETUP.md for Cloudflare Access.)
