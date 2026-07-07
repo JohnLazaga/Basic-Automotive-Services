@@ -213,13 +213,22 @@ function publishPortalDoc(vehicleId){
   }
   if(typeof cloudOn!=='function' || !cloudOn()) return;
   if(typeof FB==='undefined' || !FB || !FB.ready || !FB.db || !FB.user) return;
-  try { FB.db.collection('portal').doc(vehicleId).set(portalDataForVehicle(v)); } catch(e){ /* non-fatal */ }
+  try {
+    var pdata = portalDataForVehicle(v);
+    // Carry a PIN hash (not the PIN) so the customer portal can gate client-side.
+    if(v.portalPin && typeof portalHashPin==='function'){
+      portalHashPin(vehicleId, v.portalPin).then(function(h){ pdata.pinHash=h; FB.db.collection('portal').doc(vehicleId).set(pdata); })
+        .catch(function(){ FB.db.collection('portal').doc(vehicleId).set(pdata); });
+    } else {
+      FB.db.collection('portal').doc(vehicleId).set(pdata);   // no pin → no hash (open / claim)
+    }
+  } catch(e){ /* non-fatal */ }
 }
 /* Shared, always-current shop details for the portal. Written to portal/_shop so
    the customer portal reflects Settings edits without re-publishing every vehicle. */
 function publishPortalShop(){
   var sh=S.shop||{};
-  var payload={ name:sh.name||'', address:sh.address||'', contact:sh.contact||'', updatedAt:new Date().toISOString() };
+  var payload={ name:sh.name||'', address:sh.address||'', contact:sh.contact||'', pinRequired:!!sh.portalPinRequired, updatedAt:new Date().toISOString() };
   if (typeof dataLocal==='function' && dataLocal()){
     try { _postJSON(branchBase()+'/data/portal/_shop', { data: payload }); } catch(e){ /* non-fatal */ }
     return;

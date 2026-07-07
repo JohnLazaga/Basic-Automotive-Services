@@ -72,10 +72,38 @@ function loadPublicPortal(){
     // Always use the current shared shop details when available (Settings edits
     // reflect immediately without re-publishing every vehicle).
     if(shopDoc && shopDoc.exists){ data.shop=shopDoc.data(); }
-    app.innerHTML = '<div class="portal-page">'+portalCardsHTML(data)+'</div>';
+    // PIN gating is OFF unless the shop enables it (portal/_shop.pinRequired).
+    // Default path is byte-identical to before → live site unaffected.
+    var pinRequired = !!(data.shop && data.shop.pinRequired);
+    if(!pinRequired){ renderPortalData(data); return; }
+    _cloudPortalDoc = data;
+    if(data.pinHash){ renderPortalPin(id,'locked'); } else { renderPortalPin(id,'claim'); }
   }).catch(function(){
     renderPortalError('Couldn’t load this vehicle’s service record.');
   });
+}
+var _cloudPortalDoc = null;
+/* PIN hash for the cloud client-side check (SHA-256 of "<vehicleId>:<pin>"). */
+async function portalHashPin(id, pin){
+  var enc = new TextEncoder().encode(String(id)+':'+String(pin));
+  var buf = await crypto.subtle.digest('SHA-256', enc);
+  return Array.prototype.map.call(new Uint8Array(buf), function(b){ return ('0'+b.toString(16)).slice(-2); }).join('');
+}
+/* Staff-side: pick up customer PIN claims (anonymous create, like appt_requests),
+   record the PIN on the vehicle so staff can view it, then republish + clear. */
+function subscribePortalClaims(){
+  if(typeof FB==='undefined' || !FB || !FB.db) return;
+  try{
+    FB.db.collection('portal_claims').onSnapshot(function(snap){
+      snap.docChanges().forEach(function(ch){
+        if(ch.type!=='added') return;
+        var d=ch.doc.data()||{}; var v=vehicleById(d.vehicleId);
+        var pin=String(d.pin||'').replace(/\D/g,'').slice(0,6);
+        if(v && !v.portalPin && pin.length>=4){ v.portalPin=pin; persist(); if(typeof publishPortalDoc==='function') publishPortalDoc(d.vehicleId); }
+        ch.doc.ref.delete().catch(function(){});
+      });
+    }, function(){ /* rules not deployed yet / offline — ignore */ });
+  }catch(e){ /* non-fatal */ }
 }
 /* Watch the public appt_requests collection; prompt staff immediately when a
    new customer appointment request arrives. */
@@ -170,6 +198,7 @@ async function onSignedIn(user){
   applyTheme((S.shop && S.shop.theme) || 'light');
   cloudSubscribe();
   subscribeApptRequests();          // live customer appointment requests
+  subscribePortalClaims();          // customer portal PIN claims (if rules deployed)
   render();
   updateUserChip();
   if (typeof loadCatalog==='function') loadCatalog();   // preload parts catalog in the background
@@ -513,6 +542,24 @@ function portalSubmitPin(id, mode){
   if(pin.length<4){ if(msg) msg.innerHTML='<b>Please enter a 4–6 digit PIN.</b>'; return; }
   var btnLabel = mode==='claim'?'Set PIN & view':'View my record';
   var btn=document.querySelector('.lg-btn'); if(btn){ btn.textContent='Please wait…'; btn.disabled=true; }
+
+  // Cloud (Firestore) path: client-side hash check; claims via portal_claims.
+  if(!(typeof dataLocal==='function' && dataLocal())){
+    function fail(m){ if(msg) msg.innerHTML='<b>'+m+'</b>'; if(btn){ btn.textContent=btnLabel; btn.disabled=false; } }
+    if(mode==='claim'){
+      FB.db.collection('portal_claims').add({ vehicleId:id, pin:pin, ts:new Date().toISOString() })
+        .then(function(){ renderPortalData(_cloudPortalDoc||{}); })
+        .catch(function(){ fail('Couldn’t set that PIN — please try again.'); });
+    } else {
+      portalHashPin(id, pin).then(function(h){
+        if(_cloudPortalDoc && h===_cloudPortalDoc.pinHash){ renderPortalData(_cloudPortalDoc); }
+        else fail('Incorrect PIN — please try again.');
+      }).catch(function(){ fail('Something went wrong — please try again.'); });
+    }
+    return;
+  }
+
+  // Local branch path: server verifies / claims.
   fetch(branchBase()+'/portal/'+encodeURIComponent(id)+'/'+(mode==='claim'?'claim':'verify'),
     { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({pin:pin}) })
     .then(function(r){ return r.json().then(function(j){ return {status:r.status,j:j}; }); })

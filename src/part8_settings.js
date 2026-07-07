@@ -23,6 +23,8 @@ VIEWS.settings = function(){
 
     '<div class="card"><h2>Customer QR portal</h2>'+
       field('Portal base URL','<input id="shPortal" value="'+attr(sh.portalUrl)+'">','Vehicle QR encodes <portalUrl>/#v=<id>. Host this file there for scans to resolve.')+
+      '<label class="chk"><input type="checkbox" id="shPinReq" '+(sh.portalPinRequired?'checked':'')+'> Require a PIN to open portals (customer sets it on first scan)</label>'+
+      '<p class="muted small">Local branches always require a PIN. For the cloud site this needs the Firestore rule from FIRESTORE_RULES.md deployed first.</p>'+
       '<div class="row gap"><button class="btn ghost" onclick="saveShop()">Save</button>'+
       '<button class="btn ghost" onclick="publishAllPortals()">↑ Publish all portals</button></div>'+
       '<p class="muted small">Publishing writes a minimal public snapshot (plate, service history, next service) per vehicle so customers can scan their QR without signing in. No prices, chassis, TIN or contact numbers are exposed.</p></div>'+
@@ -64,6 +66,7 @@ function saveShop(){
     sh.contact=val('shContact'); sh.tin=val('shTin');
     sh.vatRate=Number(val('shVatRate'))||12; sh.vatReg=checked('shVatReg'); }
   if(document.getElementById('shPortal')) sh.portalUrl=val('shPortal');
+  if(document.getElementById('shPinReq')) sh.portalPinRequired=checked('shPinReq');
   if(document.getElementById('shComm')) sh.mechCommissionRate=Number(val('shComm'))||0;
   if(document.getElementById('shSource')){ sh.partsSource=val('shSource'); sh.partsApi=val('shApi'); }
   persist(); if(typeof publishPortalShop==='function') publishPortalShop();   // sync shop details to the portal
