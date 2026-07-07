@@ -88,6 +88,20 @@ Now: staff on the LAN use the fast offline `*.basic.local` URL; remote staff and
 customers (QR portal) use the public `*.basicautomotiveservices.com`. If the
 internet drops, the branch keeps running locally.
 
+## Cutover: move a live (cloud) branch onto its mini-PC
+1. In the **current cloud app**: Settings → **Export JSON backup** (downloads the
+   full shop state).
+2. Set this branch's `dataSource` **and** `partsSource` to `"local"` in
+   `branches.json`; `node build.js --branch=<slug>`; deploy `dist/<slug>/` +
+   `branch-server/` to the mini-PC (see steps 3–4 above) and `start.cmd`.
+3. Sign in `admin`/`admin` (then change it). Settings → **Import JSON backup to
+   this branch** → pick the file. This replaces the branch server's data with
+   your real data. Job **photos** upload to the mini-PC (`branch-server/photos/`)
+   on the next save; the record keeps only the URL.
+4. Settings → **Parts catalog — SQL Server** → Test → Attach (step 5 below).
+5. Verify on two devices (live sync, OR numbers, prices), then retire the cloud
+   for that branch.
+
 ## Updating a branch (push app / server changes)
 You keep developing on your machine; branches run independently. To roll a new
 version to a branch's mini-PC:

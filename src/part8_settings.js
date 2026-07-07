@@ -49,8 +49,12 @@ VIEWS.settings = function(){
       '<p class="muted small">Units not updated since the latest checkpoint show an amber flag.</p></div>'+
     '<div class="card"><h2>Data</h2>'+
       '<button class="btn ghost full" onclick="exportBackup()">⬇ Export JSON backup</button>'+
+      (((typeof dataLocal==='function')&&dataLocal()&&isAdminUser())
+        ? '<label class="btn ghost full mt8"><input type="file" accept=".json,application/json" style="display:none" onchange="importBranchBackup(this.files)">⬆ Import JSON backup to this branch</label>'
+        : '')+
       '<button class="btn danger full mt8" onclick="clearAllData()">Clear all data</button>'+
-      '<p class="muted small">Backup downloads the full state. Clear wipes to a blank shop.</p></div>'+
+      '<p class="muted small">Backup downloads the full state. Clear wipes to a blank shop.'+
+      (((typeof dataLocal==='function')&&dataLocal())?' Import replaces this branch server’s data with a backup (use it to move a shop off the cloud).':'')+'</p></div>'+
   '</div></div></div>';
 };
 
@@ -150,6 +154,25 @@ function exportBackup(){
   var a=document.createElement('a'); a.href=URL.createObjectURL(blob);
   a.download='basic_jmsi_backup_'+todayISO()+'.json'; a.click();
   toast('Backup downloaded');
+}
+/* Cutover: import a JSON backup (from the cloud app's Export) into THIS branch
+   server, replacing its data. Admin + local only. */
+function importBranchBackup(files){
+  if(!((typeof dataLocal==='function')&&dataLocal())){ toast('Local branches only','err'); return; }
+  var f=files&&files[0]; if(!f) return;
+  var r=new FileReader();
+  r.onload=function(){
+    var st=null; try{ st=JSON.parse(r.result); }catch(e){ toast('Not a valid JSON backup','err'); return; }
+    var cols=['staff','bays','parts','labor','vehicles','estimates','jobs','appointments','purchaseOrders'];
+    var n=0; cols.forEach(function(c){ n+=((st&&st[c])||[]).length; });
+    confirmModal('Import backup to this branch?','This REPLACES all data on this branch server with the backup ('+n+' records). The current branch data will be overwritten. This cannot be undone.', function(){
+      _postJSON(branchBase()+'/data/import', st).then(function(d){
+        if(d&&d.ok){ closeModal(); toast('Imported '+d.count+' records'); localLoadAll().then(function(){ if(typeof render==='function') render(); }); }
+        else toast((d&&d.error==='admin_only')?'Admins only':'Import failed','err');
+      }).catch(function(){ toast('Cannot reach branch server','err'); });
+    },'Import & overwrite',true);
+  };
+  r.readAsText(f);
 }
 function clearAllData(){
   confirmModal('Clear all data?','This wipes every record to a blank shop. Export a backup first if needed.',function(){

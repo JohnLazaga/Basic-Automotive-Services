@@ -396,6 +396,19 @@ function localSubscribe(){
   _es.addEventListener('reload', function(){ localLoadAll().then(function(){ if(!modalOpen()) render(); }).catch(function(){}); });
 }
 
+/* Move a job's base64 photos to files on the branch server; store the URL. */
+async function localUploadJobPhotos(job){
+  if (!job || !Array.isArray(job.photos)) return;
+  for (var i=0;i<job.photos.length;i++){
+    var pp = job.photos[i];
+    if (pp.url || !pp.data) continue;                    // already a file / nothing to upload
+    try {
+      var d = await _postJSON(branchBase()+'/photos/'+encodeURIComponent(job.id)+'/'+encodeURIComponent(pp.id), { data:pp.data });
+      if (d && d.ok && d.url){ job.photos[i] = { id:pp.id, url:branchBase()+d.url, caption:pp.caption||'', ts:pp.ts }; }
+    } catch(e){ /* keep base64 as a fallback */ }
+  }
+}
+
 async function localPersist(){
   if (_applyingRemote) return;
   var base = branchBase();
@@ -416,7 +429,12 @@ async function localPersist(){
     var ids = Object.keys(cur);
     for (var k=0;k<ids.length;k++){ var id=ids[k], rec=cur[id], js=JSON.stringify(rec);
       if (prev[id]===js) continue;
-      try { await _postJSON(base+'/data/'+c+'/'+encodeURIComponent(id), { rec:plain(rec), origin:CLIENT_ID }); prev[id]=js; }
+      try {
+        if (c==='jobs') await localUploadJobPhotos(rec);       // base64 photos -> files on the mini-PC
+        var js2 = JSON.stringify(rec);                          // recompute (photos may now carry urls)
+        await _postJSON(base+'/data/'+c+'/'+encodeURIComponent(id), { rec:plain(rec), origin:CLIENT_ID });
+        prev[id]=js2;
+      }
       catch(e){ console.error('local save '+c+'/'+id, e); }
     }
     var prevIds = Object.keys(prev);

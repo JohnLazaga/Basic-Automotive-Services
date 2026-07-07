@@ -42,6 +42,7 @@ const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
 const APP_DIR = process.env.APP_DIR || '';   // optional: also serve the branch app (dist/<slug>) at /
 const SQL_CONFIG_FILE = path.join(__dirname, 'sql-config.json');
 const TSV_FILE = path.join(__dirname, 'parts.tsv');
+const PHOTOS_DIR = path.join(__dirname, 'photos');   // job photos (Phase 3e)
 const PS_FILE = path.join(os.tmpdir(), 'bjmsi_partsquery.ps1');
 const store = createStore(path.join(__dirname, 'data.sqlite'));   // operational data (Phase 3)
 const sessions = new Map();   // token -> user (in-memory; re-login after a restart)
@@ -309,6 +310,8 @@ const server = http.createServer(async function (req, res) {
     if (p === '/events' && req.method === 'GET') return sse.addClient(req, res);
     if (p === '/data' && req.method === 'GET') return send(res, 200, store.getState());
     if (p === '/data/import' && req.method === 'POST') {
+      var suImp = sessionUser(req, u);
+      if (!(suImp && suImp.isAdmin)) return send(res, 403, { error: 'admin_only' });
       var st = await readBody(req);
       try { var n = store.importState(st); sse.broadcast('reload', { reason: 'import' }); return send(res, 200, { ok: true, count: n }); }
       catch (e) { return send(res, 200, { ok: false, error: e.message }); }
@@ -346,6 +349,38 @@ const server = http.createServer(async function (req, res) {
       }
     }
     return send(res, 404, { error: 'unknown_data_route', path: p });
+  }
+
+  // ---- job photos (Phase 3e): stored as files on the mini-PC ----
+  if (p.indexOf('/photos/') === 0) {
+    if (req.method === 'GET') {
+      // Served openly (LAN / customer portal). Images can't send auth headers.
+      var rel = p.replace(/^\/photos\//, '');
+      var pfile = path.resolve(path.join(PHOTOS_DIR, rel));
+      if (pfile.indexOf(path.resolve(PHOTOS_DIR)) !== 0) return send(res, 404, { error: 'not_found' });
+      try {
+        var pbuf = fs.readFileSync(pfile);
+        var pext = path.extname(pfile).toLowerCase();
+        var pct = pext === '.png' ? 'image/png' : pext === '.webp' ? 'image/webp' : 'image/jpeg';
+        cors(res); res.writeHead(200, { 'Content-Type': pct, 'Cache-Control': 'public, max-age=31536000' });
+        return res.end(pbuf);
+      } catch (e) { return send(res, 404, { error: 'not_found' }); }
+    }
+    if (req.method === 'POST') {
+      if (!sessionUser(req, u)) return send(res, 401, { error: 'auth_required' });
+      var phm = p.match(/^\/photos\/([^/]+)\/([^/]+)$/);
+      if (!phm) return send(res, 400, { error: 'bad_path' });
+      var pbody = await readBody(req);
+      var m2 = String(pbody.data || '').match(/^data:image\/(\w+);base64,(.*)$/);
+      if (!m2) return send(res, 400, { error: 'bad_data' });
+      var pex = m2[1] === 'png' ? 'png' : m2[1] === 'webp' ? 'webp' : 'jpg';
+      var jid = decodeURIComponent(phm[1]).replace(/[^a-zA-Z0-9_-]/g, '');
+      var pid = decodeURIComponent(phm[2]).replace(/[^a-zA-Z0-9_-]/g, '');
+      var pdir = path.join(PHOTOS_DIR, jid);
+      try { fs.mkdirSync(pdir, { recursive: true }); fs.writeFileSync(path.join(pdir, pid + '.' + pex), Buffer.from(m2[2], 'base64')); }
+      catch (e) { return send(res, 200, { ok: false, error: e.message }); }
+      return send(res, 200, { ok: true, url: '/photos/' + jid + '/' + pid + '.' + pex });
+    }
   }
 
   // ---- optionally serve the branch app itself (self-contained mini-PC) ----
