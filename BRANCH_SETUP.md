@@ -135,8 +135,11 @@ is how you set up the mini-PC.
       `git pull`s *your* code — no one at a branch can inject their own.
 - [ ] Keep **push access to the repo restricted to you.** That is the control
       that makes "all updates come from me" true.
-- [ ] (Optional) a scheduled `git pull` on the mini-PC auto-reverts any local
-      file tampering back to your version — ask to enable.
+- [ ] **Auto-repair (recommended):** run **`branch-server\install-autorepair.cmd`**
+      once on the mini-PC. It schedules `auto-repair.cmd` hourly, which hard-resets
+      all code to your repo (reverting any local tampering), rebuilds the app, and
+      restarts only if server code changed. Data is never touched. *Note: this
+      also auto-applies your pushes to `main` within the hour.*
 
 **C. Lock down the mini-PC (your IT step — the real dependency)**
 The app files and data (`data.sqlite`, `sql-config.json` with the DB password)
