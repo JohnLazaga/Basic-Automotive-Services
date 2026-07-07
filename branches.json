@@ -19,6 +19,16 @@
     "partsSource": "local",
     "dataSource": "cloud"
   },
+  "pilot": {
+    "id": "pilot",
+    "slug": "pilot",
+    "name": "Basic by JMSI — Pilot",
+    "localUrl": "http://pilot.basic.local",
+    "publicUrl": "https://pilot.basicautomotiveservices.com",
+    "partsUrl": "http://pilot.basic.local:8790",
+    "partsSource": "local",
+    "dataSource": "local"
+  },
   "localtest": {
     "id": "localtest",
     "slug": "localtest",

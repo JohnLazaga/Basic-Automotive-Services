@@ -350,7 +350,14 @@ var SESSION_TOKEN = null;                 /* branch-server session (Phase 3d) */
 var SESSION_KEY = 'bas_session';
 
 function dataLocal(){ return typeof BRANCH!=='undefined' && BRANCH && BRANCH.dataSource==='local' && !!BRANCH.partsUrl; }
-function branchBase(){ return (typeof BRANCH!=='undefined' && BRANCH && BRANCH.partsUrl) ? String(BRANCH.partsUrl).replace(/\/+$/,'') : ''; }
+/* The branch server also serves the app, so its base is simply the origin the
+   page was loaded from — works from any device/IP/hostname with no baked URL.
+   BRANCH.partsUrl is only the "this is a local branch" flag + a non-browser
+   fallback (e.g. tests). */
+function branchBase(){
+  if (typeof location!=='undefined' && location && String(location.origin||'').indexOf('http')===0) return location.origin;
+  return (typeof BRANCH!=='undefined' && BRANCH && BRANCH.partsUrl) ? String(BRANCH.partsUrl).replace(/\/+$/,'') : '';
+}
 function authHeaders(extra){ var h=extra||{}; if(SESSION_TOKEN) h['X-Session-Token']=SESSION_TOKEN; return h; }
 function _postJSON(url, obj){ return fetch(url, { method:'POST', headers:authHeaders({'Content-Type':'application/json'}), body:JSON.stringify(obj) }).then(function(r){ return r.json(); }); }
 
