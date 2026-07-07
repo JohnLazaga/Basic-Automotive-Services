@@ -237,6 +237,7 @@ async function boot(){
   if (typeof startUpdateChecker==='function') startUpdateChecker();   // self-update prompt
   // Cloud mode: paint the login screen immediately, load Firebase in the
   // background (deferred SDK), then wire auth — so the page never blocks on it.
+  if (typeof dataLocal==='function' && dataLocal()){ await localBootStart(); return; }   // local branch: no cloud, load from mini-PC
   if (typeof cloudOn==='function' && cloudOn()){ cloudStart(); return; }
   await loadState();
   applyTheme((S.shop && S.shop.theme) || 'light');

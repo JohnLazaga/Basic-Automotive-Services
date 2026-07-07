@@ -234,7 +234,10 @@ function persist(){
   setSaveState('saving');
   if (SAVE_TIMER) clearTimeout(SAVE_TIMER);
   SAVE_TIMER = setTimeout(function(){
-    if (typeof cloudOn==='function' && cloudOn() && typeof FB!=='undefined' && FB && FB.ready && FB.user){
+    if (typeof dataLocal==='function' && dataLocal()){
+      localPersist().then(function(){ setSaveState('saved'); })
+        .catch(function(e){ console.error('local save failed', e); setSaveState('saved'); });
+    } else if (typeof cloudOn==='function' && cloudOn() && typeof FB!=='undefined' && FB && FB.ready && FB.user){
       cloudPersist().then(function(){ setSaveState('saved'); })
         .catch(function(e){ console.error('cloud save failed', e); setSaveState('saved'); });
     } else {
@@ -275,6 +278,12 @@ function allocateSeriesNumber(kind, prefix, pad){
     if(!S.counters) S.counters={};
     S.counters[kind] = Math.max(Number(S.counters[kind])||0, seed);
     return prefix + String(S.counters[kind]).padStart(pad||4,'0');
+  }
+  if (typeof dataLocal==='function' && dataLocal()){
+    // Server-atomic allocation on the branch mini-PC (no duplicate OR/JO numbers).
+    return _postJSON(branchBase()+'/data/counter/'+encodeURIComponent(kind), { seed: seed })
+      .then(function(d){ if(!d||!d.ok) throw new Error((d&&d.error)||'counter'); if(!S.counters)S.counters={}; S.counters[kind]=d.value; return prefix + String(d.value).padStart(pad||4,'0'); })
+      .catch(function(){ return local(); });
   }
   if (typeof cloudOn==='function' && cloudOn() && typeof FB!=='undefined' && FB && FB.ready && FB.db && FB.user){
     var ref = FB.db.collection('meta').doc(kind+'counter');

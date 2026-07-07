@@ -18,5 +18,15 @@
     "partsUrl": "http://cebu.basic.local:8790",
     "partsSource": "local",
     "dataSource": "cloud"
+  },
+  "localtest": {
+    "id": "localtest",
+    "slug": "localtest",
+    "name": "Basic by JMSI — Local Test",
+    "localUrl": "http://localhost:8790",
+    "publicUrl": "http://localhost:8790",
+    "partsUrl": "http://localhost:8790",
+    "partsSource": "local",
+    "dataSource": "local"
   }
 }

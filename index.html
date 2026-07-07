@@ -422,7 +422,7 @@ var BRANCH = {"id":"main","slug":"main","name":"Basic by JMSI — Main","localUr
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.0.2 · 2026-07-06';
+var APP_VERSION = 'v1.0.2 · 2026-07-07';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -647,7 +647,10 @@ function persist(){
   setSaveState('saving');
   if (SAVE_TIMER) clearTimeout(SAVE_TIMER);
   SAVE_TIMER = setTimeout(function(){
-    if (typeof cloudOn==='function' && cloudOn() && typeof FB!=='undefined' && FB && FB.ready && FB.user){
+    if (typeof dataLocal==='function' && dataLocal()){
+      localPersist().then(function(){ setSaveState('saved'); })
+        .catch(function(e){ console.error('local save failed', e); setSaveState('saved'); });
+    } else if (typeof cloudOn==='function' && cloudOn() && typeof FB!=='undefined' && FB && FB.ready && FB.user){
       cloudPersist().then(function(){ setSaveState('saved'); })
         .catch(function(e){ console.error('cloud save failed', e); setSaveState('saved'); });
     } else {
@@ -688,6 +691,12 @@ function allocateSeriesNumber(kind, prefix, pad){
     if(!S.counters) S.counters={};
     S.counters[kind] = Math.max(Number(S.counters[kind])||0, seed);
     return prefix + String(S.counters[kind]).padStart(pad||4,'0');
+  }
+  if (typeof dataLocal==='function' && dataLocal()){
+    // Server-atomic allocation on the branch mini-PC (no duplicate OR/JO numbers).
+    return _postJSON(branchBase()+'/data/counter/'+encodeURIComponent(kind), { seed: seed })
+      .then(function(d){ if(!d||!d.ok) throw new Error((d&&d.error)||'counter'); if(!S.counters)S.counters={}; S.counters[kind]=d.value; return prefix + String(d.value).padStart(pad||4,'0'); })
+      .catch(function(){ return local(); });
   }
   if (typeof cloudOn==='function' && cloudOn() && typeof FB!=='undefined' && FB && FB.ready && FB.db && FB.user){
     var ref = FB.db.collection('meta').doc(kind+'counter');
@@ -3716,6 +3725,7 @@ async function boot(){
   if (typeof startUpdateChecker==='function') startUpdateChecker();   // self-update prompt
   // Cloud mode: paint the login screen immediately, load Firebase in the
   // background (deferred SDK), then wire auth — so the page never blocks on it.
+  if (typeof dataLocal==='function' && dataLocal()){ await localBootStart(); return; }   // local branch: no cloud, load from mini-PC
   if (typeof cloudOn==='function' && cloudOn()){ cloudStart(); return; }
   await loadState();
   applyTheme((S.shop && S.shop.theme) || 'light');
@@ -4093,6 +4103,98 @@ function cloudSubscribe(){
   _cloudSubs.push(um);
 }
 function cloudUnsub(){ _cloudSubs.forEach(function(u){ try{u();}catch(e){} }); _cloudSubs=[]; }
+
+/* ============================================================================
+   LOCAL BRANCH BACKEND (Phase 3) — operational data on the branch mini-PC.
+   Selected when BRANCH.dataSource==='local'. Talks to the same branch server
+   as parts (BRANCH.partsUrl): GET /data on load, per-record POST/DELETE driven
+   by the persist() diff, live changes over an SSE /events stream, and
+   server-atomic counters. The Firestore (cloud) path is left untouched.
+   ========================================================================== */
+var CLIENT_ID = (typeof Math!=='undefined') ? ('c'+Math.random().toString(36).slice(2)+Date.now().toString(36)) : 'c0';
+var _es = null;
+
+function dataLocal(){ return typeof BRANCH!=='undefined' && BRANCH && BRANCH.dataSource==='local' && !!BRANCH.partsUrl; }
+function branchBase(){ return (typeof BRANCH!=='undefined' && BRANCH && BRANCH.partsUrl) ? String(BRANCH.partsUrl).replace(/\/+$/,'') : ''; }
+function _postJSON(url, obj){ return fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(obj) }).then(function(r){ return r.json(); }); }
+
+async function localLoadAll(){
+  var res = await fetch(branchBase()+'/data');
+  if(!res.ok) throw new Error('branch server HTTP '+res.status);
+  var d = await res.json();
+  var empty = !d.shop && COLLECTIONS.every(function(c){ return !((d.collections&&d.collections[c])||[]).length; });
+  if (empty){
+    // First run for this branch: seed the server from current local data (or defaults).
+    var raw = await Storage.get(STORE_KEY); var base=null; try{ base = raw?JSON.parse(raw):null; }catch(e){}
+    if (!base || base.version!==2) base = seedState();
+    await _postJSON(branchBase()+'/data/import', base);
+    S = base;
+  } else {
+    var st = seedState();
+    if (d.shop) st.shop = Object.assign(st.shop, d.shop);
+    if (d.counters) st.counters = Object.assign(st.counters, d.counters);
+    COLLECTIONS.forEach(function(c){ st[c] = (d.collections && d.collections[c]) || []; });
+    S = st;
+  }
+  ensureStateShape();
+  rememberSnap();
+  return S;
+}
+
+function _applyRemote(fn){ _applyingRemote = true; try{ fn(); }catch(e){ console.error('apply remote', e); } _applyingRemote = false; if(!modalOpen()) render(); }
+
+function localSubscribe(){
+  if (typeof EventSource==='undefined') return;
+  if (_es){ try{ _es.close(); }catch(e){} }
+  _es = new EventSource(branchBase()+'/events');
+  _es.addEventListener('upsert', function(ev){ var m; try{m=JSON.parse(ev.data);}catch(e){return;} if(m.origin===CLIENT_ID) return;
+    _applyRemote(function(){ var arr=S[m.coll]||(S[m.coll]=[]); var i=-1; for(var x=0;x<arr.length;x++){ if(String(arr[x].id)===String(m.id)){ i=x; break; } }
+      if(i>=0) arr[i]=m.rec; else arr.push(m.rec); (_cloudSnap[m.coll]||(_cloudSnap[m.coll]={}))[m.id]=JSON.stringify(m.rec); });
+  });
+  _es.addEventListener('delete', function(ev){ var m; try{m=JSON.parse(ev.data);}catch(e){return;} if(m.origin===CLIENT_ID) return;
+    _applyRemote(function(){ S[m.coll]=(S[m.coll]||[]).filter(function(r){return String(r.id)!==String(m.id);}); if(_cloudSnap[m.coll]) delete _cloudSnap[m.coll][m.id]; });
+  });
+  _es.addEventListener('meta', function(ev){ var m; try{m=JSON.parse(ev.data);}catch(e){return;} if(m.origin===CLIENT_ID) return;
+    _applyRemote(function(){ if(m.key==='shop'){ S.shop=Object.assign(S.shop||{},m.value); _metaSnap.shop=JSON.stringify(S.shop); } else if(m.key==='counters'){ S.counters=Object.assign(S.counters||{},m.value); _metaSnap.counters=JSON.stringify(S.counters); } });
+  });
+  _es.addEventListener('reload', function(){ localLoadAll().then(function(){ if(!modalOpen()) render(); }).catch(function(){}); });
+}
+
+async function localPersist(){
+  if (_applyingRemote) return;
+  var base = branchBase();
+  var shopJSON = JSON.stringify(S.shop);
+  if (shopJSON !== _metaSnap.shop){ await _postJSON(base+'/data/meta/shop', { value:plain(S.shop), origin:CLIENT_ID }); _metaSnap.shop = shopJSON; }
+  var cntJSON = JSON.stringify(S.counters);
+  if (cntJSON !== _metaSnap.counters){ await _postJSON(base+'/data/meta/counters', { value:plain(S.counters), origin:CLIENT_ID }); _metaSnap.counters = cntJSON; }
+  for (var i=0;i<COLLECTIONS.length;i++){
+    var c = COLLECTIONS[i];
+    var cur = {}; (S[c]||[]).forEach(function(r){ cur[r.id]=r; });
+    var prev = _cloudSnap[c] || (_cloudSnap[c]={});
+    var ids = Object.keys(cur);
+    for (var k=0;k<ids.length;k++){ var id=ids[k], rec=cur[id], js=JSON.stringify(rec);
+      if (prev[id]===js) continue;
+      try { await _postJSON(base+'/data/'+c+'/'+encodeURIComponent(id), { rec:plain(rec), origin:CLIENT_ID }); prev[id]=js; }
+      catch(e){ console.error('local save '+c+'/'+id, e); }
+    }
+    var prevIds = Object.keys(prev);
+    for (var d2=0; d2<prevIds.length; d2++){ var did=prevIds[d2];
+      if(!cur[did]){ try { await fetch(base+'/data/'+c+'/'+encodeURIComponent(did)+'?origin='+CLIENT_ID, { method:'DELETE' }); delete prev[did]; } catch(e){ console.error('local del '+c+'/'+did, e); } }
+    }
+  }
+}
+
+/* Boot for a local branch: no cloud/auth (Phase 3d adds local login). */
+async function localBootStart(){
+  renderCloudLoading();
+  if (typeof CURRENT_USER==='undefined' || !CURRENT_USER){ CURRENT_USER = { name:'Local', role:'Admin', isAdmin:true, active:true }; }
+  try { await localLoadAll(); }
+  catch(e){ renderCloudError('Couldn’t reach the branch server.', 'Is the mini-PC server running at '+branchBase()+'? ('+((e&&e.message)||'')+')'); return; }
+  applyTheme((S.shop && S.shop.theme) || 'light');
+  localSubscribe();
+  render();
+  if (typeof loadCatalog==='function') loadCatalog();
+}
 
 /* ---- Login screen --------------------------------------------------------- */
 function renderLogin(msg, kind, connecting){

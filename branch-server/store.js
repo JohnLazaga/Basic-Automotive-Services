@@ -49,7 +49,8 @@ function createStore(file) {
       db.exec('BEGIN IMMEDIATE');
       try {
         const row = qCntGet.get(name);
-        const val = row ? row.value + 1 : (seed == null ? 1 : Number(seed));
+        let val = row ? row.value + 1 : (seed == null ? 1 : Number(seed));
+        if (seed != null && Number(seed) > val) val = Number(seed);   // honor seed as a floor
         qCntSet.run(name, val);
         db.exec('COMMIT');
         return val;
