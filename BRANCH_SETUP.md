@@ -32,15 +32,14 @@ Produces `dist/davao/index.html` with that branch's URLs baked in.
 
 ## 3. Prepare the mini-PC
 1. Install [Node.js](https://nodejs.org) (LTS).
-2. Copy the `branch-server/` folder and the `dist/<slug>/` folder onto the PC.
-3. Start the server (serves app **and** parts on port 8790):
-   ```
-   set BRANCH=Davao
-   set APP_DIR=..\dist\davao
-   node server.js
-   ```
-4. **Auto-start on boot** so it survives reboots — Task Scheduler ("At startup",
-   run `node C:\basic\branch-server\server.js`), or install NSSM / pm2.
+2. Put the repo on the PC. Easiest is `git clone` (lets you one-click update
+   later); otherwise copy the `branch-server/` and `dist/<slug>/` folders.
+3. In `branch-server/`, copy **`branch.config.example.cmd`** to
+   **`branch.config.cmd`** and set `SLUG`, `BRANCH`, `PORT` for this branch.
+4. Double-click **`start.cmd`** — it serves the app **and** parts on the port,
+   in its own window (logs to `server.log`).
+5. **Auto-start on boot:** add a Task Scheduler task ("At startup") that runs
+   `branch-server\start.cmd`, or install NSSM / pm2 pointing at `server.js`.
 
 ## 4. Give the mini-PC its LAN name
 So staff can type `http://davao.basic.local` instead of an IP:
@@ -88,6 +87,24 @@ port-forwarding**, working behind the shop's NAT:
 Now: staff on the LAN use the fast offline `*.basic.local` URL; remote staff and
 customers (QR portal) use the public `*.basicautomotiveservices.com`. If the
 internet drops, the branch keeps running locally.
+
+## Updating a branch (push app / server changes)
+You keep developing on your machine; branches run independently. To roll a new
+version to a branch's mini-PC:
+
+- **Online (recommended):** double-click **`branch-server\update.cmd`**. It
+  `git pull`s the latest, rebuilds this branch's app (`build.js --branch=<slug>`),
+  and restarts the server. Open browsers then show a **"reload to update"**
+  prompt automatically (the running app polls `version.txt`).
+- **Offline:** copy the new `branch-server/` and/or `dist/<slug>/` files over
+  (USB / LAN / remote), then run **`update.cmd --offline`** — it just restarts
+  with the already-copied files (no pull, no build).
+
+Helpers: `start.cmd` / `stop.cmd` control the server on their own.
+
+**Updates never touch data.** Jobs, estimates, accounts, and OR/JO counters live
+in `data.sqlite`; replacing app or server code leaves them intact. Roll out one
+branch at a time; keep app + server in step only when you change the data API.
 
 ## Keeping the catalog fresh
 - Manual: **Settings → Re-sync now** in the app.

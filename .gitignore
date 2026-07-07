@@ -12,6 +12,8 @@ branch-server/data.sqlite
 branch-server/data.sqlite-shm
 branch-server/data.sqlite-wal
 branch-server/node_modules/
+branch-server/branch.config.cmd
+branch-server/server.log
 
 # OS cruft
 Thumbs.db
