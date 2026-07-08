@@ -1,0 +1,90 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn(){ return request.auth != null; }
+    function isOwner(){ return signedIn() && request.auth.token.email == 'johnlazaga1980@yahoo.com'; }
+    function uref(){ return /databases/$(database)/documents/users/$(request.auth.uid); }
+    function hasAcct(){ return signedIn() && exists(uref()); }
+    function u(){ return get(uref()).data; }
+    function active(){ return isOwner() || (hasAcct() && u().active != false); }
+    function isAdmin(){ return isOwner() || (hasAcct() && u().isAdmin == true); }
+
+    // ===== LEGACY top-level (kept during transition; removed after cutover) =====
+    match /jobs/{id}           { allow read, write: if active(); }
+    match /vehicles/{id}       { allow read, write: if active(); }
+    match /estimates/{id}      { allow read, write: if active(); }
+    match /appointments/{id}   { allow read, write: if active(); }
+    match /parts/{id}          { allow read, write: if active(); }
+    match /labor/{id}          { allow read, write: if active(); }
+    match /purchaseOrders/{id} { allow read, write: if active(); }
+    match /bays/{id}           { allow read, write: if active(); }
+    match /meta/counters       { allow read: if signedIn(); allow write: if active(); }
+    match /meta/orcounter      { allow read: if signedIn(); allow write: if active(); }
+    match /meta/jocounter      { allow read: if signedIn(); allow write: if active(); }
+    match /meta/estcounter     { allow read: if signedIn(); allow write: if active(); }
+    match /meta/pocounter      { allow read: if signedIn(); allow write: if active(); }
+    match /portal/{doc} {
+      allow read: if true;
+      allow write: if active();
+    }
+    match /appt_requests/{doc} {
+      allow read, update, delete: if active();
+      allow create: if request.resource.data.status == 'new'
+        && request.resource.data.name is string && request.resource.data.name.size() < 120
+        && request.resource.data.contact is string && request.resource.data.contact.size() < 60
+        && request.resource.data.notes is string && request.resource.data.notes.size() < 1000;
+    }
+    match /catalog/{id} { allow read: if active(); allow write: if isAdmin(); }
+    match /staff/{id}  { allow read: if active(); allow write: if isAdmin(); }
+    match /meta/shop   { allow read: if signedIn(); allow write: if isAdmin(); }
+    match /users/{uid} { allow read: if isAdmin() || request.auth.uid == uid; allow write: if isAdmin(); }
+
+    // ===== NEW per-branch subtree (multi-tenant) =====
+    function acctPath(b){ return /databases/$(database)/documents/branches/$(b)/users/$(request.auth.uid); }
+    function memberOf(b){ return signedIn() && exists(acctPath(b)) && get(acctPath(b)).data.active != false; }
+    function adminOf(b){ return memberOf(b) && get(acctPath(b)).data.isAdmin == true; }
+
+    match /branches/{b} {
+      allow read:  if isOwner() || memberOf(b);
+      allow write: if isOwner();
+
+      match /{coll}/{doc} {
+        allow read, write: if (isOwner() || memberOf(b))
+                              && coll != 'users' && coll != 'meta'
+                              && coll != 'portal' && coll != 'appt_requests'
+                              && coll != 'portal_claims';
+      }
+      match /meta/shop {
+        allow read:  if isOwner() || memberOf(b);
+        allow write: if isOwner() || adminOf(b);
+      }
+      match /meta/{doc} {
+        allow read, write: if isOwner() || memberOf(b);
+      }
+      match /users/{uid} {
+        allow get:   if isOwner() || adminOf(b) || (signedIn() && request.auth.uid == uid);
+        allow list:  if isOwner() || adminOf(b);
+        allow write: if isOwner() || adminOf(b);
+      }
+      match /portal/{doc} {
+        allow read:  if true;
+        allow write: if isOwner() || memberOf(b);
+      }
+      match /appt_requests/{doc} {
+        allow create: if request.resource.data.status == 'new'
+                      && request.resource.data.name is string    && request.resource.data.name.size() < 120
+                      && request.resource.data.contact is string && request.resource.data.contact.size() < 60
+                      && request.resource.data.notes is string   && request.resource.data.notes.size() < 1000;
+        allow read, update, delete: if isOwner() || memberOf(b);
+      }
+      match /portal_claims/{claim} {
+        allow create: if request.resource.data.keys().hasOnly(['vehicleId','pin','ts'])
+                      && request.resource.data.pin is string
+                      && request.resource.data.pin.size() >= 4
+                      && request.resource.data.pin.size() <= 6;
+        allow read, delete: if isOwner() || memberOf(b);
+        allow update: if false;
+      }
+    }
+  }
+}

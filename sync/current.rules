@@ -1,0 +1,54 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn(){ return request.auth != null; }
+    function isOwner(){ return signedIn() && request.auth.token.email == 'johnlazaga1980@yahoo.com'; }
+    function uref(){ return /databases/$(database)/documents/users/$(request.auth.uid); }
+    function hasAcct(){ return signedIn() && exists(uref()); }
+    function u(){ return get(uref()).data; }
+    function active(){ return isOwner() || (hasAcct() && u().active != false); }
+    function isAdmin(){ return isOwner() || (hasAcct() && u().isAdmin == true); }
+
+    // Operational data + catalogs (incl. inventory stock changes during jobs)
+    match /jobs/{id}           { allow read, write: if active(); }
+    match /vehicles/{id}       { allow read, write: if active(); }
+    match /estimates/{id}      { allow read, write: if active(); }
+    match /appointments/{id}   { allow read, write: if active(); }
+    match /parts/{id}          { allow read, write: if active(); }
+    match /labor/{id}          { allow read, write: if active(); }
+    match /purchaseOrders/{id} { allow read, write: if active(); }
+    match /bays/{id}           { allow read, write: if active(); }
+    match /meta/counters       { allow read: if signedIn(); allow write: if active(); }
+    match /meta/orcounter      { allow read: if signedIn(); allow write: if active(); }
+
+    // Public customer portal: minimal per-vehicle snapshot only.
+    match /portal/{doc} {
+      allow read: if true;
+      allow write: if active();
+    }
+
+    // Public customer appointment requests: create-only from the portal.
+    match /appt_requests/{doc} {
+      allow read, update, delete: if active();
+      allow create: if request.resource.data.status == 'new'
+        && request.resource.data.name is string && request.resource.data.name.size() < 120
+        && request.resource.data.contact is string && request.resource.data.contact.size() < 60
+        && request.resource.data.notes is string && request.resource.data.notes.size() < 1000;
+    }
+
+    match /meta/jocounter      { allow read: if signedIn(); allow write: if active(); }
+
+    match /meta/estcounter      { allow read: if signedIn(); allow write: if active(); }
+
+    match /meta/pocounter      { allow read: if signedIn(); allow write: if active(); }
+
+    // Parts reference catalog (synced from SQL) — readable only by active staff,
+    // written by the server sync (admin SDK bypasses rules). Never public.
+    match /catalog/{id} { allow read: if active(); allow write: if isAdmin(); }
+
+    // Crown jewels — ADMIN ONLY
+    match /staff/{id}  { allow read: if active(); allow write: if isAdmin(); }
+    match /meta/shop   { allow read: if signedIn(); allow write: if isAdmin(); }
+    match /users/{uid} { allow read: if isAdmin() || request.auth.uid == uid; allow write: if isAdmin(); }
+  }
+}
