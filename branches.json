@@ -14,30 +14,30 @@
     "slug": "commonwealth",
     "name": "Basic by JMSI — Commonwealth",
     "localUrl": "http://commonwealth:8790",
-    "publicUrl": "https://commonwealth.basicautomotiveservices.com",
-    "partsUrl": "http://commonwealth:8790",
-    "partsSource": "local",
-    "dataSource": "local"
+    "publicUrl": "https://basicautomotiveservices.com/commonwealth",
+    "partsUrl": "",
+    "partsSource": "cloud",
+    "dataSource": "cloud"
   },
-  "Sudipen": {
-    "id": "Sudipen",
-    "slug": "Sudipen",
+  "sudipen": {
+    "id": "sudipen",
+    "slug": "sudipen",
     "name": "Basic by JMSI — Sudipen",
-    "localUrl": "http://Sudipen:8790",
-    "publicUrl": "https://sudipen.basicautomotiveservices.com",
-    "partsUrl": "http://Sudipen:8790",
-    "partsSource": "local",
-    "dataSource": "local"
+    "localUrl": "http://sudipen:8790",
+    "publicUrl": "https://basicautomotiveservices.com/sudipen",
+    "partsUrl": "",
+    "partsSource": "cloud",
+    "dataSource": "cloud"
   },
   "sandbox": {
     "id": "sandbox",
     "slug": "sandbox",
     "name": "Basic by JMSI — Sandbox (training)",
     "localUrl": "http://sandbox:8790",
-    "publicUrl": "https://sandbox.basicautomotiveservices.com",
-    "partsUrl": "http://sandbox:8790",
-    "partsSource": "local",
-    "dataSource": "local"
+    "publicUrl": "https://basicautomotiveservices.com/sandbox",
+    "partsUrl": "",
+    "partsSource": "cloud",
+    "dataSource": "cloud"
   },
   "localtest": {
     "id": "localtest",
