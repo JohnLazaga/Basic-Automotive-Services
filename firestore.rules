@@ -1,0 +1,93 @@
+rules_version = '2';
+/* ============================================================================
+   Multi-tenant rules — every branch's data lives under branches/{b}/...
+   A user belongs to a branch iff branches/{b}/users/{uid} exists and is active.
+   The shop owner (by email) is a super-admin across every branch.
+   One branch's data is completely walled off from another's.
+   ========================================================================== */
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isOwner() {
+      return request.auth != null && request.auth.token.email == 'johnlazaga1980@yahoo.com';
+    }
+    function acctPath(b) {
+      return /databases/$(database)/documents/branches/$(b)/users/$(request.auth.uid);
+    }
+    function memberOf(b) {
+      return request.auth != null
+             && exists(acctPath(b))
+             && get(acctPath(b)).data.active != false;
+    }
+    function adminOf(b) {
+      return memberOf(b) && get(acctPath(b)).data.isAdmin == true;
+    }
+
+    /* ---- Branch container doc (metadata only) ---- */
+    match /branches/{b} {
+      allow read:  if isOwner() || memberOf(b);
+      allow write: if isOwner();
+
+      /* Operational data — staff, bays, parts, labor, vehicles, estimates,
+         jobs, appointments, purchaseOrders, catalog. Members of the branch
+         read/write; 'users' and 'meta' are handled by their own stricter rules
+         below (excluded here so members can't edit accounts/shop settings). */
+      match /{coll}/{doc} {
+        allow read, write: if (isOwner() || memberOf(b))
+                              && coll != 'users' && coll != 'meta'
+                              && coll != 'portal' && coll != 'appt_requests'
+                              && coll != 'portal_claims';
+      }
+
+      /* Counters (orcounter/jocounter/estcounter/pocounter/counters) — any
+         active member may run the allocation transaction. Shop settings
+         (meta/shop) are admin-only. */
+      match /meta/shop {
+        allow read:  if isOwner() || memberOf(b);
+        allow write: if isOwner() || adminOf(b);
+      }
+      match /meta/{doc} {
+        allow read, write: if isOwner() || memberOf(b);
+      }
+
+      /* Accounts — a member reads their own doc; admins list/manage all.
+         (Bootstrap of a branch's first admin is done by the owner.) */
+      match /users/{uid} {
+        allow get:   if isOwner() || adminOf(b) || (request.auth != null && request.auth.uid == uid);
+        allow list:  if isOwner() || adminOf(b);
+        allow write: if isOwner() || adminOf(b);
+      }
+
+      /* Public customer portal — anyone may read the minimal snapshot; only
+         branch members publish. */
+      match /portal/{doc} {
+        allow read:  if true;
+        allow write: if isOwner() || memberOf(b);
+      }
+
+      /* Customer appointment requests — anonymous create (validated), staff manage. */
+      match /appt_requests/{doc} {
+        allow create: if request.resource.data.status == 'new'
+                      && request.resource.data.name is string    && request.resource.data.name.size() < 120
+                      && request.resource.data.contact is string && request.resource.data.contact.size() < 60
+                      && request.resource.data.notes is string   && request.resource.data.notes.size() < 1000;
+        allow read, update, delete: if isOwner() || memberOf(b);
+      }
+
+      /* Customer portal PIN self-claim — anonymous create (validated), staff read/delete. */
+      match /portal_claims/{claim} {
+        allow create: if request.resource.data.keys().hasOnly(['vehicleId','pin','ts'])
+                      && request.resource.data.pin is string
+                      && request.resource.data.pin.size() >= 4
+                      && request.resource.data.pin.size() <= 6;
+        allow read, delete: if isOwner() || memberOf(b);
+        allow update: if false;
+      }
+    }
+
+    /* Everything not explicitly matched is denied. */
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

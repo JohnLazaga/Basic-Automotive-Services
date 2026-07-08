@@ -61,12 +61,12 @@ async function loadCatalogCloud(){
   if (typeof FB==='undefined' || !FB.ready || !FB.user) return;
   CATALOG_STATE='loading';
   try {
-    var meta = await FB.db.collection('catalog').doc('_meta').get();
+    var meta = await bcol('catalog').doc('_meta').get();
     if (!meta.exists){ CATALOG={}; CATALOG_STATE='ready'; return; }
     CATALOG_META = meta.data();
     var map = {};
     for (var i=0; i<CATALOG_META.chunks; i++){
-      var d = await FB.db.collection('catalog').doc('chunk_'+i).get();
+      var d = await bcol('catalog').doc('chunk_'+i).get();
       if (!d.exists) continue;
       var arr = JSON.parse(await gunzipB64(d.data().data));
       for (var k=0;k<arr.length;k++){ var r=arr[k]; map[String(r[0])] = [r[1], r[2], r[3]]; }

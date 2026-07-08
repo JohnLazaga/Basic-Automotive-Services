@@ -658,7 +658,7 @@ function orSeed(){
 function allocateOrNumber(){
   var seed = orSeed();
   if (typeof cloudOn==='function' && cloudOn() && typeof FB!=='undefined' && FB && FB.ready && FB.db && FB.user){
-    var ref = FB.db.collection('meta').doc('orcounter');
+    var ref = bcol('meta').doc('orcounter');
     return FB.db.runTransaction(function(t){
       return t.get(ref).then(function(doc){
         var stored = (doc.exists && Number(doc.data().next)>0) ? Number(doc.data().next) : 0;

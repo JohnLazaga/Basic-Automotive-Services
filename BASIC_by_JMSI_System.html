@@ -422,7 +422,7 @@ var BRANCH = {"id":"main","slug":"main","name":"Basic by JMSI — Fairview (Main
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.0.2 · 2026-07-07';
+var APP_VERSION = 'v1.0.2 · 2026-07-08';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -699,7 +699,7 @@ function allocateSeriesNumber(kind, prefix, pad){
       .catch(function(){ return local(); });
   }
   if (typeof cloudOn==='function' && cloudOn() && typeof FB!=='undefined' && FB && FB.ready && FB.db && FB.user){
-    var ref = FB.db.collection('meta').doc(kind+'counter');
+    var ref = bcol('meta').doc(kind+'counter');
     return FB.db.runTransaction(function(t){
       return t.get(ref).then(function(doc){
         var stored = (doc.exists && Number(doc.data().next)>0) ? Number(doc.data().next) : 0;
@@ -2196,7 +2196,7 @@ function orSeed(){
 function allocateOrNumber(){
   var seed = orSeed();
   if (typeof cloudOn==='function' && cloudOn() && typeof FB!=='undefined' && FB && FB.ready && FB.db && FB.user){
-    var ref = FB.db.collection('meta').doc('orcounter');
+    var ref = bcol('meta').doc('orcounter');
     return FB.db.runTransaction(function(t){
       return t.get(ref).then(function(doc){
         var stored = (doc.exists && Number(doc.data().next)>0) ? Number(doc.data().next) : 0;
@@ -3701,7 +3701,7 @@ function portalApptSubmit(){
     name:name, contact:contact, preferredDate:date||'', notes:notes||'', status:'new', source:'portal', createdAt:new Date().toISOString() };
   if(typeof cloudOn==='function' && cloudOn() && typeof FB!=='undefined' && FB && FB.ready && FB.db){
     if(msg){ msg.textContent='Sending…'; msg.style.color=''; }
-    FB.db.collection('appt_requests').add(req).then(function(){ portalApptDone(true); }).catch(function(){ portalApptDone(false); });
+    bcol('appt_requests').add(req).then(function(){ portalApptDone(true); }).catch(function(){ portalApptDone(false); });
   } else {
     portalApptDone(true);   // local/preview
   }
@@ -3740,10 +3740,10 @@ function publishPortalDoc(vehicleId){
     var pdata = portalDataForVehicle(v);
     // Carry a PIN hash (not the PIN) so the customer portal can gate client-side.
     if(v.portalPin && typeof portalHashPin==='function'){
-      portalHashPin(vehicleId, v.portalPin).then(function(h){ pdata.pinHash=h; FB.db.collection('portal').doc(vehicleId).set(pdata); })
-        .catch(function(){ FB.db.collection('portal').doc(vehicleId).set(pdata); });
+      portalHashPin(vehicleId, v.portalPin).then(function(h){ pdata.pinHash=h; bcol('portal').doc(vehicleId).set(pdata); })
+        .catch(function(){ bcol('portal').doc(vehicleId).set(pdata); });
     } else {
-      FB.db.collection('portal').doc(vehicleId).set(pdata);   // no pin → no hash (open / claim)
+      bcol('portal').doc(vehicleId).set(pdata);   // no pin → no hash (open / claim)
     }
   } catch(e){ /* non-fatal */ }
 }
@@ -3758,7 +3758,7 @@ function publishPortalShop(){
   }
   if(typeof cloudOn!=='function' || !cloudOn()) return;
   if(typeof FB==='undefined' || !FB || !FB.ready || !FB.db || !FB.user) return;
-  try { FB.db.collection('portal').doc('_shop').set(payload); } catch(e){ /* non-fatal */ }
+  try { bcol('portal').doc('_shop').set(payload); } catch(e){ /* non-fatal */ }
 }
 function previewPortal(id){
   var v=vehicleById(id);
@@ -3834,6 +3834,14 @@ var FB = { app:null, auth:null, db:null, storage:null, ready:false, user:null };
 
 function cloudOn(){ return (typeof CLOUD_ENABLED!=='undefined') && CLOUD_ENABLED; }
 
+/* ---- Multi-tenant: every cloud path lives under branches/{branchId}/... so
+   each branch's data (and its OR/JO/EST/PO number series) is fully isolated.
+   One branch going offline can never touch another's data. branchId comes from
+   the branch config baked in at build time (defaults to 'main'). ------------- */
+function branchId(){ return (typeof BRANCH!=='undefined' && BRANCH && BRANCH.id) ? String(BRANCH.id) : 'main'; }
+function bRoot(){ return FB.db.collection('branches').doc(branchId()); }
+function bcol(name){ return bRoot().collection(name); }
+
 function initFirebase(){
   if (FB.ready) return true;
   if (typeof firebase==='undefined' || typeof FIREBASE_CONFIG==='undefined') return false;
@@ -3886,8 +3894,8 @@ function loadPublicPortal(){
   var id = (typeof portalVehicleId==='function') ? portalVehicleId() : null;
   if(!id){ renderPortalError('No vehicle specified.'); return; }
   Promise.all([
-    FB.db.collection('portal').doc(id).get(),
-    FB.db.collection('portal').doc('_shop').get().catch(function(){ return null; })
+    bcol('portal').doc(id).get(),
+    bcol('portal').doc('_shop').get().catch(function(){ return null; })
   ]).then(function(res){
     var doc=res[0], shopDoc=res[1];
     var app=document.getElementById('app'); if(!app) return;
@@ -3928,7 +3936,7 @@ async function portalHashPin(id, pin){
 function subscribePortalClaims(){
   if(typeof FB==='undefined' || !FB || !FB.db) return;
   try{
-    FB.db.collection('portal_claims').onSnapshot(function(snap){
+    bcol('portal_claims').onSnapshot(function(snap){
       snap.docChanges().forEach(function(ch){
         if(ch.type!=='added') return;
         var d=ch.doc.data()||{}; var v=vehicleById(d.vehicleId);
@@ -3945,7 +3953,7 @@ var _apptReqData={}, _apptReqQueue=[], _apptReqShowing=false, _apptReqSub=null;
 function subscribeApptRequests(){
   if(typeof FB==='undefined'||!FB||!FB.db||_apptReqSub) return;
   try{
-    _apptReqSub=FB.db.collection('appt_requests').where('status','==','new').onSnapshot(function(snap){
+    _apptReqSub=bcol('appt_requests').where('status','==','new').onSnapshot(function(snap){
       snap.docChanges().forEach(function(ch){
         if(ch.type==='added'){ var id=ch.doc.id; if(_apptReqData[id]) return; _apptReqData[id]=ch.doc.data(); _apptReqQueue.push(id); }
       });
@@ -3972,13 +3980,13 @@ function acceptApptRequest(id){
     customer:r.name||'', contactNumber:r.contact||'', vehicle:r.vehicle||'', service:r.notes||'',
     assignedTo:'TBA', bayId:'TBA', status:'Booked', notes:'From customer portal request', jobId:null });
   persist();
-  if(FB&&FB.db){ try{ FB.db.collection('appt_requests').doc(id).set({status:'accepted', handledAt:new Date().toISOString()},{merge:true}); }catch(e){} }
+  if(FB&&FB.db){ try{ bcol('appt_requests').doc(id).set({status:'accepted', handledAt:new Date().toISOString()},{merge:true}); }catch(e){} }
   delete _apptReqData[id];
   if(typeof toast==='function') toast('Appointment added');
   _apptReqNext(); if(typeof render==='function') render();
 }
 function dismissApptRequest(id){
-  if(FB&&FB.db){ try{ FB.db.collection('appt_requests').doc(id).set({status:'dismissed', handledAt:new Date().toISOString()},{merge:true}); }catch(e){} }
+  if(FB&&FB.db){ try{ bcol('appt_requests').doc(id).set({status:'dismissed', handledAt:new Date().toISOString()},{merge:true}); }catch(e){} }
   delete _apptReqData[id];
   _apptReqNext();
 }
@@ -4066,7 +4074,7 @@ function modalOpen(){ return typeof document!=='undefined' && !!document.querySe
 
 async function cloudLoadAll(){
   // is the cloud already populated?
-  var shopDoc = await FB.db.collection('meta').doc('shop').get();
+  var shopDoc = await bcol('meta').doc('shop').get();
   if (!shopDoc.exists){
     // empty cloud → migrate from current local data (or a fresh seed)
     var raw = await Storage.get(STORE_KEY);
@@ -4088,26 +4096,26 @@ function ensureStateShape(){
 
 async function cloudFetchState(){
   var st = seedState();              // defaults for shop/counters + array shape
-  var shopDoc = await FB.db.collection('meta').doc('shop').get();
+  var shopDoc = await bcol('meta').doc('shop').get();
   if (shopDoc.exists) st.shop = Object.assign(st.shop, shopDoc.data());
-  var cntDoc = await FB.db.collection('meta').doc('counters').get();
+  var cntDoc = await bcol('meta').doc('counters').get();
   if (cntDoc.exists) st.counters = Object.assign(st.counters, cntDoc.data());
   for (var i=0;i<COLLECTIONS.length;i++){
     var c = COLLECTIONS[i];
-    var snap = await FB.db.collection(c).get();
+    var snap = await bcol(c).get();
     st[c] = snap.docs.map(function(d){ return d.data(); });
   }
   return st;
 }
 
 async function cloudMigrate(base){
-  await FB.db.collection('meta').doc('shop').set(plain(base.shop||{}));
-  await FB.db.collection('meta').doc('counters').set(plain(base.counters||{est:0,jo:0,or:1000,po:0}));
+  await bcol('meta').doc('shop').set(plain(base.shop||{}));
+  await bcol('meta').doc('counters').set(plain(base.counters||{est:0,jo:0,or:1000,po:0}));
   for (var i=0;i<COLLECTIONS.length;i++){
     var c = COLLECTIONS[i]; var arr = base[c]||[];
     for (var j=0;j<arr.length;j++){
       var rec = arr[j]; if (c==='jobs') await uploadJobPhotos(rec);
-      await FB.db.collection(c).doc(rec.id).set(plain(rec));
+      await bcol(c).doc(rec.id).set(plain(rec));
     }
   }
 }
@@ -4123,12 +4131,12 @@ async function cloudPersist(){
   // is NOT retried — a denied write here must never block the data writes below.
   var shopJSON = JSON.stringify(S.shop);
   if (shopJSON !== _metaSnap.shop){
-    if (amAdmin){ try { await FB.db.collection('meta').doc('shop').set(plain(S.shop)); } catch(e){ console.error('meta/shop', e); } }
+    if (amAdmin){ try { await bcol('meta').doc('shop').set(plain(S.shop)); } catch(e){ console.error('meta/shop', e); } }
     _metaSnap.shop = shopJSON;
   }
   var cntJSON = JSON.stringify(S.counters);
   if (cntJSON !== _metaSnap.counters){
-    try { await FB.db.collection('meta').doc('counters').set(plain(S.counters)); _metaSnap.counters = cntJSON; } catch(e){ console.error('counters', e); }
+    try { await bcol('meta').doc('counters').set(plain(S.counters)); _metaSnap.counters = cntJSON; } catch(e){ console.error('counters', e); }
   }
   for (var i=0;i<COLLECTIONS.length;i++){
     var c = COLLECTIONS[i];
@@ -4141,14 +4149,14 @@ async function cloudPersist(){
       if (prev[id] === js) continue;                            // unchanged
       try {
         if (c==='jobs') await uploadJobPhotos(rec);             // relocate base64 → Storage
-        await FB.db.collection(c).doc(id).set(plain(rec));
+        await bcol(c).doc(id).set(plain(rec));
         prev[id] = js;                                          // mark synced only on success
       } catch(e){ console.error('save '+c+'/'+id, e); }         // keep stale -> retried next save
     }
     // deletes (gone from S)
     var prevIds = Object.keys(prev);
     for (var d=0; d<prevIds.length; d++){ var did=prevIds[d];
-      if(!cur[did]){ try { await FB.db.collection(c).doc(did).delete(); delete prev[did]; } catch(e){ console.error('del '+c+'/'+did, e); } }
+      if(!cur[did]){ try { await bcol(c).doc(did).delete(); delete prev[did]; } catch(e){ console.error('del '+c+'/'+did, e); } }
     }
   }
 }
@@ -4178,7 +4186,7 @@ async function uploadJobPhotos(job){
 function cloudSubscribe(){
   cloudUnsub();
   COLLECTIONS.forEach(function(c){
-    var u = FB.db.collection(c).onSnapshot(function(snap){
+    var u = bcol(c).onSnapshot(function(snap){
       if (snap.metadata.hasPendingWrites) return;             // ignore our own local writes
       _applyingRemote = true;
       S[c] = snap.docs.map(function(d){ return d.data(); });
@@ -4188,7 +4196,7 @@ function cloudSubscribe(){
     }, function(err){ console.error('listener '+c, err); });
     _cloudSubs.push(u);
   });
-  var um = FB.db.collection('meta').onSnapshot(function(snap){
+  var um = bcol('meta').onSnapshot(function(snap){
     if (snap.metadata.hasPendingWrites) return;
     snap.docs.forEach(function(d){
       if (d.id==='shop'){ S.shop = Object.assign(S.shop||{}, d.data()); _metaSnap.shop = JSON.stringify(S.shop); }
@@ -4401,7 +4409,7 @@ function portalSubmitPin(id, mode){
   if(!(typeof dataLocal==='function' && dataLocal())){
     function fail(m){ if(msg) msg.innerHTML='<b>'+m+'</b>'; if(btn){ btn.textContent=btnLabel; btn.disabled=false; } }
     if(mode==='claim'){
-      FB.db.collection('portal_claims').add({ vehicleId:id, pin:pin, ts:new Date().toISOString() })
+      bcol('portal_claims').add({ vehicleId:id, pin:pin, ts:new Date().toISOString() })
         .then(function(){ portalRememberIfChecked(id,pin); renderPortalData(_cloudPortalDoc||{}, id); })
         .catch(function(){ fail('Couldn’t set that PIN — please try again.'); });
     } else {
@@ -4587,7 +4595,7 @@ function can(cap){
 
 /* ---- Sign-in: load this user's account, bootstrapping the first Admin ----- */
 async function loadCurrentUser(user){
-  var ref = FB.db.collection('users').doc(user.uid);
+  var ref = bcol('users').doc(user.uid);
   var doc = await ref.get();
   if (doc.exists){
     var d = doc.data();
@@ -4596,7 +4604,7 @@ async function loadCurrentUser(user){
     return;
   }
   // No account doc yet — first ever user becomes Admin (bootstrap).
-  var any = await FB.db.collection('users').limit(1).get();
+  var any = await bcol('users').limit(1).get();
   if (any.empty){
     CURRENT_USER = { uid:user.uid, email:user.email, name:user.email, role:'SV', isAdmin:true, active:true };
     await ref.set({ email:user.email, name:user.email, role:'SV', isAdmin:true, active:true, createdAt:new Date().toISOString() });
@@ -4618,7 +4626,7 @@ function loadAccounts(){
   }
   if (!FB.ready) return;
   _accountsLoading = true;
-  FB.db.collection('users').get().then(function(snap){
+  bcol('users').get().then(function(snap){
     ACCOUNTS = snap.docs.map(function(d){ return Object.assign({ uid:d.id }, d.data()); });
     _accountsLoading = false;
     if (ROUTE.view==='accounts') render();
@@ -4676,7 +4684,7 @@ function createStaffAccount(){
   var email=usernameToEmail(username);
   var sec=getSecondaryApp();
   sec.auth().createUserWithEmailAndPassword(email, pass).then(function(cred){
-    return FB.db.collection('users').doc(cred.user.uid).set({
+    return bcol('users').doc(cred.user.uid).set({
       username:username, email:email, name:name, role:role, isAdmin:isAdmin, active:true, password:pass, createdAt:new Date().toISOString()
     }).then(function(){ return sec.auth().signOut(); });
   }).then(function(){
@@ -4687,9 +4695,9 @@ function createStaffAccount(){
   });
 }
 function _localUserUpdate(uid, fields, msg){ return _postJSON(branchBase()+'/auth/users/'+encodeURIComponent(uid), fields).then(function(d){ if(d&&d.ok){ toast(msg); refreshAccounts(); } else toast((d&&d.error)||'Update failed','err'); }); }
-function setAccountRole(uid, role){ if(typeof dataLocal==='function'&&dataLocal()){ return _localUserUpdate(uid,{role:role},'Role updated'); } FB.db.collection('users').doc(uid).update({ role:role }).then(function(){ toast('Role updated'); refreshAccounts(); }); }
-function setAccountAdmin(uid, isAdmin){ if(typeof dataLocal==='function'&&dataLocal()){ return _localUserUpdate(uid,{isAdmin:isAdmin},'Updated'); } FB.db.collection('users').doc(uid).update({ isAdmin:isAdmin }).then(function(){ toast('Updated'); refreshAccounts(); }); }
-function setAccountActive(uid, active){ if(typeof dataLocal==='function'&&dataLocal()){ return _localUserUpdate(uid,{active:active},active?'Account enabled':'Account disabled'); } FB.db.collection('users').doc(uid).update({ active:active }).then(function(){ toast(active?'Account enabled':'Account disabled'); refreshAccounts(); }); }
+function setAccountRole(uid, role){ if(typeof dataLocal==='function'&&dataLocal()){ return _localUserUpdate(uid,{role:role},'Role updated'); } bcol('users').doc(uid).update({ role:role }).then(function(){ toast('Role updated'); refreshAccounts(); }); }
+function setAccountAdmin(uid, isAdmin){ if(typeof dataLocal==='function'&&dataLocal()){ return _localUserUpdate(uid,{isAdmin:isAdmin},'Updated'); } bcol('users').doc(uid).update({ isAdmin:isAdmin }).then(function(){ toast('Updated'); refreshAccounts(); }); }
+function setAccountActive(uid, active){ if(typeof dataLocal==='function'&&dataLocal()){ return _localUserUpdate(uid,{active:active},active?'Account enabled':'Account disabled'); } bcol('users').doc(uid).update({ active:active }).then(function(){ toast(active?'Account enabled':'Account disabled'); refreshAccounts(); }); }
 /* Admin: view and change a staff login password. Firebase Auth never reveals a
    password, so the app keeps an admin-only copy in the user doc. Changing it is
    done by signing into a secondary Firebase app as that user (with the current
@@ -4726,7 +4734,7 @@ function saveStaffPassword(){
   sec.auth().signInWithEmailAndPassword(email, curPw)
     .then(function(cred){ return cred.user.updatePassword(newPw); })
     .then(function(){ return sec.auth().signOut(); })
-    .then(function(){ return FB.db.collection('users').doc(u.uid).update({ password:newPw }); })
+    .then(function(){ return bcol('users').doc(u.uid).update({ password:newPw }); })
     .then(function(){ closeModal(); toast('Password updated'); refreshAccounts(); })
     .catch(function(e){
       var code=(e.code||'');
@@ -4765,7 +4773,7 @@ function saveAccount(){
     }).catch(function(){ toast('Cannot reach branch server','err'); });
     return;
   }
-  FB.db.collection('users').doc(u.uid).update(data)
+  bcol('users').doc(u.uid).update(data)
     .then(function(){ closeModal(); toast('Account saved'); refreshAccounts(); })
     .catch(function(e){ toast(e.message||'Save failed','err'); });
 }
@@ -4776,7 +4784,7 @@ function deleteAccountConfirm(uid){
       fetch(branchBase()+'/auth/users/'+encodeURIComponent(uid), { method:'DELETE', headers:authHeaders() }).then(function(r){ return r.json(); }).then(function(){ closeModal(); toast('Access removed'); refreshAccounts(); }).catch(function(){ toast('Cannot reach branch server','err'); });
       return;
     }
-    FB.db.collection('users').doc(uid).delete().then(function(){ closeModal(); toast('Access removed'); refreshAccounts(); }).catch(function(e){ toast(e.message,'err'); });
+    bcol('users').doc(uid).delete().then(function(){ closeModal(); toast('Access removed'); refreshAccounts(); }).catch(function(e){ toast(e.message,'err'); });
   },'Remove access',true);
 }
 
@@ -4924,12 +4932,12 @@ async function loadCatalogCloud(){
   if (typeof FB==='undefined' || !FB.ready || !FB.user) return;
   CATALOG_STATE='loading';
   try {
-    var meta = await FB.db.collection('catalog').doc('_meta').get();
+    var meta = await bcol('catalog').doc('_meta').get();
     if (!meta.exists){ CATALOG={}; CATALOG_STATE='ready'; return; }
     CATALOG_META = meta.data();
     var map = {};
     for (var i=0; i<CATALOG_META.chunks; i++){
-      var d = await FB.db.collection('catalog').doc('chunk_'+i).get();
+      var d = await bcol('catalog').doc('chunk_'+i).get();
       if (!d.exists) continue;
       var arr = JSON.parse(await gunzipB64(d.data().data));
       for (var k=0;k<arr.length;k++){ var r=arr[k]; map[String(r[0])] = [r[1], r[2], r[3]]; }

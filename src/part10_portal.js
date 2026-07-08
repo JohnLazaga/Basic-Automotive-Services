@@ -178,7 +178,7 @@ function portalApptSubmit(){
     name:name, contact:contact, preferredDate:date||'', notes:notes||'', status:'new', source:'portal', createdAt:new Date().toISOString() };
   if(typeof cloudOn==='function' && cloudOn() && typeof FB!=='undefined' && FB && FB.ready && FB.db){
     if(msg){ msg.textContent='Sending…'; msg.style.color=''; }
-    FB.db.collection('appt_requests').add(req).then(function(){ portalApptDone(true); }).catch(function(){ portalApptDone(false); });
+    bcol('appt_requests').add(req).then(function(){ portalApptDone(true); }).catch(function(){ portalApptDone(false); });
   } else {
     portalApptDone(true);   // local/preview
   }
@@ -217,10 +217,10 @@ function publishPortalDoc(vehicleId){
     var pdata = portalDataForVehicle(v);
     // Carry a PIN hash (not the PIN) so the customer portal can gate client-side.
     if(v.portalPin && typeof portalHashPin==='function'){
-      portalHashPin(vehicleId, v.portalPin).then(function(h){ pdata.pinHash=h; FB.db.collection('portal').doc(vehicleId).set(pdata); })
-        .catch(function(){ FB.db.collection('portal').doc(vehicleId).set(pdata); });
+      portalHashPin(vehicleId, v.portalPin).then(function(h){ pdata.pinHash=h; bcol('portal').doc(vehicleId).set(pdata); })
+        .catch(function(){ bcol('portal').doc(vehicleId).set(pdata); });
     } else {
-      FB.db.collection('portal').doc(vehicleId).set(pdata);   // no pin → no hash (open / claim)
+      bcol('portal').doc(vehicleId).set(pdata);   // no pin → no hash (open / claim)
     }
   } catch(e){ /* non-fatal */ }
 }
@@ -235,7 +235,7 @@ function publishPortalShop(){
   }
   if(typeof cloudOn!=='function' || !cloudOn()) return;
   if(typeof FB==='undefined' || !FB || !FB.ready || !FB.db || !FB.user) return;
-  try { FB.db.collection('portal').doc('_shop').set(payload); } catch(e){ /* non-fatal */ }
+  try { bcol('portal').doc('_shop').set(payload); } catch(e){ /* non-fatal */ }
 }
 function previewPortal(id){
   var v=vehicleById(id);

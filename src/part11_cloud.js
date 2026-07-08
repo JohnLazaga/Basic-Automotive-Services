@@ -10,6 +10,14 @@ var FB = { app:null, auth:null, db:null, storage:null, ready:false, user:null };
 
 function cloudOn(){ return (typeof CLOUD_ENABLED!=='undefined') && CLOUD_ENABLED; }
 
+/* ---- Multi-tenant: every cloud path lives under branches/{branchId}/... so
+   each branch's data (and its OR/JO/EST/PO number series) is fully isolated.
+   One branch going offline can never touch another's data. branchId comes from
+   the branch config baked in at build time (defaults to 'main'). ------------- */
+function branchId(){ return (typeof BRANCH!=='undefined' && BRANCH && BRANCH.id) ? String(BRANCH.id) : 'main'; }
+function bRoot(){ return FB.db.collection('branches').doc(branchId()); }
+function bcol(name){ return bRoot().collection(name); }
+
 function initFirebase(){
   if (FB.ready) return true;
   if (typeof firebase==='undefined' || typeof FIREBASE_CONFIG==='undefined') return false;
@@ -62,8 +70,8 @@ function loadPublicPortal(){
   var id = (typeof portalVehicleId==='function') ? portalVehicleId() : null;
   if(!id){ renderPortalError('No vehicle specified.'); return; }
   Promise.all([
-    FB.db.collection('portal').doc(id).get(),
-    FB.db.collection('portal').doc('_shop').get().catch(function(){ return null; })
+    bcol('portal').doc(id).get(),
+    bcol('portal').doc('_shop').get().catch(function(){ return null; })
   ]).then(function(res){
     var doc=res[0], shopDoc=res[1];
     var app=document.getElementById('app'); if(!app) return;
@@ -104,7 +112,7 @@ async function portalHashPin(id, pin){
 function subscribePortalClaims(){
   if(typeof FB==='undefined' || !FB || !FB.db) return;
   try{
-    FB.db.collection('portal_claims').onSnapshot(function(snap){
+    bcol('portal_claims').onSnapshot(function(snap){
       snap.docChanges().forEach(function(ch){
         if(ch.type!=='added') return;
         var d=ch.doc.data()||{}; var v=vehicleById(d.vehicleId);
@@ -121,7 +129,7 @@ var _apptReqData={}, _apptReqQueue=[], _apptReqShowing=false, _apptReqSub=null;
 function subscribeApptRequests(){
   if(typeof FB==='undefined'||!FB||!FB.db||_apptReqSub) return;
   try{
-    _apptReqSub=FB.db.collection('appt_requests').where('status','==','new').onSnapshot(function(snap){
+    _apptReqSub=bcol('appt_requests').where('status','==','new').onSnapshot(function(snap){
       snap.docChanges().forEach(function(ch){
         if(ch.type==='added'){ var id=ch.doc.id; if(_apptReqData[id]) return; _apptReqData[id]=ch.doc.data(); _apptReqQueue.push(id); }
       });
@@ -148,13 +156,13 @@ function acceptApptRequest(id){
     customer:r.name||'', contactNumber:r.contact||'', vehicle:r.vehicle||'', service:r.notes||'',
     assignedTo:'TBA', bayId:'TBA', status:'Booked', notes:'From customer portal request', jobId:null });
   persist();
-  if(FB&&FB.db){ try{ FB.db.collection('appt_requests').doc(id).set({status:'accepted', handledAt:new Date().toISOString()},{merge:true}); }catch(e){} }
+  if(FB&&FB.db){ try{ bcol('appt_requests').doc(id).set({status:'accepted', handledAt:new Date().toISOString()},{merge:true}); }catch(e){} }
   delete _apptReqData[id];
   if(typeof toast==='function') toast('Appointment added');
   _apptReqNext(); if(typeof render==='function') render();
 }
 function dismissApptRequest(id){
-  if(FB&&FB.db){ try{ FB.db.collection('appt_requests').doc(id).set({status:'dismissed', handledAt:new Date().toISOString()},{merge:true}); }catch(e){} }
+  if(FB&&FB.db){ try{ bcol('appt_requests').doc(id).set({status:'dismissed', handledAt:new Date().toISOString()},{merge:true}); }catch(e){} }
   delete _apptReqData[id];
   _apptReqNext();
 }
@@ -242,7 +250,7 @@ function modalOpen(){ return typeof document!=='undefined' && !!document.querySe
 
 async function cloudLoadAll(){
   // is the cloud already populated?
-  var shopDoc = await FB.db.collection('meta').doc('shop').get();
+  var shopDoc = await bcol('meta').doc('shop').get();
   if (!shopDoc.exists){
     // empty cloud → migrate from current local data (or a fresh seed)
     var raw = await Storage.get(STORE_KEY);
@@ -264,26 +272,26 @@ function ensureStateShape(){
 
 async function cloudFetchState(){
   var st = seedState();              // defaults for shop/counters + array shape
-  var shopDoc = await FB.db.collection('meta').doc('shop').get();
+  var shopDoc = await bcol('meta').doc('shop').get();
   if (shopDoc.exists) st.shop = Object.assign(st.shop, shopDoc.data());
-  var cntDoc = await FB.db.collection('meta').doc('counters').get();
+  var cntDoc = await bcol('meta').doc('counters').get();
   if (cntDoc.exists) st.counters = Object.assign(st.counters, cntDoc.data());
   for (var i=0;i<COLLECTIONS.length;i++){
     var c = COLLECTIONS[i];
-    var snap = await FB.db.collection(c).get();
+    var snap = await bcol(c).get();
     st[c] = snap.docs.map(function(d){ return d.data(); });
   }
   return st;
 }
 
 async function cloudMigrate(base){
-  await FB.db.collection('meta').doc('shop').set(plain(base.shop||{}));
-  await FB.db.collection('meta').doc('counters').set(plain(base.counters||{est:0,jo:0,or:1000,po:0}));
+  await bcol('meta').doc('shop').set(plain(base.shop||{}));
+  await bcol('meta').doc('counters').set(plain(base.counters||{est:0,jo:0,or:1000,po:0}));
   for (var i=0;i<COLLECTIONS.length;i++){
     var c = COLLECTIONS[i]; var arr = base[c]||[];
     for (var j=0;j<arr.length;j++){
       var rec = arr[j]; if (c==='jobs') await uploadJobPhotos(rec);
-      await FB.db.collection(c).doc(rec.id).set(plain(rec));
+      await bcol(c).doc(rec.id).set(plain(rec));
     }
   }
 }
@@ -299,12 +307,12 @@ async function cloudPersist(){
   // is NOT retried — a denied write here must never block the data writes below.
   var shopJSON = JSON.stringify(S.shop);
   if (shopJSON !== _metaSnap.shop){
-    if (amAdmin){ try { await FB.db.collection('meta').doc('shop').set(plain(S.shop)); } catch(e){ console.error('meta/shop', e); } }
+    if (amAdmin){ try { await bcol('meta').doc('shop').set(plain(S.shop)); } catch(e){ console.error('meta/shop', e); } }
     _metaSnap.shop = shopJSON;
   }
   var cntJSON = JSON.stringify(S.counters);
   if (cntJSON !== _metaSnap.counters){
-    try { await FB.db.collection('meta').doc('counters').set(plain(S.counters)); _metaSnap.counters = cntJSON; } catch(e){ console.error('counters', e); }
+    try { await bcol('meta').doc('counters').set(plain(S.counters)); _metaSnap.counters = cntJSON; } catch(e){ console.error('counters', e); }
   }
   for (var i=0;i<COLLECTIONS.length;i++){
     var c = COLLECTIONS[i];
@@ -317,14 +325,14 @@ async function cloudPersist(){
       if (prev[id] === js) continue;                            // unchanged
       try {
         if (c==='jobs') await uploadJobPhotos(rec);             // relocate base64 → Storage
-        await FB.db.collection(c).doc(id).set(plain(rec));
+        await bcol(c).doc(id).set(plain(rec));
         prev[id] = js;                                          // mark synced only on success
       } catch(e){ console.error('save '+c+'/'+id, e); }         // keep stale -> retried next save
     }
     // deletes (gone from S)
     var prevIds = Object.keys(prev);
     for (var d=0; d<prevIds.length; d++){ var did=prevIds[d];
-      if(!cur[did]){ try { await FB.db.collection(c).doc(did).delete(); delete prev[did]; } catch(e){ console.error('del '+c+'/'+did, e); } }
+      if(!cur[did]){ try { await bcol(c).doc(did).delete(); delete prev[did]; } catch(e){ console.error('del '+c+'/'+did, e); } }
     }
   }
 }
@@ -354,7 +362,7 @@ async function uploadJobPhotos(job){
 function cloudSubscribe(){
   cloudUnsub();
   COLLECTIONS.forEach(function(c){
-    var u = FB.db.collection(c).onSnapshot(function(snap){
+    var u = bcol(c).onSnapshot(function(snap){
       if (snap.metadata.hasPendingWrites) return;             // ignore our own local writes
       _applyingRemote = true;
       S[c] = snap.docs.map(function(d){ return d.data(); });
@@ -364,7 +372,7 @@ function cloudSubscribe(){
     }, function(err){ console.error('listener '+c, err); });
     _cloudSubs.push(u);
   });
-  var um = FB.db.collection('meta').onSnapshot(function(snap){
+  var um = bcol('meta').onSnapshot(function(snap){
     if (snap.metadata.hasPendingWrites) return;
     snap.docs.forEach(function(d){
       if (d.id==='shop'){ S.shop = Object.assign(S.shop||{}, d.data()); _metaSnap.shop = JSON.stringify(S.shop); }
@@ -577,7 +585,7 @@ function portalSubmitPin(id, mode){
   if(!(typeof dataLocal==='function' && dataLocal())){
     function fail(m){ if(msg) msg.innerHTML='<b>'+m+'</b>'; if(btn){ btn.textContent=btnLabel; btn.disabled=false; } }
     if(mode==='claim'){
-      FB.db.collection('portal_claims').add({ vehicleId:id, pin:pin, ts:new Date().toISOString() })
+      bcol('portal_claims').add({ vehicleId:id, pin:pin, ts:new Date().toISOString() })
         .then(function(){ portalRememberIfChecked(id,pin); renderPortalData(_cloudPortalDoc||{}, id); })
         .catch(function(){ fail('Couldn’t set that PIN — please try again.'); });
     } else {

@@ -28,4 +28,6 @@ sync/serviceAccountKey.json
 sync/node_modules/
 sync/parts.tsv
 sync/.lastsync.json
+sync/backup_*.json
+sync/_*.js
 BASIC_dev.html

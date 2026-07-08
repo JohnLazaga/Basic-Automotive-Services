@@ -59,7 +59,7 @@ function can(cap){
 
 /* ---- Sign-in: load this user's account, bootstrapping the first Admin ----- */
 async function loadCurrentUser(user){
-  var ref = FB.db.collection('users').doc(user.uid);
+  var ref = bcol('users').doc(user.uid);
   var doc = await ref.get();
   if (doc.exists){
     var d = doc.data();
@@ -68,7 +68,7 @@ async function loadCurrentUser(user){
     return;
   }
   // No account doc yet — first ever user becomes Admin (bootstrap).
-  var any = await FB.db.collection('users').limit(1).get();
+  var any = await bcol('users').limit(1).get();
   if (any.empty){
     CURRENT_USER = { uid:user.uid, email:user.email, name:user.email, role:'SV', isAdmin:true, active:true };
     await ref.set({ email:user.email, name:user.email, role:'SV', isAdmin:true, active:true, createdAt:new Date().toISOString() });
@@ -90,7 +90,7 @@ function loadAccounts(){
   }
   if (!FB.ready) return;
   _accountsLoading = true;
-  FB.db.collection('users').get().then(function(snap){
+  bcol('users').get().then(function(snap){
     ACCOUNTS = snap.docs.map(function(d){ return Object.assign({ uid:d.id }, d.data()); });
     _accountsLoading = false;
     if (ROUTE.view==='accounts') render();
@@ -148,7 +148,7 @@ function createStaffAccount(){
   var email=usernameToEmail(username);
   var sec=getSecondaryApp();
   sec.auth().createUserWithEmailAndPassword(email, pass).then(function(cred){
-    return FB.db.collection('users').doc(cred.user.uid).set({
+    return bcol('users').doc(cred.user.uid).set({
       username:username, email:email, name:name, role:role, isAdmin:isAdmin, active:true, password:pass, createdAt:new Date().toISOString()
     }).then(function(){ return sec.auth().signOut(); });
   }).then(function(){
@@ -159,9 +159,9 @@ function createStaffAccount(){
   });
 }
 function _localUserUpdate(uid, fields, msg){ return _postJSON(branchBase()+'/auth/users/'+encodeURIComponent(uid), fields).then(function(d){ if(d&&d.ok){ toast(msg); refreshAccounts(); } else toast((d&&d.error)||'Update failed','err'); }); }
-function setAccountRole(uid, role){ if(typeof dataLocal==='function'&&dataLocal()){ return _localUserUpdate(uid,{role:role},'Role updated'); } FB.db.collection('users').doc(uid).update({ role:role }).then(function(){ toast('Role updated'); refreshAccounts(); }); }
-function setAccountAdmin(uid, isAdmin){ if(typeof dataLocal==='function'&&dataLocal()){ return _localUserUpdate(uid,{isAdmin:isAdmin},'Updated'); } FB.db.collection('users').doc(uid).update({ isAdmin:isAdmin }).then(function(){ toast('Updated'); refreshAccounts(); }); }
-function setAccountActive(uid, active){ if(typeof dataLocal==='function'&&dataLocal()){ return _localUserUpdate(uid,{active:active},active?'Account enabled':'Account disabled'); } FB.db.collection('users').doc(uid).update({ active:active }).then(function(){ toast(active?'Account enabled':'Account disabled'); refreshAccounts(); }); }
+function setAccountRole(uid, role){ if(typeof dataLocal==='function'&&dataLocal()){ return _localUserUpdate(uid,{role:role},'Role updated'); } bcol('users').doc(uid).update({ role:role }).then(function(){ toast('Role updated'); refreshAccounts(); }); }
+function setAccountAdmin(uid, isAdmin){ if(typeof dataLocal==='function'&&dataLocal()){ return _localUserUpdate(uid,{isAdmin:isAdmin},'Updated'); } bcol('users').doc(uid).update({ isAdmin:isAdmin }).then(function(){ toast('Updated'); refreshAccounts(); }); }
+function setAccountActive(uid, active){ if(typeof dataLocal==='function'&&dataLocal()){ return _localUserUpdate(uid,{active:active},active?'Account enabled':'Account disabled'); } bcol('users').doc(uid).update({ active:active }).then(function(){ toast(active?'Account enabled':'Account disabled'); refreshAccounts(); }); }
 /* Admin: view and change a staff login password. Firebase Auth never reveals a
    password, so the app keeps an admin-only copy in the user doc. Changing it is
    done by signing into a secondary Firebase app as that user (with the current
@@ -198,7 +198,7 @@ function saveStaffPassword(){
   sec.auth().signInWithEmailAndPassword(email, curPw)
     .then(function(cred){ return cred.user.updatePassword(newPw); })
     .then(function(){ return sec.auth().signOut(); })
-    .then(function(){ return FB.db.collection('users').doc(u.uid).update({ password:newPw }); })
+    .then(function(){ return bcol('users').doc(u.uid).update({ password:newPw }); })
     .then(function(){ closeModal(); toast('Password updated'); refreshAccounts(); })
     .catch(function(e){
       var code=(e.code||'');
@@ -237,7 +237,7 @@ function saveAccount(){
     }).catch(function(){ toast('Cannot reach branch server','err'); });
     return;
   }
-  FB.db.collection('users').doc(u.uid).update(data)
+  bcol('users').doc(u.uid).update(data)
     .then(function(){ closeModal(); toast('Account saved'); refreshAccounts(); })
     .catch(function(e){ toast(e.message||'Save failed','err'); });
 }
@@ -248,7 +248,7 @@ function deleteAccountConfirm(uid){
       fetch(branchBase()+'/auth/users/'+encodeURIComponent(uid), { method:'DELETE', headers:authHeaders() }).then(function(r){ return r.json(); }).then(function(){ closeModal(); toast('Access removed'); refreshAccounts(); }).catch(function(){ toast('Cannot reach branch server','err'); });
       return;
     }
-    FB.db.collection('users').doc(uid).delete().then(function(){ closeModal(); toast('Access removed'); refreshAccounts(); }).catch(function(e){ toast(e.message,'err'); });
+    bcol('users').doc(uid).delete().then(function(){ closeModal(); toast('Access removed'); refreshAccounts(); }).catch(function(e){ toast(e.message,'err'); });
   },'Remove access',true);
 }
 

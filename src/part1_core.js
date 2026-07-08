@@ -286,7 +286,7 @@ function allocateSeriesNumber(kind, prefix, pad){
       .catch(function(){ return local(); });
   }
   if (typeof cloudOn==='function' && cloudOn() && typeof FB!=='undefined' && FB && FB.ready && FB.db && FB.user){
-    var ref = FB.db.collection('meta').doc(kind+'counter');
+    var ref = bcol('meta').doc(kind+'counter');
     return FB.db.runTransaction(function(t){
       return t.get(ref).then(function(doc){
         var stored = (doc.exists && Number(doc.data().next)>0) ? Number(doc.data().next) : 0;
