@@ -92,6 +92,14 @@ function renderView(){
 }
 
 /* ---- Sidebar -------------------------------------------------------------- */
+/* Short branch label under the logo — the branch name without the brand prefix
+   (e.g. "Commonwealth", "Sudipen", "Fairview (Main)"). */
+function branchLabel(){
+  if (typeof BRANCH!=='undefined' && BRANCH && BRANCH.name){
+    return BRANCH.name.replace(/^Basic by JMSI\s*[—–-]\s*/i, '').trim() || BRANCH.name;
+  }
+  return 'Fairview, Quezon City';
+}
 function sidebarHTML(){
   var nav = NAV.map(function(g){
     var allowed = g.items.filter(navAllowed);
@@ -105,7 +113,7 @@ function sidebarHTML(){
   }).join('');
   return '<aside id="sidebar" class="sidebar">'+
     '<div class="brandlock"><img class="lockup" src="'+LOGO_LOCKUP+'" alt="Basic by JMSI"/>'+
-      '<div class="brandsub">Fairview, Quezon City</div></div>'+
+      '<div class="brandsub">'+esc(branchLabel())+'</div></div>'+
     '<nav class="navwrap">'+nav+'</nav>'+
     '<div class="sidefoot">Shop Operations · offline-ready<br><span class="appver">'+esc(APP_VERSION)+'</span></div>'+
   '</aside>';
