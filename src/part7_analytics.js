@@ -58,8 +58,64 @@ VIEWS.reports = function(){
         '<table class="tbl sm"><thead><tr><th>Staff</th><th class="r">Comm.</th></tr></thead><tbody>'+
         comm.map(function(c){return '<tr><td>'+esc(c.name)+' <span class="muted small">'+esc(c.role)+'</span></td><td class="r">'+peso(c.amount)+'</td></tr>';}).join('')+
         '</tbody></table>':emptyState('No commissions yet.'))+'</div>'+
-    '</div></div></div>';
+    '</div></div>'+
+    orSeriesCard()+
+  '</div>';
 };
+
+/* ---- OR numbers by series (with corresponding JO #s) ---------------------- */
+/* Every issued Official Receipt, ordered by its numeric series, paired with the
+   Job Order it billed. Detects gaps (missing numbers) in the sequence. */
+function orSeriesRows(){
+  return (S.jobs||[]).filter(function(j){ return j.orNumber; }).map(function(j){
+    var m=/(\d+)/.exec(String(j.orNumber));
+    return { n:m?Number(m[1]):0, or:j.orNumber, jo:j.no, date:j.billedAt||j.dateIn||'',
+             owner:j.owner||'', plate:j.plate||'', amount:jobGross(j), id:j.id };
+  }).sort(function(a,b){ return a.n-b.n || String(a.or).localeCompare(String(b.or)); });
+}
+function orSeriesGaps(rows){
+  var gaps=[];
+  for (var i=1;i<rows.length;i++){
+    var prev=rows[i-1].n, cur=rows[i].n;
+    if (cur-prev>1){ gaps.push({ from:prev+1, to:cur-1, count:cur-prev-1 }); }
+  }
+  return gaps;
+}
+function orSeriesCard(){
+  var rows=orSeriesRows();
+  if (!rows.length) return '<div class="card"><h2>OR numbers by series</h2>'+emptyState('No OR numbers issued yet.')+'</div>';
+  var gaps=orSeriesGaps(rows);
+  var body=rows.map(function(r){
+    return '<tr onclick="go(\'job\',\''+r.id+'\')" style="cursor:pointer">'+
+      '<td><b>'+esc(r.or)+'</b></td><td>'+esc(r.jo)+'</td>'+
+      '<td>'+esc(fmtDate(r.date))+'</td>'+
+      '<td>'+esc(r.owner)+(r.plate?' <span class="muted small">'+esc(r.plate)+'</span>':'')+'</td>'+
+      '<td class="r">'+peso(r.amount)+'</td></tr>';
+  }).join('');
+  var gapNote = gaps.length
+    ? '<div class="muted small" style="color:var(--brand)">⚠ '+gaps.reduce(function(s,g){return s+g.count;},0)+
+      ' missing OR number(s): '+gaps.map(function(g){ return g.count===1?('OR-'+g.from):('OR-'+g.from+'–OR-'+g.to); }).join(', ')+'</div>'
+    : '<div class="muted small">✓ No gaps — series is continuous.</div>';
+  return '<div class="card"><div class="card-head"><h2>OR numbers by series</h2>'+
+    '<button class="btn sm ghost" onclick="printOrSeries()">⎙ Print</button></div>'+
+    '<div class="muted small mb8">'+rows.length+' receipts · '+esc(rows[0].or)+' → '+esc(rows[rows.length-1].or)+'</div>'+
+    gapNote+
+    '<div class="card pad0 mt8"><table class="tbl click"><thead><tr><th>OR #</th><th>JO #</th><th>Date</th><th>Sold to</th><th class="r">Amount</th></tr></thead>'+
+    '<tbody>'+body+'</tbody></table></div></div>';
+}
+function docOrSeries(){
+  var rows=orSeriesRows();
+  var tot=round2(rows.reduce(function(s,r){return s+r.amount;},0));
+  var body=docHeader('OR Numbers by Series')+
+    '<div class="meta"><div><b>Receipts</b>'+rows.length+'</div>'+
+      '<div><b>Range</b>'+(rows.length?esc(rows[0].or)+' → '+esc(rows[rows.length-1].or):'—')+'</div></div>'+
+    '<table><thead><tr><th>OR #</th><th>JO #</th><th>Date</th><th>Sold to</th><th class="r">Amount</th></tr></thead><tbody>'+
+    rows.map(function(r){ return '<tr><td>'+esc(r.or)+'</td><td>'+esc(r.jo)+'</td><td>'+esc(fmtDate(r.date))+'</td><td>'+esc(r.owner)+'</td><td class="r">'+peso(r.amount)+'</td></tr>'; }).join('')+
+    '<tr class="tot"><td></td><td></td><td></td><td class="r">Total</td><td class="r">'+peso(tot)+'</td></tr>'+
+    '</tbody></table>';
+  return docShell('OR numbers by series', body);
+}
+function printOrSeries(){ printDoc(docOrSeries()); }
 
 /* Commission across a set of jobs.
    Mechanics: labor×rate÷#mechs split evenly (the pool).
