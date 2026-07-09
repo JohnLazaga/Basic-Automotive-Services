@@ -92,11 +92,13 @@ function renderView(){
 }
 
 /* ---- Sidebar -------------------------------------------------------------- */
-/* Short branch label under the logo — the branch name without the brand prefix
-   (e.g. "Commonwealth", "Sudipen", "Fairview (Main)"). */
+/* Short branch label under the logo — the branch's location (e.g.
+   "Commonwealth, Quezon City", "Sudipen, La Union", "Fairview, Quezon City"),
+   falling back to the branch name minus the brand prefix. */
 function branchLabel(){
-  if (typeof BRANCH!=='undefined' && BRANCH && BRANCH.name){
-    return BRANCH.name.replace(/^Basic by JMSI\s*[—–-]\s*/i, '').trim() || BRANCH.name;
+  if (typeof BRANCH!=='undefined' && BRANCH){
+    if (BRANCH.location) return BRANCH.location;
+    if (BRANCH.name) return BRANCH.name.replace(/^Basic by JMSI\s*[—–-]\s*/i, '').trim() || BRANCH.name;
   }
   return 'Fairview, Quezon City';
 }

@@ -406,7 +406,7 @@ var FIREBASE_CONFIG = {
 /* Per-branch identity & URLs.
    ONE build per branch. build.js stamps the selected branch's entry from
    branches.json into the token below (see the replace in build.js). */
-var BRANCH = {"id":"commonwealth","slug":"commonwealth","name":"Basic by JMSI — Commonwealth","localUrl":"http://commonwealth:8790","publicUrl":"https://basicautomotiveservices.com/commonwealth","partsUrl":"","partsSource":"cloud","dataSource":"cloud"};
+var BRANCH = {"id":"commonwealth","slug":"commonwealth","name":"Basic by JMSI — Commonwealth","location":"Commonwealth, Quezon City","localUrl":"http://commonwealth:8790","publicUrl":"https://basicautomotiveservices.com/commonwealth","partsUrl":"","partsSource":"cloud","dataSource":"cloud"};
 
 
 /* ===== */
@@ -422,7 +422,7 @@ var BRANCH = {"id":"commonwealth","slug":"commonwealth","name":"Basic by JMSI �
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.1.2 · 2026-07-09';
+var APP_VERSION = 'v1.1.3 · 2026-07-09';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -964,11 +964,13 @@ function renderView(){
 }
 
 /* ---- Sidebar -------------------------------------------------------------- */
-/* Short branch label under the logo — the branch name without the brand prefix
-   (e.g. "Commonwealth", "Sudipen", "Fairview (Main)"). */
+/* Short branch label under the logo — the branch's location (e.g.
+   "Commonwealth, Quezon City", "Sudipen, La Union", "Fairview, Quezon City"),
+   falling back to the branch name minus the brand prefix. */
 function branchLabel(){
-  if (typeof BRANCH!=='undefined' && BRANCH && BRANCH.name){
-    return BRANCH.name.replace(/^Basic by JMSI\s*[—–-]\s*/i, '').trim() || BRANCH.name;
+  if (typeof BRANCH!=='undefined' && BRANCH){
+    if (BRANCH.location) return BRANCH.location;
+    if (BRANCH.name) return BRANCH.name.replace(/^Basic by JMSI\s*[—–-]\s*/i, '').trim() || BRANCH.name;
   }
   return 'Fairview, Quezon City';
 }
