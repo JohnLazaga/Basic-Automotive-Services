@@ -422,7 +422,7 @@ var BRANCH = {"id":"main","slug":"main","name":"Basic by JMSI — Fairview (Main
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.1.4 · 2026-07-09';
+var APP_VERSION = 'v1.1.5 · 2026-07-09';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -2915,17 +2915,28 @@ function orSeriesGaps(rows){
   }
   return gaps;
 }
-function orSeriesCard(){
-  var rows=orSeriesRows();
-  if (!rows.length) return '<div class="card"><h2>OR numbers by series</h2>'+emptyState('No OR numbers issued yet.')+'</div>';
-  var gaps=orSeriesGaps(rows);
-  var body=rows.map(function(r){
+var OR_Q='';
+function orSeriesMatch(r){
+  if(!OR_Q) return true; var q=OR_Q.toLowerCase();
+  return [r.or,r.jo,r.owner,r.plate].some(function(x){ return String(x||'').toLowerCase().indexOf(q)>=0; });
+}
+function orSeriesFiltered(){ return orSeriesRows().filter(orSeriesMatch); }
+function orSeriesRowsHTML(){
+  var rows=orSeriesFiltered();
+  if(!rows.length) return '<tr><td colspan="5" class="muted center">No OR numbers match “'+esc(OR_Q)+'”.</td></tr>';
+  return rows.map(function(r){
     return '<tr onclick="go(\'job\',\''+r.id+'\')" style="cursor:pointer">'+
       '<td><b>'+esc(r.or)+'</b></td><td>'+esc(r.jo)+'</td>'+
       '<td>'+esc(fmtDate(r.date))+'</td>'+
       '<td>'+esc(r.owner)+(r.plate?' <span class="muted small">'+esc(r.plate)+'</span>':'')+'</td>'+
       '<td class="r">'+peso(r.amount)+'</td></tr>';
   }).join('');
+}
+function orSeriesSearch(v){ OR_Q=v; var el=document.getElementById('orSeriesBody'); if(el) el.innerHTML=orSeriesRowsHTML(); }
+function orSeriesCard(){
+  var rows=orSeriesRows();
+  if (!rows.length) return '<div class="card"><h2>OR numbers by series</h2>'+emptyState('No OR numbers issued yet.')+'</div>';
+  var gaps=orSeriesGaps(rows);
   var gapNote = gaps.length
     ? '<div class="muted small" style="color:var(--brand)">⚠ '+gaps.reduce(function(s,g){return s+g.count;},0)+
       ' missing OR number(s): '+gaps.map(function(g){ return g.count===1?('OR-'+g.from):('OR-'+g.from+'–OR-'+g.to); }).join(', ')+'</div>'
@@ -2934,11 +2945,12 @@ function orSeriesCard(){
     '<button class="btn sm ghost" onclick="printOrSeries()">⎙ Print</button></div>'+
     '<div class="muted small mb8">'+rows.length+' receipts · '+esc(rows[0].or)+' → '+esc(rows[rows.length-1].or)+'</div>'+
     gapNote+
+    '<input class="searchbox mt8" id="orSeriesSearch" value="'+attr(OR_Q)+'" oninput="orSeriesSearch(this.value)" placeholder="Search OR # / JO # / customer / plate…" autocomplete="off">'+
     '<div class="card pad0 mt8"><table class="tbl click"><thead><tr><th>OR #</th><th>JO #</th><th>Date</th><th>Sold to</th><th class="r">Amount</th></tr></thead>'+
-    '<tbody>'+body+'</tbody></table></div></div>';
+    '<tbody id="orSeriesBody">'+orSeriesRowsHTML()+'</tbody></table></div></div>';
 }
 function docOrSeries(){
-  var rows=orSeriesRows();
+  var rows=orSeriesFiltered();
   var tot=round2(rows.reduce(function(s,r){return s+r.amount;},0));
   var body=docHeader('OR Numbers by Series')+
     '<div class="meta"><div><b>Receipts</b>'+rows.length+'</div>'+
