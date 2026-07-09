@@ -1,10 +1,18 @@
 # Export the active parts catalog (SKU, Part Name, Net Price, SRP-exclusive) from
-# SQL Server to a tab-separated file. The app bills VAT-exclusive (adds 12% on top),
-# so we export fldSRPExc (the VAT-exclusive SRP), not fldSRP (VAT-inclusive).
+# a local SQL Server to a tab-separated file. The app bills VAT-exclusive (adds
+# 12% on top), so we export fldSRPExc (the VAT-exclusive SRP), not fldSRP.
 # Streams rows (fast, low memory) for the 100k+ catalog.
+#
+# Per-branch usage (each branch points at its own SQL Server / instance):
+#   powershell -File export-sql.ps1 -Server "localhost\MSSQLSERVER01" -Database "jasRegaladoDB"
+# Defaults match the Fairview (main) server.
+param(
+  [string]$Server   = 'localhost\MSSQLSERVER01',
+  [string]$Database = 'jasRegaladoDB'
+)
 $ErrorActionPreference = 'Stop'
-$server = 'localhost\MSSQLSERVER01'
-$db     = 'jasRegaladoDB'
+$server = $Server
+$db     = $Database
 $out    = Join-Path $PSScriptRoot 'parts.tsv'
 
 $sql = @"
