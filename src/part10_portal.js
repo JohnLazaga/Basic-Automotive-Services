@@ -253,6 +253,7 @@ function previewPortal(id){
 async function boot(){
   if (typeof window!=='undefined'){ window.addEventListener('hashchange', render); }
   if (typeof startUpdateChecker==='function') startUpdateChecker();   // self-update prompt
+  if (typeof installNoAutofill==='function') installNoAutofill();     // no cross-branch autofill
   // Cloud mode: paint the login screen immediately, load Firebase in the
   // background (deferred SDK), then wire auth — so the page never blocks on it.
   if (typeof dataLocal==='function' && dataLocal()){

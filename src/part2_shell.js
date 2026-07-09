@@ -139,6 +139,34 @@ function showUpdateBanner(ver){
   document.body.appendChild(b);
 }
 
+/* ---- Disable browser autofill on data-entry fields ------------------------
+   All branches share one origin (basicautomotiveservices.com/<branch>), so the
+   browser would suggest values typed into one branch's form (e.g. Fairview staff
+   names) inside another branch's form. Force autocomplete="off" on every field
+   that doesn't already declare one — the login/credential fields keep their
+   explicit autocomplete so password managers still work. A MutationObserver
+   covers dynamically-rendered content and modals. */
+function installNoAutofill(){
+  if (typeof document==='undefined' || typeof MutationObserver==='undefined') return;
+  function fix(node){
+    if (!node || node.nodeType!==1) return;
+    if (/^(INPUT|SELECT|TEXTAREA)$/.test(node.tagName) && !node.getAttribute('autocomplete')){
+      node.setAttribute('autocomplete','off');
+    }
+    if (node.querySelectorAll){
+      var els = node.querySelectorAll('input:not([autocomplete]),select:not([autocomplete]),textarea:not([autocomplete])');
+      for (var i=0;i<els.length;i++){ els[i].setAttribute('autocomplete','off'); }
+    }
+  }
+  fix(document.body);
+  try {
+    var mo = new MutationObserver(function(muts){
+      for (var i=0;i<muts.length;i++){ var a=muts[i].addedNodes; for (var j=0;j<a.length;j++){ fix(a[j]); } }
+    });
+    mo.observe(document.body, { childList:true, subtree:true });
+  } catch(e){ /* non-fatal */ }
+}
+
 /* ---- Top bar -------------------------------------------------------------- */
 function topbarHTML(){
   var openJobs = S.jobs.filter(function(j){return j.stage!=='Released';}).length;
