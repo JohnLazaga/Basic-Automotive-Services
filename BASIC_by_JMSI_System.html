@@ -3170,6 +3170,8 @@ VIEWS.settings = function(){
       '<pre class="codeblk">'+esc(sampleJSON)+'</pre><pre class="codeblk">'+esc(sampleQuery)+'</pre>'+
       '<p class="muted small">Browsers can\'t open raw SQL — expose this query as a JSON HTTP endpoint. Field names are mapped tolerantly (sku, srp, buying_price, quantity, min…).</p></details></div>'+
 
+    partsCloudCard()+
+
     sqlServerCard()+
 
   '</div><div class="colside">'+
@@ -3200,6 +3202,46 @@ function saveShop(){
   if(document.getElementById('shSource')){ sh.partsSource=val('shSource'); sh.partsApi=val('shApi'); }
   persist(); if(typeof publishPortalShop==='function') publishPortalShop();   // sync shop details to the portal
   toast('Settings saved'); render();
+}
+
+/* ---- Cloud parts catalog: re-pull the latest synced catalog on demand ----
+   The cloud app reads parts from Firestore, which is refreshed from SQL Server
+   by the sync (nightly at 3 AM, or the manual launcher). This card lets any
+   signed-in device pull the newest *synced* catalog immediately, without
+   waiting for the app's normal check. It does NOT reach SQL directly — a
+   browser can't; that's what the LAN-side sync is for. */
+function partsCloudCard(){
+  if (typeof partsFromLocal==='function' && partsFromLocal()) return '';   // local branches use the SQL Server card
+  var cnt = (typeof catalogCount==='function') ? catalogCount() : 0;
+  var meta = (typeof CATALOG_META!=='undefined' && CATALOG_META) ? CATALOG_META : null;
+  var ver = meta && meta.version ? String(meta.version).slice(0,12) : '—';
+  var line = cnt ? (cnt.toLocaleString()+' SKUs loaded · v'+ver) : 'Not loaded yet';
+  return '<div class="card"><h2>Parts catalog (cloud)</h2>'+
+    '<div id="catalogStatus" class="muted small mb8">'+line+'</div>'+
+    '<button class="btn primary" onclick="refreshCatalogNow()">↻ Refresh parts catalog</button>'+
+    '<p class="muted small mt8">Re-downloads the newest catalog that was synced to the cloud from your SQL Server '+
+    '(automatically at 3 AM, or when you run the sync). Use this to pull the latest synced prices onto this device right now.</p></div>';
+}
+async function refreshCatalogNow(){
+  if (typeof loadCatalog!=='function'){ toast('Catalog module unavailable','err'); return; }
+  var el=document.getElementById('catalogStatus');
+  if(el){ el.textContent='Refreshing from cloud…'; el.className='muted small mb8'; }
+  try{
+    await loadCatalog(true);
+    var cnt=(typeof catalogCount==='function')?catalogCount():0;
+    var meta=(typeof CATALOG_META!=='undefined'&&CATALOG_META)?CATALOG_META:null;
+    var ver=meta&&meta.version?String(meta.version).slice(0,12):'—';
+    if(typeof CATALOG_STATE!=='undefined' && CATALOG_STATE==='ready'){
+      if(el){ el.textContent='✓ '+cnt.toLocaleString()+' SKUs loaded · v'+ver; el.className='ok small mb8'; }
+      toast('Parts refreshed: '+cnt.toLocaleString()+' SKUs');
+    } else {
+      if(el){ el.textContent='✗ Could not refresh — check your connection and that you are signed in.'; el.className='err small mb8'; }
+      toast('Refresh failed','err');
+    }
+  }catch(e){
+    if(el){ el.textContent='✗ '+((e&&e.message)?e.message:'refresh failed'); el.className='err small mb8'; }
+    toast('Refresh failed','err');
+  }
 }
 /* ---- Attach the parts catalog straight from SQL Server (branch server) ----
    Shown only on a local-parts branch build. The app never talks to SQL directly;
