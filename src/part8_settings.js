@@ -78,7 +78,7 @@ function saveShop(){
    via .NET SqlClient (see branch-server/server.js) and syncs the catalog. */
 var SQL_DEFAULTS = {
   server:'localhost\\MSSQLSERVER01', database:'jasRegaladoDB', auth:'integrated', user:'',
-  query:'SELECT ap.fldStockCode AS sku, p.fldPartDesc AS part_name, ap.fldNetPrice AS net_price, ap.fldSRPExc AS srp FROM tblAutoPart ap LEFT JOIN tblPart p ON ap.fldPartNameCode = p.fldPartNameCode WHERE ap.fldIsActive = 1 ORDER BY ap.fldStockCode'
+  query:'SELECT ap.fldStockCode AS sku, p.fldPartDesc AS part_name, ap.fldNetPrice AS net_price, ap.fldSRPExc AS srp FROM tblAutoPart ap WITH (NOLOCK) LEFT JOIN tblPart p WITH (NOLOCK) ON ap.fldPartNameCode = p.fldPartNameCode WHERE ap.fldIsActive = 1 ORDER BY ap.fldStockCode'
 };
 function partsServerBase(){ return (typeof BRANCH!=='undefined'&&BRANCH.partsUrl)?String(BRANCH.partsUrl).replace(/\/+$/,''):''; }
 function sqlServerCard(){

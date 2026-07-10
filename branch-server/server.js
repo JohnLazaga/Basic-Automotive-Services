@@ -55,9 +55,12 @@ const DEFAULT_SQL = {
   database: 'jasRegaladoDB',
   auth: 'integrated',   // 'integrated' (Windows) | 'sql' (user+password)
   user: '',
+  // WITH (NOLOCK) = read-only, takes no locks, so this sync never blocks the
+  // shared production database that other apps rely on. Read-only by design.
   query: 'SELECT ap.fldStockCode AS sku, p.fldPartDesc AS part_name, ' +
          'ap.fldNetPrice AS net_price, ap.fldSRPExc AS srp ' +
-         'FROM tblAutoPart ap LEFT JOIN tblPart p ON ap.fldPartNameCode = p.fldPartNameCode ' +
+         'FROM tblAutoPart ap WITH (NOLOCK) ' +
+         'LEFT JOIN tblPart p WITH (NOLOCK) ON ap.fldPartNameCode = p.fldPartNameCode ' +
          'WHERE ap.fldIsActive = 1 ORDER BY ap.fldStockCode'
 };
 
