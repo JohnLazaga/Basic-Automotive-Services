@@ -3232,7 +3232,7 @@ function sqlSetStatus(html,cls){ var el=document.getElementById('sqlStatus'); if
 async function sqlLoadStatus(){
   var base=partsServerBase(); if(!base){ sqlSetStatus('No parts server URL set for this branch.','err'); return; }
   try{
-    var d=await (await fetch(base+'/admin/sql/status')).json();
+    var d=await (await fetch(base+'/admin/sql/status',{headers:authHeaders()})).json();
     var cfg=d.config||d.defaults||SQL_DEFAULTS;
     if(document.getElementById('sqlServer')){ setVal('sqlServer',cfg.server||''); setVal('sqlDb',cfg.database||''); setVal('sqlAuth',cfg.auth||'integrated'); setVal('sqlUser',cfg.user||''); if(cfg.query) setVal('sqlQuery',cfg.query); }
     var src = d.configured ? ('SQL Server ('+esc(d.source||'')+')') : (d.source&&d.source.indexOf('tsv')===0?'file snapshot':'not attached');
@@ -3244,7 +3244,7 @@ async function sqlTest(){
   var base=partsServerBase(); if(!base){toast('No parts server URL','err');return;}
   sqlSetStatus('Testing connection…');
   try{
-    var d=await (await fetch(base+'/admin/sql/test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(sqlCfgFromForm())})).json();
+    var d=await (await fetch(base+'/admin/sql/test',{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify(sqlCfgFromForm())})).json();
     if(d.ok){ var s=(d.sample||[]).map(function(x){return esc(x.sku)+' — '+esc(x.name);}).join('<br>'); sqlSetStatus('✓ Connected · '+Number(d.count).toLocaleString()+' rows.<br><span class="muted">'+s+'</span>','ok'); toast('SQL OK: '+d.count+' rows'); }
     else { sqlSetStatus('✗ '+esc(d.error||'failed'),'err'); toast('SQL test failed','err'); }
   }catch(e){ sqlSetStatus('✗ Cannot reach branch server.','err'); toast('Cannot reach server','err'); }
@@ -3253,7 +3253,7 @@ async function sqlAttach(){
   var base=partsServerBase(); if(!base){toast('No parts server URL','err');return;}
   sqlSetStatus('Attaching & syncing the full catalog…');
   try{
-    var d=await (await fetch(base+'/admin/sql/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(sqlCfgFromForm())})).json();
+    var d=await (await fetch(base+'/admin/sql/save',{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify(sqlCfgFromForm())})).json();
     if(d.ok){ sqlSetStatus('✓ Attached · '+Number(d.count).toLocaleString()+' SKUs synced from SQL Server.','ok'); toast('Parts attached: '+d.count+' SKUs'); if(typeof loadCatalog==='function') loadCatalog(true); }
     else { sqlSetStatus('✗ '+esc(d.error||'failed'),'err'); toast('Attach failed','err'); }
   }catch(e){ sqlSetStatus('✗ Cannot reach branch server.','err'); toast('Cannot reach server','err'); }
@@ -3262,7 +3262,7 @@ async function sqlSyncNow(){
   var base=partsServerBase(); if(!base) return;
   sqlSetStatus('Re-syncing from SQL Server…');
   try{
-    var d=await (await fetch(base+'/admin/sql/sync',{method:'POST'})).json();
+    var d=await (await fetch(base+'/admin/sql/sync',{method:'POST',headers:authHeaders()})).json();
     if(d.ok){ sqlSetStatus('✓ Synced '+Number(d.count).toLocaleString()+' SKUs.','ok'); toast('Synced '+d.count+' SKUs'); if(typeof loadCatalog==='function') loadCatalog(true); }
     else { sqlSetStatus('✗ '+esc(d.error||'failed'),'err'); }
   }catch(e){ sqlSetStatus('✗ Cannot reach branch server.','err'); }

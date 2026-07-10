@@ -40,6 +40,8 @@ const PORT = Number(process.env.PORT) || 8790;
 const BRANCH = process.env.BRANCH || 'branch';
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
 const APP_DIR = process.env.APP_DIR || '';   // optional: also serve the branch app (dist/<slug>) at /
+const SYNC_AT = (process.env.SYNC_AT || '').trim();               // daily catalog re-sync at local "HH:MM" (e.g. "03:00"); empty = off
+const SYNC_INTERVAL_MIN = Number(process.env.SYNC_INTERVAL_MIN) || 0;  // alternative: re-sync every N minutes; 0 = off
 const SQL_CONFIG_FILE = path.join(__dirname, 'sql-config.json');
 const TSV_FILE = path.join(__dirname, 'parts.tsv');
 const PHOTOS_DIR = path.join(__dirname, 'photos');   // job photos (Phase 3e)
@@ -174,6 +176,35 @@ function initialLoad() {
   }
   try { var n2 = loadFromTsv(); console.log('[parts] TSV load: ' + n2.toLocaleString() + ' SKUs (' + SOURCE + ')'); }
   catch (e) { console.error('[parts] no data source yet:', e.message); setCatalog([], 'none'); }
+}
+
+/* ---- automatic re-sync: keep the local snapshot fresh vs the live DB ----
+   Reads are read-only + NOLOCK, so this never affects the shared database.
+   If SQL is unreachable at sync time, we keep the last good snapshot and retry
+   on the next tick — the branch never goes down because of a missed sync. */
+function runAutoSync(tag) {
+  if (!readSqlConfig()) return;   // only when attached to SQL Server
+  try { var n = syncFromSql(); console.log('[parts] auto-sync (' + tag + '): ' + n.toLocaleString() + ' SKUs'); }
+  catch (e) { LAST_ERROR = e.message; console.error('[parts] auto-sync failed (' + tag + '), keeping last snapshot: ' + e.message); }
+}
+function msUntilNext(hhmm) {
+  var m = /^(\d{1,2}):(\d{2})$/.exec(hhmm); if (!m) return null;
+  var next = new Date(); next.setHours(Number(m[1]), Number(m[2]), 0, 0);
+  if (next <= new Date()) next.setDate(next.getDate() + 1);   // already passed today -> tomorrow
+  return next - new Date();
+}
+function scheduleAutoSync() {
+  if (SYNC_INTERVAL_MIN > 0) {
+    console.log('[parts] auto-sync: every ' + SYNC_INTERVAL_MIN + ' min');
+    setInterval(function () { runAutoSync('interval'); }, SYNC_INTERVAL_MIN * 60 * 1000);
+    return;
+  }
+  if (!SYNC_AT) return;   // auto-sync disabled
+  var wait = msUntilNext(SYNC_AT);
+  if (wait == null) { console.error('[parts] SYNC_AT="' + SYNC_AT + '" is not HH:MM — auto-sync off'); return; }
+  console.log('[parts] auto-sync: daily at ' + SYNC_AT + ' (next run in ' + Math.round(wait / 60000) + ' min)');
+  var tick = function () { runAutoSync('daily ' + SYNC_AT); setTimeout(tick, 24 * 60 * 60 * 1000); };
+  setTimeout(tick, wait);
 }
 
 /* ---------------- search ---------------- */
@@ -457,4 +488,5 @@ if (_bootAdmin) console.log('[auth] created default admin — username "' + _boo
 server.listen(PORT, function () {
   console.log('[parts] Branch "' + BRANCH + '" parts server on http://0.0.0.0:' + PORT + '  (source: ' + SOURCE + ', ' + LIST.length.toLocaleString() + ' SKUs)');
   if (ADMIN_TOKEN) console.log('[parts] admin endpoints require X-Admin-Token');
+  scheduleAutoSync();
 });
