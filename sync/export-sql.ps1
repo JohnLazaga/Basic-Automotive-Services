@@ -7,8 +7,10 @@
 #   powershell -File export-sql.ps1 -Server "localhost\MSSQLSERVER01" -Database "jasRegaladoDB"
 # Defaults match the Fairview (main) server.
 param(
-  [string]$Server   = 'localhost\MSSQLSERVER01',
-  [string]$Database = 'jasRegaladoDB'
+  [string]$Server   = 'JASSERVER\SQLSERVER2014',
+  [string]$Database = 'JasregaladoDB',
+  [string]$User     = '',   # SQL login (e.g. basic_parts_ro). Empty = Windows/Integrated auth.
+  [string]$Password = ''
 )
 $ErrorActionPreference = 'Stop'
 $server = $Server
@@ -24,7 +26,12 @@ WHERE ap.fldIsActive = 1
 ORDER BY ap.fldStockCode
 "@
 
-$cs = "Server=$server;Database=$db;Integrated Security=SSPI;TrustServerCertificate=True;Encrypt=False;Connect Timeout=15"
+if ($User) {
+  # SQL login (read-only basic_parts_ro) — reliable across the LAN.
+  $cs = "Server=$server;Database=$db;User ID=$User;Password=$Password;TrustServerCertificate=True;Encrypt=False;Connect Timeout=15"
+} else {
+  $cs = "Server=$server;Database=$db;Integrated Security=SSPI;TrustServerCertificate=True;Encrypt=False;Connect Timeout=15"
+}
 $cn = New-Object System.Data.SqlClient.SqlConnection $cs
 $cn.Open()
 $cmd = $cn.CreateCommand(); $cmd.CommandText = $sql; $cmd.CommandTimeout = 300
