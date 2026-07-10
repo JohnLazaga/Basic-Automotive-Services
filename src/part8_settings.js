@@ -98,13 +98,14 @@ async function refreshCatalogNow(){
   var el=document.getElementById('catalogStatus');
   if(el){ el.textContent='Refreshing from cloud…'; el.className='muted small mb8'; }
   try{
-    await loadCatalog(true);
+    var result=await loadCatalog(true);
     var cnt=(typeof catalogCount==='function')?catalogCount():0;
     var meta=(typeof CATALOG_META!=='undefined'&&CATALOG_META)?CATALOG_META:null;
     var ver=meta&&meta.version?String(meta.version).slice(0,12):'—';
     if(typeof CATALOG_STATE!=='undefined' && CATALOG_STATE==='ready'){
-      if(el){ el.textContent='✓ '+cnt.toLocaleString()+' SKUs loaded · v'+ver; el.className='ok small mb8'; }
-      toast('Parts refreshed: '+cnt.toLocaleString()+' SKUs');
+      var already=(result==='unchanged');
+      if(el){ el.textContent='✓ '+cnt.toLocaleString()+' SKUs loaded · v'+ver+(already?' · already up to date':''); el.className='ok small mb8'; }
+      toast((already?'Already up to date: ':'Parts refreshed: ')+cnt.toLocaleString()+' SKUs');
     } else {
       if(el){ el.textContent='✗ Could not refresh — check your connection and that you are signed in.'; el.className='err small mb8'; }
       toast('Refresh failed','err');

@@ -29,8 +29,8 @@ async function gunzipB64(b64){
 }
 
 async function loadCatalog(force){
-  if (CATALOG_STATE==='loading') return;
-  if (CATALOG_STATE==='ready' && !force) return;
+  if (CATALOG_STATE==='loading') return 'busy';
+  if (CATALOG_STATE==='ready' && !force) return 'ready';
   if (partsFromLocal()) return loadCatalogLocal();
   return loadCatalogCloud();
 }
@@ -56,28 +56,43 @@ async function loadCatalogLocal(){
   }
 }
 
-/* ---- cloud (Firestore) source ---- */
+/* ---- cloud (Firestore) source ----
+   Returns a short status string: 'unchanged' | 'updated' | 'empty' | 'noauth' | 'error'. */
 async function loadCatalogCloud(){
-  if (typeof FB==='undefined' || !FB.ready || !FB.user) return;
+  if (typeof FB==='undefined' || !FB.ready || !FB.user) return 'noauth';
   CATALOG_STATE='loading';
   try {
     var meta = await bcol('catalog').doc('_meta').get();
-    if (!meta.exists){ CATALOG={}; CATALOG_STATE='ready'; return; }
-    CATALOG_META = meta.data();
+    if (!meta.exists){ CATALOG={}; CATALOG_META=null; CATALOG_STATE='ready'; return 'empty'; }
+    var data = meta.data();
+    // Already hold this exact version? The version is a content hash, so a matching
+    // one means the catalog is unchanged — skip re-downloading every chunk.
+    if (CATALOG && CATALOG_META && CATALOG_META.version===data.version && Object.keys(CATALOG).length){
+      CATALOG_STATE='ready';
+      if (typeof console!=='undefined') console.log('Parts catalog already current (v'+data.version+') — no re-download.');
+      return 'unchanged';
+    }
+    // Fetch all chunk docs in parallel, then build the index.
+    var gets = [];
+    for (var i=0; i<data.chunks; i++) gets.push(bcol('catalog').doc('chunk_'+i).get());
+    var docs = await Promise.all(gets);
     var map = {};
-    for (var i=0; i<CATALOG_META.chunks; i++){
-      var d = await bcol('catalog').doc('chunk_'+i).get();
+    for (var j=0; j<docs.length; j++){
+      var d = docs[j];
       if (!d.exists) continue;
       var arr = JSON.parse(await gunzipB64(d.data().data));
       for (var k=0;k<arr.length;k++){ var r=arr[k]; map[String(r[0])] = [r[1], r[2], r[3]]; }
     }
-    CATALOG = map; CATALOG_STATE='ready';
-    if (typeof console!=='undefined') console.log('Parts catalog ready: '+Object.keys(map).length+' SKUs (v'+CATALOG_META.version+')');
+    // Commit only after a successful rebuild (a failed refresh keeps the old catalog).
+    CATALOG = map; CATALOG_META = data; CATALOG_STATE='ready';
+    if (typeof console!=='undefined') console.log('Parts catalog ready: '+Object.keys(map).length+' SKUs (v'+data.version+')');
     // refresh the SKU hint if a line modal is open
     if (typeof document!=='undefined'){ var m=document.getElementById('skuMsg'); if(m && typeof catalogHint==='function') m.textContent=catalogHint(); }
+    return 'updated';
   } catch(e){
     if (typeof console!=='undefined') console.error('catalog load failed', e);
     CATALOG_STATE='error';
+    return 'error';
   }
 }
 
