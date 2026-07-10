@@ -51,10 +51,10 @@ function sessionUser(req, u) { var t = tokenFromReq(req, u); return t ? (session
 
 // Sensible defaults matching this shop's SQL Server (see sync/export-sql.ps1).
 const DEFAULT_SQL = {
-  server: 'localhost\\MSSQLSERVER01',
-  database: 'jasRegaladoDB',
-  auth: 'integrated',   // 'integrated' (Windows) | 'sql' (user+password)
-  user: '',
+  server: 'JASSERVER\\SQLSERVER2014',
+  database: 'JasregaladoDB',
+  auth: 'sql',          // 'integrated' (Windows) | 'sql' (user+password)
+  user: 'basic_parts_ro',   // least-privilege read-only login (see Desktop .sql script)
   // WITH (NOLOCK) = read-only, takes no locks, so this sync never blocks the
   // shared production database that other apps rely on. Read-only by design.
   query: 'SELECT ap.fldStockCode AS sku, p.fldPartDesc AS part_name, ' +
