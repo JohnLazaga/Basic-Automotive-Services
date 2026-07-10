@@ -422,7 +422,7 @@ var BRANCH = {"id":"commonwealth","slug":"commonwealth","name":"Basic by JMSI �
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.1.5 · 2026-07-09';
+var APP_VERSION = 'v1.1.6 · 2026-07-10';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -3170,6 +3170,8 @@ VIEWS.settings = function(){
       '<pre class="codeblk">'+esc(sampleJSON)+'</pre><pre class="codeblk">'+esc(sampleQuery)+'</pre>'+
       '<p class="muted small">Browsers can\'t open raw SQL — expose this query as a JSON HTTP endpoint. Field names are mapped tolerantly (sku, srp, buying_price, quantity, min…).</p></details></div>'+
 
+    partsCloudCard()+
+
     sqlServerCard()+
 
   '</div><div class="colside">'+
@@ -3201,13 +3203,54 @@ function saveShop(){
   persist(); if(typeof publishPortalShop==='function') publishPortalShop();   // sync shop details to the portal
   toast('Settings saved'); render();
 }
+
+/* ---- Cloud parts catalog: re-pull the latest synced catalog on demand ----
+   The cloud app reads parts from Firestore, which is refreshed from SQL Server
+   by the sync (nightly at 3 AM, or the manual launcher). This card lets any
+   signed-in device pull the newest *synced* catalog immediately, without
+   waiting for the app's normal check. It does NOT reach SQL directly — a
+   browser can't; that's what the LAN-side sync is for. */
+function partsCloudCard(){
+  if (typeof partsFromLocal==='function' && partsFromLocal()) return '';   // local branches use the SQL Server card
+  var cnt = (typeof catalogCount==='function') ? catalogCount() : 0;
+  var meta = (typeof CATALOG_META!=='undefined' && CATALOG_META) ? CATALOG_META : null;
+  var ver = meta && meta.version ? String(meta.version).slice(0,12) : '—';
+  var line = cnt ? (cnt.toLocaleString()+' SKUs loaded · v'+ver) : 'Not loaded yet';
+  return '<div class="card"><h2>Parts catalog (cloud)</h2>'+
+    '<div id="catalogStatus" class="muted small mb8">'+line+'</div>'+
+    '<button class="btn primary" onclick="refreshCatalogNow()">↻ Refresh parts catalog</button>'+
+    '<p class="muted small mt8">Re-downloads the newest catalog that was synced to the cloud from your SQL Server '+
+    '(automatically at 3 AM, or when you run the sync). Use this to pull the latest synced prices onto this device right now.</p></div>';
+}
+async function refreshCatalogNow(){
+  if (typeof loadCatalog!=='function'){ toast('Catalog module unavailable','err'); return; }
+  var el=document.getElementById('catalogStatus');
+  if(el){ el.textContent='Refreshing from cloud…'; el.className='muted small mb8'; }
+  try{
+    var result=await loadCatalog(true);
+    var cnt=(typeof catalogCount==='function')?catalogCount():0;
+    var meta=(typeof CATALOG_META!=='undefined'&&CATALOG_META)?CATALOG_META:null;
+    var ver=meta&&meta.version?String(meta.version).slice(0,12):'—';
+    if(typeof CATALOG_STATE!=='undefined' && CATALOG_STATE==='ready'){
+      var already=(result==='unchanged');
+      if(el){ el.textContent='✓ '+cnt.toLocaleString()+' SKUs loaded · v'+ver+(already?' · already up to date':''); el.className='ok small mb8'; }
+      toast((already?'Already up to date: ':'Parts refreshed: ')+cnt.toLocaleString()+' SKUs');
+    } else {
+      if(el){ el.textContent='✗ Could not refresh — check your connection and that you are signed in.'; el.className='err small mb8'; }
+      toast('Refresh failed','err');
+    }
+  }catch(e){
+    if(el){ el.textContent='✗ '+((e&&e.message)?e.message:'refresh failed'); el.className='err small mb8'; }
+    toast('Refresh failed','err');
+  }
+}
 /* ---- Attach the parts catalog straight from SQL Server (branch server) ----
    Shown only on a local-parts branch build. The app never talks to SQL directly;
    it posts the connection details to this branch's parts server, which connects
    via .NET SqlClient (see branch-server/server.js) and syncs the catalog. */
 var SQL_DEFAULTS = {
-  server:'localhost\\MSSQLSERVER01', database:'jasRegaladoDB', auth:'integrated', user:'',
-  query:'SELECT ap.fldStockCode AS sku, p.fldPartDesc AS part_name, ap.fldNetPrice AS net_price, ap.fldSRPExc AS srp FROM tblAutoPart ap LEFT JOIN tblPart p ON ap.fldPartNameCode = p.fldPartNameCode WHERE ap.fldIsActive = 1 ORDER BY ap.fldStockCode'
+  server:'JASSERVER\\SQLSERVER2014', database:'JasregaladoDB', auth:'sql', user:'basic_parts_ro',
+  query:'SELECT ap.fldStockCode AS sku, p.fldPartDesc AS part_name, ap.fldNetPrice AS net_price, ap.fldSRPExc AS srp FROM tblAutoPart ap WITH (NOLOCK) LEFT JOIN tblPart p WITH (NOLOCK) ON ap.fldPartNameCode = p.fldPartNameCode WHERE ap.fldIsActive = 1 ORDER BY ap.fldStockCode'
 };
 function partsServerBase(){ return (typeof BRANCH!=='undefined'&&BRANCH.partsUrl)?String(BRANCH.partsUrl).replace(/\/+$/,''):''; }
 function sqlServerCard(){
@@ -3232,7 +3275,7 @@ function sqlSetStatus(html,cls){ var el=document.getElementById('sqlStatus'); if
 async function sqlLoadStatus(){
   var base=partsServerBase(); if(!base){ sqlSetStatus('No parts server URL set for this branch.','err'); return; }
   try{
-    var d=await (await fetch(base+'/admin/sql/status')).json();
+    var d=await (await fetch(base+'/admin/sql/status',{headers:authHeaders()})).json();
     var cfg=d.config||d.defaults||SQL_DEFAULTS;
     if(document.getElementById('sqlServer')){ setVal('sqlServer',cfg.server||''); setVal('sqlDb',cfg.database||''); setVal('sqlAuth',cfg.auth||'integrated'); setVal('sqlUser',cfg.user||''); if(cfg.query) setVal('sqlQuery',cfg.query); }
     var src = d.configured ? ('SQL Server ('+esc(d.source||'')+')') : (d.source&&d.source.indexOf('tsv')===0?'file snapshot':'not attached');
@@ -3244,7 +3287,7 @@ async function sqlTest(){
   var base=partsServerBase(); if(!base){toast('No parts server URL','err');return;}
   sqlSetStatus('Testing connection…');
   try{
-    var d=await (await fetch(base+'/admin/sql/test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(sqlCfgFromForm())})).json();
+    var d=await (await fetch(base+'/admin/sql/test',{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify(sqlCfgFromForm())})).json();
     if(d.ok){ var s=(d.sample||[]).map(function(x){return esc(x.sku)+' — '+esc(x.name);}).join('<br>'); sqlSetStatus('✓ Connected · '+Number(d.count).toLocaleString()+' rows.<br><span class="muted">'+s+'</span>','ok'); toast('SQL OK: '+d.count+' rows'); }
     else { sqlSetStatus('✗ '+esc(d.error||'failed'),'err'); toast('SQL test failed','err'); }
   }catch(e){ sqlSetStatus('✗ Cannot reach branch server.','err'); toast('Cannot reach server','err'); }
@@ -3253,7 +3296,7 @@ async function sqlAttach(){
   var base=partsServerBase(); if(!base){toast('No parts server URL','err');return;}
   sqlSetStatus('Attaching & syncing the full catalog…');
   try{
-    var d=await (await fetch(base+'/admin/sql/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(sqlCfgFromForm())})).json();
+    var d=await (await fetch(base+'/admin/sql/save',{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify(sqlCfgFromForm())})).json();
     if(d.ok){ sqlSetStatus('✓ Attached · '+Number(d.count).toLocaleString()+' SKUs synced from SQL Server.','ok'); toast('Parts attached: '+d.count+' SKUs'); if(typeof loadCatalog==='function') loadCatalog(true); }
     else { sqlSetStatus('✗ '+esc(d.error||'failed'),'err'); toast('Attach failed','err'); }
   }catch(e){ sqlSetStatus('✗ Cannot reach branch server.','err'); toast('Cannot reach server','err'); }
@@ -3262,7 +3305,7 @@ async function sqlSyncNow(){
   var base=partsServerBase(); if(!base) return;
   sqlSetStatus('Re-syncing from SQL Server…');
   try{
-    var d=await (await fetch(base+'/admin/sql/sync',{method:'POST'})).json();
+    var d=await (await fetch(base+'/admin/sql/sync',{method:'POST',headers:authHeaders()})).json();
     if(d.ok){ sqlSetStatus('✓ Synced '+Number(d.count).toLocaleString()+' SKUs.','ok'); toast('Synced '+d.count+' SKUs'); if(typeof loadCatalog==='function') loadCatalog(true); }
     else { sqlSetStatus('✗ '+esc(d.error||'failed'),'err'); }
   }catch(e){ sqlSetStatus('✗ Cannot reach branch server.','err'); }
@@ -5007,8 +5050,8 @@ async function gunzipB64(b64){
 }
 
 async function loadCatalog(force){
-  if (CATALOG_STATE==='loading') return;
-  if (CATALOG_STATE==='ready' && !force) return;
+  if (CATALOG_STATE==='loading') return 'busy';
+  if (CATALOG_STATE==='ready' && !force) return 'ready';
   if (partsFromLocal()) return loadCatalogLocal();
   return loadCatalogCloud();
 }
@@ -5034,28 +5077,43 @@ async function loadCatalogLocal(){
   }
 }
 
-/* ---- cloud (Firestore) source ---- */
+/* ---- cloud (Firestore) source ----
+   Returns a short status string: 'unchanged' | 'updated' | 'empty' | 'noauth' | 'error'. */
 async function loadCatalogCloud(){
-  if (typeof FB==='undefined' || !FB.ready || !FB.user) return;
+  if (typeof FB==='undefined' || !FB.ready || !FB.user) return 'noauth';
   CATALOG_STATE='loading';
   try {
     var meta = await bcol('catalog').doc('_meta').get();
-    if (!meta.exists){ CATALOG={}; CATALOG_STATE='ready'; return; }
-    CATALOG_META = meta.data();
+    if (!meta.exists){ CATALOG={}; CATALOG_META=null; CATALOG_STATE='ready'; return 'empty'; }
+    var data = meta.data();
+    // Already hold this exact version? The version is a content hash, so a matching
+    // one means the catalog is unchanged — skip re-downloading every chunk.
+    if (CATALOG && CATALOG_META && CATALOG_META.version===data.version && Object.keys(CATALOG).length){
+      CATALOG_STATE='ready';
+      if (typeof console!=='undefined') console.log('Parts catalog already current (v'+data.version+') — no re-download.');
+      return 'unchanged';
+    }
+    // Fetch all chunk docs in parallel, then build the index.
+    var gets = [];
+    for (var i=0; i<data.chunks; i++) gets.push(bcol('catalog').doc('chunk_'+i).get());
+    var docs = await Promise.all(gets);
     var map = {};
-    for (var i=0; i<CATALOG_META.chunks; i++){
-      var d = await bcol('catalog').doc('chunk_'+i).get();
+    for (var j=0; j<docs.length; j++){
+      var d = docs[j];
       if (!d.exists) continue;
       var arr = JSON.parse(await gunzipB64(d.data().data));
       for (var k=0;k<arr.length;k++){ var r=arr[k]; map[String(r[0])] = [r[1], r[2], r[3]]; }
     }
-    CATALOG = map; CATALOG_STATE='ready';
-    if (typeof console!=='undefined') console.log('Parts catalog ready: '+Object.keys(map).length+' SKUs (v'+CATALOG_META.version+')');
+    // Commit only after a successful rebuild (a failed refresh keeps the old catalog).
+    CATALOG = map; CATALOG_META = data; CATALOG_STATE='ready';
+    if (typeof console!=='undefined') console.log('Parts catalog ready: '+Object.keys(map).length+' SKUs (v'+data.version+')');
     // refresh the SKU hint if a line modal is open
     if (typeof document!=='undefined'){ var m=document.getElementById('skuMsg'); if(m && typeof catalogHint==='function') m.textContent=catalogHint(); }
+    return 'updated';
   } catch(e){
     if (typeof console!=='undefined') console.error('catalog load failed', e);
     CATALOG_STATE='error';
+    return 'error';
   }
 }
 
