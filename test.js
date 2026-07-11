@@ -77,47 +77,50 @@ section('4. Final Billing: VATable Sales + VAT (12%) added on top; vatable+vat==
 })();
 
 /* ---------------------------------------------------------------- TEST 5 */
-section('5. Commission: admin-set per-staff rate × labor (not a shared pool)');
+section('5. Commission: mechanics split shop-rate pool evenly; non-mechanic roles use own rate');
 (function(){
   const s=fresh();
   const mech=s.staff.filter(x=>x.role==='Mechanic');
   const sa=s.staff.find(x=>x.role==='SA'), sm=s.staff.find(x=>x.role==='SM');
-  // Admin sets each person's own rate.
-  mech[0].commissionRate=5; mech[1].commissionRate=4; sa.commissionRate=2; sm.commissionRate=3;
+  const rate=s.shop.mechCommissionRate;                 // shop mechanic rate (5%)
+  // Per-person rates ARE set here, but mechanics IGNORE them — they use the shop rate.
+  mech[0].commissionRate=99; mech[1].commissionRate=1; sa.commissionRate=2; sm.commissionRate=3;
   const job={ lines:[{type:'labor',ref:null,desc:'L',qty:1,price:500}], mechanicIds:[mech[0].id] };
   const m0=M.jobLaborCommissionMap(job, s);
-  ok('1 mechanic @5% of 500 = 25.00', m0[mech[0].id]===25);
+  ok('1 mechanic: 500 × 5% ÷ 1 = 25.00 (shop rate, not own 99%)', m0[mech[0].id]===25);
   job.mechanicIds=[mech[0].id, mech[1].id];
   const m1=M.jobLaborCommissionMap(job, s);
-  ok('each earns their OWN rate, no split: 25.00 and 20.00', m1[mech[0].id]===25 && m1[mech[1].id]===20);
-  // Different rates per assignee on one job.
+  ok('2 mechanics split evenly: 12.50 each', m1[mech[0].id]===12.5 && m1[mech[1].id]===12.5);
+  // 3 mechanics → 500 × 5% ÷ 3 = 8.33 each (rounded).
+  const m3id='st_test_m3'; s.staff.push({ id:m3id, name:'Test Mech 3', role:'Mechanic', commissionRate:'' });
+  job.mechanicIds=[mech[0].id, mech[1].id, m3id];
+  const m3=M.jobLaborCommissionMap(job, s);
+  ok('3 mechanics split evenly: 8.33 each', m3[mech[0].id]===8.33 && m3[mech[1].id]===8.33 && m3[m3id]===8.33);
+  // Mixed roles on one job: mechanic (shop rate) + SA/assessor (own rate), NOT split.
   const job2={ id:'j2', no:'JO-X', stage:'Released', lines:[{type:'labor',ref:null,desc:'L',qty:1,price:500}],
     mechanicIds:[mech[0].id], saId:sa.id, assessedBy:sm.id, partsSalesman:'', discount:{type:'amount',value:0}, payments:[], addlWork:[] };
   s.jobs=[job2];
   const ct=M.commissionTable([job2]);
   const saRow=ct.find(r=>r.name===sa.name), mRow=ct.find(r=>r.name===mech[0].name), smRow=ct.find(r=>r.name===sm.name);
-  ok('mechanic @5% = 25.00', mRow && mRow.amount===25);
-  ok('Service Adviser @2% = 10.00', saRow && saRow.amount===10);
-  ok('assessor @3% = 15.00', smRow && smRow.amount===15);
+  ok('mechanic @ shop 5% = 25.00', mRow && mRow.amount===25);
+  ok('Service Adviser own 2% = 10.00 (not split)', saRow && saRow.amount===10);
+  ok('assessor own 3% = 15.00 (not split)', smRow && smRow.amount===15);
   ok('commission table has 3 rows', ct.length===3);
-  // Unset rate falls back to the shop default.
-  const def=s.shop.mechCommissionRate; mech[0].commissionRate='';
-  const m2=M.jobLaborCommissionMap(job2, s);
-  ok('blank rate falls back to default × labor', m2[mech[0].id]===Math.round(500*def)/100);
-  mech[0].commissionRate=5;
-  // Same person in two capacities counts once.
+  // Same person as both mechanic and SA counts once (paid as a mechanic).
   const dual={ id:'j3', no:'JO-Y', stage:'Released', lines:[{type:'labor',ref:null,desc:'L',qty:1,price:500}],
     mechanicIds:[mech[0].id], saId:mech[0].id, assessedBy:'', partsSalesman:'', discount:{type:'amount',value:0}, payments:[], addlWork:[] };
   const dmap=M.jobLaborCommissionMap(dual, s);
-  ok('dual-capacity person counts once @5% = 25.00', dmap[mech[0].id]===25 && Object.keys(dmap).length===1);
-  // Payout toggle off -> excluded from payout; OTHERS UNCHANGED (no pool to redistribute).
+  ok('dual-capacity person counts once = 25.00', dmap[mech[0].id]===25 && Object.keys(dmap).length===1);
+  // Two mechanics, one toggled OFF: divisor still counts BOTH, so the payer still gets 12.50.
+  const twojob={ id:'j4', no:'JO-Z', stage:'Released', lines:[{type:'labor',ref:null,desc:'L',qty:1,price:500}],
+    mechanicIds:[mech[0].id, mech[1].id], saId:'', assessedBy:'', partsSalesman:'', discount:{type:'amount',value:0}, payments:[], addlWork:[] };
   mech[0].commission=false;
-  const pay=M.jobLaborCommissionMap(job2, s);
-  ok('excluded person not in payout map', pay[mech[0].id]===undefined);
-  ok('others keep their own amounts: SA 10, assessor 15', pay[sa.id]===10 && pay[sm.id]===15);
-  // Evaluation map ignores the toggle -> excluded person still shows would-earn 25.
-  const evalMap=M.jobLaborCommissionMapAll(job2, s);
-  ok('evaluation map shows excluded person would-earn 25.00', evalMap[mech[0].id]===25);
+  const pay=M.jobLaborCommissionMap(twojob, s);
+  ok('toggled-off mechanic excluded from payout', pay[mech[0].id]===undefined);
+  ok('remaining mechanic still gets 12.50 (divisor unchanged)', pay[mech[1].id]===12.5);
+  // Evaluation map ignores the toggle → excluded mechanic still shows would-earn 12.50.
+  const evalMap=M.jobLaborCommissionMapAll(twojob, s);
+  ok('evaluation map shows excluded mechanic would-earn 12.50', evalMap[mech[0].id]===12.5);
 })();
 
 /* ------------------------------------------------------- TEST 5b: ingress */

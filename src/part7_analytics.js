@@ -130,16 +130,16 @@ function docOrSeries(){
 function printOrSeries(){ printDoc(docOrSeries()); }
 
 /* Commission across a set of jobs.
-   Mechanics: labor×rate÷#mechs split evenly (the pool).
-   Service Adviser on the job: its own labor×rate (same 5% rate, not split).
-   Other roles: their configured commissionBase/rate. */
+   Mechanics: shop rate × labor ÷ #mechanics, split evenly (the pool).
+   Non-mechanic roles (SA, assessor, parts salesman): their own rate × labor,
+   not split. See jobLaborCommissionMap() in part1_core.js (single source). */
 function commissionTable(jobs){
   var map={};
   function add(id,amt){ if(!id||id==='TBA') return; var s=staffById(id); if(!s) return;
     if(!commissionEligible(s)) return;                                  // toggled out of commission payout
     if(!map[id]) map[id]={ name:s.name, role:s.role, amount:0 }; map[id].amount=round2(map[id].amount+amt); }
   jobs.forEach(function(j){
-    // Shop-wide commission: labor × shop rate, split evenly among everyone assigned.
+    // Mechanics split the shop-rate pool evenly; non-mechanic roles earn their own rate.
     var cm=jobLaborCommissionMap(j,S);
     Object.keys(cm).forEach(function(id){ add(id, cm[id]); });
   });

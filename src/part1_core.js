@@ -147,10 +147,9 @@ function vatSplit(base, S){
   return { vatable:base, vat:vat, gross:gross, exempt:false };
 }
 
-/* Commission is admin-controlled per staff: each person has their OWN rate
-   (% of labor), set by an admin on the Staff page — not a single fixed rate.
-   On a job, every assigned person earns their own rate × the job's labor
-   (no shared pool). If a person has no rate set, the shop default applies. */
+/* Per-staff rate (% of labor) for NON-mechanic roles (Service Adviser, assessor,
+   parts salesman), set by an admin on the Staff page. Blank → shop default.
+   Mechanics do NOT use this — they split a shop-rate pool evenly (see below). */
 function staffCommissionRate(idOrStaff){
   var s = (idOrStaff && typeof idOrStaff==='object') ? idOrStaff : staffById(idOrStaff);
   if(!s) return 0;
@@ -158,30 +157,44 @@ function staffCommissionRate(idOrStaff){
   if(r===undefined || r===null || r==='') return Number(S.shop.mechCommissionRate)||0;  // fallback default
   return Number(r)||0;
 }
-/* The distinct staff assigned to a job. includeAll=true returns EVERYONE assigned
-   (ignoring the payout toggle) — used for the evaluation/KPI figure. Default
-   returns only commission-eligible (toggle-on) staff — used for actual payout. */
-function assignedCommissionIds(job, includeAll){
-  var ids = [];
-  (job.mechanicIds||[]).forEach(function(x){ if(x && x!=='TBA') ids.push(x); });
-  [job.saId, job.assessedBy, job.partsSalesman].forEach(function(x){ if(x && x!=='TBA') ids.push(x); });
-  var uniq = [];
-  ids.forEach(function(id){ if(uniq.indexOf(id)<0 && (includeAll || commissionEligible(id))) uniq.push(id); });
-  return uniq;
-}
-/* Actual payout map — each assigned, toggle-on person earns their own rate × labor. */
-function jobLaborCommissionMap(job, S){
-  var labor = discountedLabor(job); var map = {};
-  assignedCommissionIds(job).forEach(function(id){ map[id] = round2(labor * staffCommissionRate(id)/100); });
+/* Labor-commission map for a job — the single source of truth for payout & KPI.
+   MECHANICS split ONE pool EQUALLY: pool = labor × shop mechanic rate
+   (S.shop.mechCommissionRate); each mechanic earns pool ÷ (# mechanics assigned).
+   e.g. ₱1000 labor @ 5% → 1 mech ₱50, 2 mechs ₱25 each, 3 mechs ₱16.67 each.
+   The divisor is the count of mechanics ASSIGNED (not just toggle-on), so
+   excluding one from payout never inflates the others' shares.
+   NON-mechanic assignees (SA, assessor, parts salesman) are separate: each earns
+   their OWN rate × labor, undivided.
+   includeAll=true ignores the payout toggle (evaluation/KPI figure); default
+   returns only commission-eligible (toggle-on) staff (actual payout). */
+function _laborCommissionMap(job, includeAll){
+  var labor = discountedLabor(job);
+  var map = {};
+  // distinct mechanics actually assigned to this job (blank / "TBA" excluded)
+  var mechs = [];
+  (job.mechanicIds||[]).forEach(function(id){ if(id && id!=='TBA' && mechs.indexOf(id)<0) mechs.push(id); });
+  if(mechs.length){
+    var share = round2(labor * (Number(S.shop.mechCommissionRate)||0)/100 / mechs.length);  // equal per-mechanic share
+    mechs.forEach(function(id){
+      if(!staffById(id)) return;
+      if(!includeAll && !commissionEligible(id)) return;   // toggled out of payout
+      map[id] = share;
+    });
+  }
+  // Non-mechanic assignees keep their own separate commission (own rate × labor).
+  [job.saId, job.assessedBy, job.partsSalesman].forEach(function(id){
+    if(!id || id==='TBA' || mechs.indexOf(id)>=0) return;  // skip blanks & anyone already paid as a mechanic
+    if(!staffById(id)) return;
+    if(!includeAll && !commissionEligible(id)) return;
+    map[id] = round2(labor * staffCommissionRate(id)/100);
+  });
   return map;
 }
-/* Evaluation map — same per-person rates but ignoring the payout toggle, so an
-   excluded person still shows the commission they WOULD earn. */
-function jobLaborCommissionMapAll(job, S){
-  var labor = discountedLabor(job); var map = {};
-  assignedCommissionIds(job, true).forEach(function(id){ map[id] = round2(labor * staffCommissionRate(id)/100); });
-  return map;
-}
+/* Actual payout map — mechanics' equal split + non-mechanics' own rate (toggle-on only). */
+function jobLaborCommissionMap(job, S){ return _laborCommissionMap(job, false); }
+/* Evaluation map — same, but ignoring the payout toggle so an excluded person
+   still shows the commission they WOULD earn. */
+function jobLaborCommissionMapAll(job, S){ return _laborCommissionMap(job, true); }
 /* Total labor-commission cost of a job (toggle-on staff) and the assignee count. */
 function jobLaborCommission(job, S){
   var m = jobLaborCommissionMap(job, S); var ids = Object.keys(m);

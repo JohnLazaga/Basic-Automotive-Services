@@ -391,7 +391,7 @@ function setStaffCommissionRate(id,v){ if(typeof isAdminUser==='function'&&!isAd
 function toggleStaffCommission(id,on){ var s=staffById(id); if(!s) return; s.commission=!!on; persist(); toast(on?'Included in payout':'Excluded from payout'); render(); }
 function editStaff(id){ var s=id?staffById(id):{};
   var admin = (typeof isAdminUser!=='function') || isAdminUser();
-  var rateField = admin ? field('Commission rate % of labor','<input id="stRate" type="number" step="0.1" min="0" value="'+attr(s.commissionRate!==undefined&&s.commissionRate!==''?s.commissionRate:'')+'" placeholder="leave blank for default ('+(S.shop.mechCommissionRate||0)+'%)">','Admin-set. Each person earns this rate × labor on jobs they\'re assigned to.') : '';
+  var rateField = admin ? field('Commission rate % of labor','<input id="stRate" type="number" step="0.1" min="0" value="'+attr(s.commissionRate!==undefined&&s.commissionRate!==''?s.commissionRate:'')+'" placeholder="leave blank for default ('+(S.shop.mechCommissionRate||0)+'%)">','Admin-set, for non-mechanic roles (SA, assessor, parts salesman): own rate × labor. Mechanics ignore this — they split the shop default rate evenly per job.') : '';
   openModal(id?'Edit staff':'Add staff',
     '<div class="grid2">'+field('Name','<input id="stName" value="'+attr(s.name||'')+'">')+
     field('Nickname','<input id="stNick" value="'+attr(s.nickname||'')+'" placeholder="optional">')+'</div>'+
