@@ -124,8 +124,8 @@ function addAccountDialog(){
   openModal('Add staff account',
     field('Full name','<input id="acName" placeholder="Juan Dela Cruz">')+
     '<div class="grid2">'+
-    field('Username','<input id="acUser" placeholder="e.g. junjun" autocomplete="off" oninput="this.value=this.value.toLowerCase().replace(/[^a-z0-9_.-]/g,\'\')">')+
-    field('Password','<input id="acPass" type="text" placeholder="set a password" autocomplete="off">')+
+    field('Username','<input id="acUser" placeholder="e.g. junjun" autocomplete="off" autocapitalize="off" oninput="this.value=this.value.toLowerCase().replace(/[^a-z0-9_.-]/g,\'\')">')+
+    field('Password','<input id="acPass" type="text" placeholder="set a password" autocomplete="off" autocapitalize="off">')+
     '</div>'+
     '<div class="grid2">'+
     field('Role','<select id="acRole">'+ROLE_LIST.map(function(r){return '<option value="'+r+'">'+esc(roleLabel(r))+'</option>';}).join('')+'</select>')+

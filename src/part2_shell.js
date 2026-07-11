@@ -177,6 +177,49 @@ function installNoAutofill(){
   } catch(e){ /* non-fatal */ }
 }
 
+/* ---- Universal rule: encode everything in UPPERCASE ----------------------
+   Shop policy across EVERY branch: text typed into the system ("encoding") is
+   stored in UPPERCASE, so records and printouts read consistently regardless of
+   who keyed them in. One capture-phase input listener force-uppercases every
+   text field as it is typed OR pasted, so the value the rest of the app reads
+   and saves is already uppercase — no per-field code needed. Runs in the CAPTURE
+   phase so a field's own oninput handler (plate/SKU lookups) sees the uppercased
+   value too. Because it lives in the shared core, it applies to all branches.
+
+   Left untouched — fields where case is meaningful or must stay lower/mixed:
+     • password / e-mail / url / number / date-time / colour input types
+     • anything with autocapitalize="off" or "none"  (logins, usernames, passwords)
+     • search boxes (queries, not encoded data — search is case-insensitive)
+     • anything explicitly opted out with the data-no-upper attribute */
+function installUppercase(){
+  if (typeof document==='undefined' || !document.addEventListener) return;
+  var SKIP_TYPE = { password:1, email:1, url:1, number:1, date:1, 'datetime-local':1,
+    month:1, week:1, time:1, color:1, file:1, range:1, checkbox:1, radio:1, hidden:1,
+    submit:1, button:1, image:1, reset:1 };
+  function skip(el){
+    if (!el || !el.tagName) return true;
+    var tag = el.tagName;
+    if (tag!=='INPUT' && tag!=='TEXTAREA') return true;
+    if (tag==='INPUT' && SKIP_TYPE[(el.getAttribute('type')||'text').toLowerCase()]) return true;
+    var ac = (el.getAttribute('autocapitalize')||'').toLowerCase();
+    if (ac==='off' || ac==='none') return true;
+    if (el.hasAttribute('data-no-upper')) return true;
+    if (el.classList && el.classList.contains('searchbox')) return true;
+    return false;
+  }
+  document.addEventListener('input', function(e){
+    var el = e.target;
+    if (skip(el)) return;
+    var v = el.value; if (!v) return;
+    var up = v.toUpperCase(); if (up===v) return;
+    // Uppercasing never changes length — preserve the caret so mid-field edits
+    // don't jump the cursor to the end.
+    var s = el.selectionStart, en = el.selectionEnd;
+    el.value = up;
+    try { if (s!=null) el.setSelectionRange(s, en); } catch(_){ /* non-text field */ }
+  }, true);   // capture: run before the field's own oninput handler
+}
+
 /* ---- Top bar -------------------------------------------------------------- */
 function topbarHTML(){
   var openJobs = S.jobs.filter(function(j){return j.stage!=='Released';}).length;
