@@ -116,6 +116,9 @@ h2{font-size:16px;font-weight:700;letter-spacing:-.01em;margin:0 0 10px}
 .alert.a-due{background:#fdecec;border-color:#f3b5b5;color:var(--brand-dark)}
 .alert.a-soon{background:#fff6db;border-color:#f0d89a;color:#9a7400}
 .alert.a-low{background:#fbfbfd;color:var(--ink2)} .alert-more{font-size:12px;color:var(--ink2);align-self:center}
+/* Inline duplicate-plate gate banner in the Add/Edit vehicle form. */
+.dupewarn{display:none;align-items:center;flex-wrap:wrap;gap:8px;margin:0 0 14px;padding:9px 12px;border-radius:10px;background:#fdecec;border:1px solid #f3b5b5;color:var(--brand-dark);font-size:13px;line-height:1.45}
+.dupewarn.show{display:flex}
 
 /* ---- Kanban ---- */
 .kanban{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}

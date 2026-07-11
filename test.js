@@ -255,10 +255,13 @@ await (async function(){
   // base 2000 + 12% = 2240 subtotal; consolidated discount 350; gross 1890
   ok('consolidated discount = parts+labor+other (350)', b.disc===350);
   ok('gross = subtotal − consolidated discount', b.gross===M.round2(2240-350));
-  // printout shows ONE Discount line, no per-bucket breakdown
+  // final billing printout ITEMISES the discount into Parts / Labor / Other
   const doc=M.docBilling(job);
-  const discLines=(doc.match(/Discount/g)||[]).length;
-  ok('billing printout shows a single consolidated Discount line', discLines===1 && doc.indexOf('promo')===-1);
+  ok('billing itemises Parts discount (100)', /Parts discount<\/span><span>−[^<]*100/.test(doc));
+  ok('billing itemises Labor discount (200)', /Labor discount<\/span><span>−[^<]*200/.test(doc));
+  ok('billing itemises Other discount incl. note', doc.indexOf('Other discount')>=0 && doc.indexOf('promo')>=0);
+  ok('no single consolidated Discount line when itemised', doc.indexOf('<span>Discount</span>')===-1);
+  ok('itemised discounts sum to the applied total (gross unchanged)', b.gross===M.round2(2240-350));
   // commission on discounted labor: (1000 − 200) × 5% = 40.00
   const cm=M.jobLaborCommissionMap(job, s);
   ok('commission based on discounted labor (40.00)', cm[mech.id]===40);
@@ -280,6 +283,21 @@ await (async function(){
   // Estimates share the same allocator
   s.counters.est=0; const e1=await M.createEstimateFrom({plate:'ZZZ 111'}); const e2=await M.createEstimateFrom({plate:'ZZZ 222'});
   ok('consecutive EST #s are unique', e1.no!==e2.no);
+})();
+
+/* --------------------------------------------- Duplicate plate gate */
+section('New vehicle: duplicate plate is detected (case/space-insensitive)');
+(function(){
+  const s=fresh();
+  s.vehicles=[{ id:'vh_a', plate:'ABC 1234', owner:'JUAN', make:'TOYOTA', model:'VIOS' }];
+  M.setS(s);
+  ok('exact duplicate flagged (add)', M.vehDupe('ABC 1234', null) && M.vehDupe('ABC 1234', null).id==='vh_a');
+  ok('case/space-insensitive duplicate flagged', !!M.vehDupe('abc1234', null));
+  ok('different plate is allowed', M.vehDupe('XYZ 9999', null)===null);
+  ok('blank plate is not a duplicate', M.vehDupe('', null)===null);
+  ok('editing the same record does not flag itself', M.vehDupe('ABC 1234', 'vh_a')===null);
+  s.vehicles.push({ id:'vh_b', plate:'DEF 5678', owner:'PEDRO' });
+  ok('editing into ANOTHER record\'s plate is flagged', M.vehDupe('DEF 5678', 'vh_a') && M.vehDupe('DEF 5678','vh_a').id==='vh_b');
 })();
 
 /* --------------------------------------------- Public portal snapshot */

@@ -90,8 +90,9 @@ afterRender = function(){
 function editVehicle(id){
   var v=id?vehicleById(id):{};
   openModal(id?'Edit vehicle':'Add vehicle',
+    '<div id="vehDupeMsg" class="dupewarn"></div>'+
     '<div class="grid2">'+
-    field('Plate','<input id="vehPlate" value="'+attr(v.plate||'')+'">')+
+    field('Plate','<input id="vehPlate" value="'+attr(v.plate||'')+'" oninput="vehPlateCheck()">')+
     field('Registered owner','<input id="vehOwner" value="'+attr(v.owner||'')+'">')+
     field('Contact person','<input id="vehCP" value="'+attr(v.contactPerson||'')+'">')+
     field('Contact #','<input id="vehContact" value="'+attr(v.contactNumber||'')+'">')+
@@ -131,7 +132,31 @@ function deleteVehicleConfirm(id){
     },'Delete vehicle', true);
 }
 var vehCtx=null;
+/* A plate identifies exactly one vehicle. Return any OTHER record already using
+   this plate (case-insensitive, trimmed); excludeId is the record being edited so
+   it never flags itself. Used to gate Add/Edit vehicle against duplicates. */
+function vehDupe(plate, excludeId){
+  var norm=function(p){ return (p||'').toUpperCase().replace(/\s+/g,''); };  // ignore case & spacing ("ABC 1234" == "abc1234")
+  var pn=norm(plate); if(!pn) return null;
+  return (S.vehicles||[]).find(function(v){ return v.id!==excludeId && norm(v.plate)===pn; }) || null;
+}
+/* Live feedback while typing the plate: show/clear the in-form duplicate banner. */
+function vehPlateCheck(){
+  var box=document.getElementById('vehDupeMsg'); if(!box) return;
+  var d=vehDupe(val('vehPlate'), vehCtx);
+  if(!d){ box.className='dupewarn'; box.innerHTML=''; return; }
+  var desc=((d.year?d.year+' ':'')+(d.make||'')+' '+(d.model||'')).trim();
+  box.className='dupewarn show';
+  box.innerHTML='<span>⚠ Plate <b>'+esc((d.plate||'').toUpperCase())+'</b> is already registered'+
+    (d.owner?(' to <b>'+esc(d.owner)+'</b>'):'')+(desc?(' — '+esc(desc)):'')+'. Plates must be unique.</span>'+
+    '<button class="btn sm" type="button" onclick="closeModal();editVehicle(\''+d.id+'\')">Open that vehicle</button>';
+}
 function saveVehicle(){
+  // Duplicate-plate gate: block the save (keeping the form + input open) and
+  // point to the existing record so staff edit that one instead.
+  var dup=vehDupe(val('vehPlate'), vehCtx);
+  if(dup){ vehPlateCheck(); toast('Plate '+((dup.plate||'').toUpperCase())+' is already registered','err');
+    var pf=document.getElementById('vehPlate'); if(pf){ pf.focus(); if(pf.select) pf.select(); } return; }
   var data={ plate:(val('vehPlate')||'').toUpperCase(), owner:val('vehOwner'), contactPerson:val('vehCP'), contactNumber:val('vehContact'),
     chassis:val('vehChassis'), year:val('vehYear'), make:val('vehMake'), model:val('vehModel'), variant:val('vehVariant'),
     odometer:Number(val('vehOdo'))||0, nextServiceDate:val('vehNextDate'), nextServiceOdo:Number(val('vehNextOdo'))||'', address:val('vehAddr'),

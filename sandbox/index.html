@@ -127,6 +127,9 @@ h2{font-size:16px;font-weight:700;letter-spacing:-.01em;margin:0 0 10px}
 .alert.a-due{background:#fdecec;border-color:#f3b5b5;color:var(--brand-dark)}
 .alert.a-soon{background:#fff6db;border-color:#f0d89a;color:#9a7400}
 .alert.a-low{background:#fbfbfd;color:var(--ink2)} .alert-more{font-size:12px;color:var(--ink2);align-self:center}
+/* Inline duplicate-plate gate banner in the Add/Edit vehicle form. */
+.dupewarn{display:none;align-items:center;flex-wrap:wrap;gap:8px;margin:0 0 14px;padding:9px 12px;border-radius:10px;background:#fdecec;border:1px solid #f3b5b5;color:var(--brand-dark);font-size:13px;line-height:1.45}
+.dupewarn.show{display:flex}
 
 /* ---- Kanban ---- */
 .kanban{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
@@ -422,7 +425,7 @@ var BRANCH = {"id":"sandbox","slug":"sandbox","name":"Basic by JMSI — Sandbox 
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.1.9 · 2026-07-11';
+var APP_VERSION = 'v1.2.0 · 2026-07-11';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -2573,8 +2576,9 @@ afterRender = function(){
 function editVehicle(id){
   var v=id?vehicleById(id):{};
   openModal(id?'Edit vehicle':'Add vehicle',
+    '<div id="vehDupeMsg" class="dupewarn"></div>'+
     '<div class="grid2">'+
-    field('Plate','<input id="vehPlate" value="'+attr(v.plate||'')+'">')+
+    field('Plate','<input id="vehPlate" value="'+attr(v.plate||'')+'" oninput="vehPlateCheck()">')+
     field('Registered owner','<input id="vehOwner" value="'+attr(v.owner||'')+'">')+
     field('Contact person','<input id="vehCP" value="'+attr(v.contactPerson||'')+'">')+
     field('Contact #','<input id="vehContact" value="'+attr(v.contactNumber||'')+'">')+
@@ -2614,7 +2618,31 @@ function deleteVehicleConfirm(id){
     },'Delete vehicle', true);
 }
 var vehCtx=null;
+/* A plate identifies exactly one vehicle. Return any OTHER record already using
+   this plate (case-insensitive, trimmed); excludeId is the record being edited so
+   it never flags itself. Used to gate Add/Edit vehicle against duplicates. */
+function vehDupe(plate, excludeId){
+  var norm=function(p){ return (p||'').toUpperCase().replace(/\s+/g,''); };  // ignore case & spacing ("ABC 1234" == "abc1234")
+  var pn=norm(plate); if(!pn) return null;
+  return (S.vehicles||[]).find(function(v){ return v.id!==excludeId && norm(v.plate)===pn; }) || null;
+}
+/* Live feedback while typing the plate: show/clear the in-form duplicate banner. */
+function vehPlateCheck(){
+  var box=document.getElementById('vehDupeMsg'); if(!box) return;
+  var d=vehDupe(val('vehPlate'), vehCtx);
+  if(!d){ box.className='dupewarn'; box.innerHTML=''; return; }
+  var desc=((d.year?d.year+' ':'')+(d.make||'')+' '+(d.model||'')).trim();
+  box.className='dupewarn show';
+  box.innerHTML='<span>⚠ Plate <b>'+esc((d.plate||'').toUpperCase())+'</b> is already registered'+
+    (d.owner?(' to <b>'+esc(d.owner)+'</b>'):'')+(desc?(' — '+esc(desc)):'')+'. Plates must be unique.</span>'+
+    '<button class="btn sm" type="button" onclick="closeModal();editVehicle(\''+d.id+'\')">Open that vehicle</button>';
+}
 function saveVehicle(){
+  // Duplicate-plate gate: block the save (keeping the form + input open) and
+  // point to the existing record so staff edit that one instead.
+  var dup=vehDupe(val('vehPlate'), vehCtx);
+  if(dup){ vehPlateCheck(); toast('Plate '+((dup.plate||'').toUpperCase())+' is already registered','err');
+    var pf=document.getElementById('vehPlate'); if(pf){ pf.focus(); if(pf.select) pf.select(); } return; }
   var data={ plate:(val('vehPlate')||'').toUpperCase(), owner:val('vehOwner'), contactPerson:val('vehCP'), contactNumber:val('vehContact'),
     chassis:val('vehChassis'), year:val('vehYear'), make:val('vehMake'), model:val('vehModel'), variant:val('vehVariant'),
     odometer:Number(val('vehOdo'))||0, nextServiceDate:val('vehNextDate'), nextServiceOdo:Number(val('vehNextOdo'))||'', address:val('vehAddr'),
@@ -3530,7 +3558,20 @@ function totalsBox(j,opts){
   if(b.exempt){ rows+='<div class="l2"><span>VAT-Exempt Sales</span><span>'+peso(b.vatable)+'</span></div>'; }
   else { rows+='<div class="l2"><span>VATable Sales</span><span>'+peso(b.vatable)+'</span></div>';
     rows+='<div class="l2"><span>VAT ('+(S.shop.vatRate||12)+'%)</span><span>'+peso(b.vat)+'</span></div>'; }
-  if(opts.discount && b.disc) rows+='<div class="l2"><span>Discount</span><span>−'+peso(b.disc)+'</span></div>';
+  if(opts.discount && b.disc){
+    // Itemise the discount into Parts / Labor / Other when the job uses the
+    // per-bucket model AND the buckets sum to the applied discount (i.e. it
+    // wasn't capped at the subtotal). Otherwise fall back to one Discount line.
+    var d=j.discount||{}, dp=discParts(j), dl=discLabor(j), doo=discOther(j);
+    var hasBuckets=(d.parts!==undefined||d.labor!==undefined||d.other!==undefined);
+    if(hasBuckets && round2(dp+dl+doo)===b.disc){
+      if(dp) rows+='<div class="l2"><span>Less: Parts discount</span><span>−'+peso(dp)+'</span></div>';
+      if(dl) rows+='<div class="l2"><span>Less: Labor discount</span><span>−'+peso(dl)+'</span></div>';
+      if(doo) rows+='<div class="l2"><span>Less: Other discount'+(d.otherNote?(' — '+esc(d.otherNote)):'')+'</span><span>−'+peso(doo)+'</span></div>';
+    } else {
+      rows+='<div class="l2"><span>Discount</span><span>−'+peso(b.disc)+'</span></div>';
+    }
+  }
   var total = opts.discount ? b.gross : b.subtotal;   // discount comes off the total
   rows+='<div class="l2 grand"><span>Total Amount Due</span><span>'+peso(total)+'</span></div>';
   return '<div class="totbox">'+rows+'</div>';
@@ -3687,7 +3728,7 @@ function docMechCommission(){
   }).join('') || '<p class="r">No mechanic commissions in this period.</p>';
   var body=docHeader('Mechanic Commission Detail · '+esc(prodPeriodLabel()))+ blocks+
     '<div class="totbox"><div class="l2 grand"><span>Total mechanic commission</span><span>'+peso(grand)+'</span></div></div>'+
-    '<div class="foot">Commission = each mechanic’s own rate × the job’s labor net of any labor discount. Includes only mechanics switched on for payout.</div>';
+    '<div class="foot">Commission = the shop rate × the job’s labor (net of any labor discount), split evenly among the mechanics assigned. Includes only mechanics switched on for payout.</div>';
   return docShell('Mechanic commission detail', body);
 }
 function printMechCommission(){ printDoc(docMechCommission()); }
@@ -4022,7 +4063,7 @@ if (typeof module!=='undefined' && module.exports){
     portalDataForVehicle:portalDataForVehicle, portalCardsHTML:portalCardsHTML, portalReportHTML:portalReportHTML,
     render:function(){ return render(); }, setRoute:function(v,a){ ROUTE.view=v; ROUTE.arg=a||null; },
     LOGO_URI:function(){ return LOGO_URI; }, LOGO_LOCKUP:function(){ return LOGO_LOCKUP; },
-    arJobs:arJobs, jobByNo:jobByNo, vehicleByPlate:vehicleByPlate, partById:partById,
+    arJobs:arJobs, jobByNo:jobByNo, vehicleByPlate:vehicleByPlate, vehDupe:vehDupe, partById:partById,
     can:can, routeAllowed:routeAllowed, setCurrentUser:function(u){ CURRENT_USER=u; },
     commissionTable:commissionTable, jobLaborCommission:jobLaborCommission, jobLaborCommissionMap:jobLaborCommissionMap, jobLaborCommissionMapAll:jobLaborCommissionMapAll, laborTotal:laborTotal,
     jobMissingFields:jobMissingFields, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,

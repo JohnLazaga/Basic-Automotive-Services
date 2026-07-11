@@ -103,7 +103,20 @@ function totalsBox(j,opts){
   if(b.exempt){ rows+='<div class="l2"><span>VAT-Exempt Sales</span><span>'+peso(b.vatable)+'</span></div>'; }
   else { rows+='<div class="l2"><span>VATable Sales</span><span>'+peso(b.vatable)+'</span></div>';
     rows+='<div class="l2"><span>VAT ('+(S.shop.vatRate||12)+'%)</span><span>'+peso(b.vat)+'</span></div>'; }
-  if(opts.discount && b.disc) rows+='<div class="l2"><span>Discount</span><span>−'+peso(b.disc)+'</span></div>';
+  if(opts.discount && b.disc){
+    // Itemise the discount into Parts / Labor / Other when the job uses the
+    // per-bucket model AND the buckets sum to the applied discount (i.e. it
+    // wasn't capped at the subtotal). Otherwise fall back to one Discount line.
+    var d=j.discount||{}, dp=discParts(j), dl=discLabor(j), doo=discOther(j);
+    var hasBuckets=(d.parts!==undefined||d.labor!==undefined||d.other!==undefined);
+    if(hasBuckets && round2(dp+dl+doo)===b.disc){
+      if(dp) rows+='<div class="l2"><span>Less: Parts discount</span><span>−'+peso(dp)+'</span></div>';
+      if(dl) rows+='<div class="l2"><span>Less: Labor discount</span><span>−'+peso(dl)+'</span></div>';
+      if(doo) rows+='<div class="l2"><span>Less: Other discount'+(d.otherNote?(' — '+esc(d.otherNote)):'')+'</span><span>−'+peso(doo)+'</span></div>';
+    } else {
+      rows+='<div class="l2"><span>Discount</span><span>−'+peso(b.disc)+'</span></div>';
+    }
+  }
   var total = opts.discount ? b.gross : b.subtotal;   // discount comes off the total
   rows+='<div class="l2 grand"><span>Total Amount Due</span><span>'+peso(total)+'</span></div>';
   return '<div class="totbox">'+rows+'</div>';
@@ -260,7 +273,7 @@ function docMechCommission(){
   }).join('') || '<p class="r">No mechanic commissions in this period.</p>';
   var body=docHeader('Mechanic Commission Detail · '+esc(prodPeriodLabel()))+ blocks+
     '<div class="totbox"><div class="l2 grand"><span>Total mechanic commission</span><span>'+peso(grand)+'</span></div></div>'+
-    '<div class="foot">Commission = each mechanic’s own rate × the job’s labor net of any labor discount. Includes only mechanics switched on for payout.</div>';
+    '<div class="foot">Commission = the shop rate × the job’s labor (net of any labor discount), split evenly among the mechanics assigned. Includes only mechanics switched on for payout.</div>';
   return docShell('Mechanic commission detail', body);
 }
 function printMechCommission(){ printDoc(docMechCommission()); }
