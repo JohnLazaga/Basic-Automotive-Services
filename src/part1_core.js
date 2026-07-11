@@ -147,24 +147,28 @@ function vatSplit(base, S){
   return { vatable:base, vat:vat, gross:gross, exempt:false };
 }
 
-/* Per-staff rate (% of labor) for NON-mechanic roles (Service Adviser, assessor,
-   parts salesman), set by an admin on the Staff page. Blank → shop default.
-   Mechanics do NOT use this — they split a shop-rate pool evenly (see below). */
+/* EXPLICIT per-staff rate (% of labor) for NON-mechanic assignees (Service
+   Adviser, assessor, parts salesman), set by an admin on the Staff page. There is
+   NO fallback: a blank/unset rate means NO commission (0). The shop default rate
+   is the MECHANIC pool rate only — it must not leak onto non-mechanic roles.
+   Mechanics do NOT use this — they split the shop-rate pool evenly (see below). */
 function staffCommissionRate(idOrStaff){
   var s = (idOrStaff && typeof idOrStaff==='object') ? idOrStaff : staffById(idOrStaff);
   if(!s) return 0;
   var r = s.commissionRate;
-  if(r===undefined || r===null || r==='') return Number(S.shop.mechCommissionRate)||0;  // fallback default
+  if(r===undefined || r===null || r==='') return 0;   // no rate set → no commission (no mechanic-default fallback)
   return Number(r)||0;
 }
 /* Labor-commission map for a job — the single source of truth for payout & KPI.
-   MECHANICS split ONE pool EQUALLY: pool = labor × shop mechanic rate
-   (S.shop.mechCommissionRate); each mechanic earns pool ÷ (# mechanics assigned).
+   ONLY the Mechanic(s) field earns the labor pool. Those mechanics split ONE pool
+   EQUALLY: pool = labor × shop mechanic rate (S.shop.mechCommissionRate); each
+   earns pool ÷ (# mechanics assigned).
    e.g. ₱1000 labor @ 5% → 1 mech ₱50, 2 mechs ₱25 each, 3 mechs ₱16.67 each.
    The divisor is the count of mechanics ASSIGNED (not just toggle-on), so
    excluding one from payout never inflates the others' shares.
-   NON-mechanic assignees (SA, assessor, parts salesman) are separate: each earns
-   their OWN rate × labor, undivided.
+   NON-mechanic assignees (SA, the "Assessed by" senior mechanic, parts salesman)
+   do NOT share the pool: each earns their OWN explicitly-set rate × labor, and
+   nothing at all if no rate is set for them.
    includeAll=true ignores the payout toggle (evaluation/KPI figure); default
    returns only commission-eligible (toggle-on) staff (actual payout). */
 function _laborCommissionMap(job, includeAll){
@@ -181,12 +185,13 @@ function _laborCommissionMap(job, includeAll){
       map[id] = share;
     });
   }
-  // Non-mechanic assignees keep their own separate commission (own rate × labor).
+  // Non-mechanic assignees: own EXPLICIT rate × labor, undivided; nothing if unset.
   [job.saId, job.assessedBy, job.partsSalesman].forEach(function(id){
     if(!id || id==='TBA' || mechs.indexOf(id)>=0) return;  // skip blanks & anyone already paid as a mechanic
     if(!staffById(id)) return;
     if(!includeAll && !commissionEligible(id)) return;
-    map[id] = round2(labor * staffCommissionRate(id)/100);
+    var amt = round2(labor * staffCommissionRate(id)/100);
+    if(amt>0) map[id] = amt;                               // only when an explicit rate earns something
   });
   return map;
 }

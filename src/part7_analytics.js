@@ -130,9 +130,9 @@ function docOrSeries(){
 function printOrSeries(){ printDoc(docOrSeries()); }
 
 /* Commission across a set of jobs.
-   Mechanics: shop rate × labor ÷ #mechanics, split evenly (the pool).
-   Non-mechanic roles (SA, assessor, parts salesman): their own rate × labor,
-   not split. See jobLaborCommissionMap() in part1_core.js (single source). */
+   Mechanics (Mechanic[s] field only): shop rate × labor ÷ #mechanics, split evenly.
+   Non-mechanic roles (SA, assessor, parts salesman): own EXPLICIT rate × labor,
+   not split, nothing if unset. See jobLaborCommissionMap() in part1_core.js. */
 function commissionTable(jobs){
   var map={};
   function add(id,amt){ if(!id||id==='TBA') return; var s=staffById(id); if(!s) return;

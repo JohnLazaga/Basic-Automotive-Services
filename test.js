@@ -106,6 +106,14 @@ section('5. Commission: mechanics split shop-rate pool evenly; non-mechanic role
   ok('Service Adviser own 2% = 10.00 (not split)', saRow && saRow.amount===10);
   ok('assessor own 3% = 15.00 (not split)', smRow && smRow.amount===15);
   ok('commission table has 3 rows', ct.length===3);
+  // Non-mechanic assignee with a BLANK rate earns NOTHING (no mechanic-default fallback).
+  const sm2=s.staff.find(x=>x.role==='SM' && x.id!==sm.id) || { id:'st_test_sm2', name:'Blank Assessor', role:'SM', commissionRate:'' };
+  if(!s.staff.includes(sm2)) s.staff.push(sm2);
+  sm2.commissionRate='';
+  const blankJob={ id:'jb', no:'JO-B', stage:'Released', lines:[{type:'labor',ref:null,desc:'L',qty:1,price:500}],
+    mechanicIds:[mech[0].id], saId:'', assessedBy:sm2.id, partsSalesman:'', discount:{type:'amount',value:0}, payments:[], addlWork:[] };
+  const bmap=M.jobLaborCommissionMap(blankJob, s);
+  ok('blank-rate assessor earns 0 (not in map); only mechanic paid', bmap[sm2.id]===undefined && bmap[mech[0].id]===25 && Object.keys(bmap).length===1);
   // Same person as both mechanic and SA counts once (paid as a mechanic).
   const dual={ id:'j3', no:'JO-Y', stage:'Released', lines:[{type:'labor',ref:null,desc:'L',qty:1,price:500}],
     mechanicIds:[mech[0].id], saId:mech[0].id, assessedBy:'', partsSalesman:'', discount:{type:'amount',value:0}, payments:[], addlWork:[] };

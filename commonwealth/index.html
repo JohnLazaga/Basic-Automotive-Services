@@ -422,7 +422,7 @@ var BRANCH = {"id":"commonwealth","slug":"commonwealth","name":"Basic by JMSI �
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.1.8 · 2026-07-11';
+var APP_VERSION = 'v1.1.9 · 2026-07-11';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -560,24 +560,28 @@ function vatSplit(base, S){
   return { vatable:base, vat:vat, gross:gross, exempt:false };
 }
 
-/* Per-staff rate (% of labor) for NON-mechanic roles (Service Adviser, assessor,
-   parts salesman), set by an admin on the Staff page. Blank → shop default.
-   Mechanics do NOT use this — they split a shop-rate pool evenly (see below). */
+/* EXPLICIT per-staff rate (% of labor) for NON-mechanic assignees (Service
+   Adviser, assessor, parts salesman), set by an admin on the Staff page. There is
+   NO fallback: a blank/unset rate means NO commission (0). The shop default rate
+   is the MECHANIC pool rate only — it must not leak onto non-mechanic roles.
+   Mechanics do NOT use this — they split the shop-rate pool evenly (see below). */
 function staffCommissionRate(idOrStaff){
   var s = (idOrStaff && typeof idOrStaff==='object') ? idOrStaff : staffById(idOrStaff);
   if(!s) return 0;
   var r = s.commissionRate;
-  if(r===undefined || r===null || r==='') return Number(S.shop.mechCommissionRate)||0;  // fallback default
+  if(r===undefined || r===null || r==='') return 0;   // no rate set → no commission (no mechanic-default fallback)
   return Number(r)||0;
 }
 /* Labor-commission map for a job — the single source of truth for payout & KPI.
-   MECHANICS split ONE pool EQUALLY: pool = labor × shop mechanic rate
-   (S.shop.mechCommissionRate); each mechanic earns pool ÷ (# mechanics assigned).
+   ONLY the Mechanic(s) field earns the labor pool. Those mechanics split ONE pool
+   EQUALLY: pool = labor × shop mechanic rate (S.shop.mechCommissionRate); each
+   earns pool ÷ (# mechanics assigned).
    e.g. ₱1000 labor @ 5% → 1 mech ₱50, 2 mechs ₱25 each, 3 mechs ₱16.67 each.
    The divisor is the count of mechanics ASSIGNED (not just toggle-on), so
    excluding one from payout never inflates the others' shares.
-   NON-mechanic assignees (SA, assessor, parts salesman) are separate: each earns
-   their OWN rate × labor, undivided.
+   NON-mechanic assignees (SA, the "Assessed by" senior mechanic, parts salesman)
+   do NOT share the pool: each earns their OWN explicitly-set rate × labor, and
+   nothing at all if no rate is set for them.
    includeAll=true ignores the payout toggle (evaluation/KPI figure); default
    returns only commission-eligible (toggle-on) staff (actual payout). */
 function _laborCommissionMap(job, includeAll){
@@ -594,12 +598,13 @@ function _laborCommissionMap(job, includeAll){
       map[id] = share;
     });
   }
-  // Non-mechanic assignees keep their own separate commission (own rate × labor).
+  // Non-mechanic assignees: own EXPLICIT rate × labor, undivided; nothing if unset.
   [job.saId, job.assessedBy, job.partsSalesman].forEach(function(id){
     if(!id || id==='TBA' || mechs.indexOf(id)>=0) return;  // skip blanks & anyone already paid as a mechanic
     if(!staffById(id)) return;
     if(!includeAll && !commissionEligible(id)) return;
-    map[id] = round2(labor * staffCommissionRate(id)/100);
+    var amt = round2(labor * staffCommissionRate(id)/100);
+    if(amt>0) map[id] = amt;                               // only when an explicit rate earns something
   });
   return map;
 }
@@ -2869,7 +2874,7 @@ function setStaffCommissionRate(id,v){ if(typeof isAdminUser==='function'&&!isAd
 function toggleStaffCommission(id,on){ var s=staffById(id); if(!s) return; s.commission=!!on; persist(); toast(on?'Included in payout':'Excluded from payout'); render(); }
 function editStaff(id){ var s=id?staffById(id):{};
   var admin = (typeof isAdminUser!=='function') || isAdminUser();
-  var rateField = admin ? field('Commission rate % of labor','<input id="stRate" type="number" step="0.1" min="0" value="'+attr(s.commissionRate!==undefined&&s.commissionRate!==''?s.commissionRate:'')+'" placeholder="leave blank for default ('+(S.shop.mechCommissionRate||0)+'%)">','Admin-set, for non-mechanic roles (SA, assessor, parts salesman): own rate × labor. Mechanics ignore this — they split the shop default rate evenly per job.') : '';
+  var rateField = admin ? field('Commission rate % of labor','<input id="stRate" type="number" step="0.1" min="0" value="'+attr(s.commissionRate!==undefined&&s.commissionRate!==''?s.commissionRate:'')+'" placeholder="blank = no commission">','Admin-set, for non-mechanic roles (SA, assessor, parts salesman): own rate × labor. Blank = no commission. Mechanics ignore this — they split the shop default rate ('+(S.shop.mechCommissionRate||0)+'%) evenly per job.') : '';
   openModal(id?'Edit staff':'Add staff',
     '<div class="grid2">'+field('Name','<input id="stName" value="'+attr(s.name||'')+'">')+
     field('Nickname','<input id="stNick" value="'+attr(s.nickname||'')+'" placeholder="optional">')+'</div>'+
@@ -3020,9 +3025,9 @@ function docOrSeries(){
 function printOrSeries(){ printDoc(docOrSeries()); }
 
 /* Commission across a set of jobs.
-   Mechanics: shop rate × labor ÷ #mechanics, split evenly (the pool).
-   Non-mechanic roles (SA, assessor, parts salesman): their own rate × labor,
-   not split. See jobLaborCommissionMap() in part1_core.js (single source). */
+   Mechanics (Mechanic[s] field only): shop rate × labor ÷ #mechanics, split evenly.
+   Non-mechanic roles (SA, assessor, parts salesman): own EXPLICIT rate × labor,
+   not split, nothing if unset. See jobLaborCommissionMap() in part1_core.js. */
 function commissionTable(jobs){
   var map={};
   function add(id,amt){ if(!id||id==='TBA') return; var s=staffById(id); if(!s) return;
