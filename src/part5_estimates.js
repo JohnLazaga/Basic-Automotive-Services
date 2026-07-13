@@ -78,9 +78,29 @@ VIEWS.estimate = function(id){
 };
 
 function setEstField(id,f,v){ var e=estById(id); e[f]=v; persist(); }
-function addEstLine(id,type){ openModal(type==='labor'?'Add labor':'Add part', lineForm({type:type||'part'}), { onOk:'saveEstLine', okText:'Add' }); setTimeout(function(){estLineCtx={est:id,line:null};},10); }
+function addEstLine(id,type){
+  estLineCtx={est:id,line:null};
+  openModal(type==='labor'?'Add labor':'Add part', lineForm({type:type||'part'}), {
+    footer:'<button class="btn ghost" onclick="closeModal()">Done</button>'+
+      '<span style="flex:1"></span>'+
+      '<button class="btn primary" onclick="saveEstLineMore()">Add line</button>' });
+}
 function editEstLine(id,lid){ var e=estById(id); var l=e.lines.find(function(x){return x.id===lid;}); openModal('Edit line', lineForm(l), { onOk:'saveEstLine' }); setTimeout(function(){estLineCtx={est:id,line:lid};},10); }
 var estLineCtx=null;
+/* Save the line but KEEP the dialog open, reset for the next line — so you can
+   add part after part (or labor after labor) without leaving the box. */
+function saveEstLineMore(){
+  var e=estById(estLineCtx.est); if(!e) return;
+  var data=readLine();
+  if(!data.desc){ toast(data.type==='part'?'Part name required':'Description required','err'); return; }
+  data.id=uid('ln'); e.lines.push(data); persist();
+  toast('Added · '+data.desc);
+  render();                                   // refresh the lines table behind the dialog
+  var body=document.querySelector('#modalRoot .modal-body');
+  if(body){ body.innerHTML=lineForm({type:data.type}); }   // fresh form, same Type for fast repeats
+  setTimeout(function(){ var f=document.querySelector('#modalRoot .modal-body input,#modalRoot .modal-body select'); if(f&&f.focus){ f.focus(); if(f.select){ try{f.select();}catch(_){} } } }, 20);
+}
+/* Edit path (single line) — save and close. */
 function saveEstLine(){
   var e=estById(estLineCtx.est); var data=readLine();
   if(!data.desc){ toast(data.type==='part'?'Part name required':'Description required','err'); return; }
