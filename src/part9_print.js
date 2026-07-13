@@ -306,9 +306,9 @@ function docQRSticker(v){
   var body='<div style="text-align:center;border:2px dashed #1D1D1F;border-radius:14px;padding:18px;max-width:320px;margin:20px auto">'+
     '<img src="'+LOGO_URI+'" style="width:44px;height:44px;border-radius:10px"/>'+
     '<div style="font-weight:800;margin:6px 0">'+esc(S.shop.name)+'</div>'+
-    '<div style="font-size:13px;color:#6E6E73">Scan for service history</div>'+
+    '<div style="font-size:20px;color:#6E6E73">Scan for service history</div>'+
     '<div id="stickerQR" style="display:flex;justify-content:center;margin:10px 0"></div>'+
-    '<div style="font-weight:700">'+esc(v.plate)+'</div><code style="font-size:10px;word-break:break-all">'+esc(url)+'</code></div>'+
+    '<div style="font-weight:700;font-size:24px">'+esc(v.plate)+'</div></div>'+
     '<script src="'+QR_LIB_URL+'" onload="new QRCode(document.getElementById(\'stickerQR\'),{text:\''+url+'\',width:150,height:150})"></script>';
   return docShell('QR · '+v.plate, body);
 }
