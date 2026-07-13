@@ -21,10 +21,15 @@ const BRANCH = BRANCHES[BRANCH_SLUG];
 if (!BRANCH) { throw new Error('Unknown branch "' + BRANCH_SLUG + '". Known: ' + Object.keys(BRANCHES).join(', ')); }
 const IS_DEFAULT_BRANCH = (BRANCH_SLUG === 'main');
 
-// Version stamp: semantic version from the VERSION file + build date.
+// Version stamp: semantic version from the VERSION file + build date + the short
+// git hash of HEAD. The hash makes every deploy's version string unique, so
+// same-day rebuilds still differ and the in-app update checker fires its
+// "Reload now" banner (date alone repeats within a day and would suppress it).
 const semver = fs.readFileSync(path.join(__dirname, 'VERSION'), 'utf8').trim() || '0.0.0';
 const buildDate = new Date().toISOString().slice(0, 10);
-const APP_VERSION = 'v' + semver + ' · ' + buildDate;
+let gitHash = '';
+try { gitHash = require('child_process').execSync('git rev-parse --short HEAD', { cwd: __dirname }).toString().trim(); } catch (e) { /* not a git checkout — omit */ }
+const APP_VERSION = 'v' + semver + ' · ' + buildDate + (gitHash ? ' · ' + gitHash : '');
 
 const css = read('styles.css');
 let js = PARTS.map(read).join('\n\n/* ===== */\n\n');
