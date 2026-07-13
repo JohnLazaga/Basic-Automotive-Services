@@ -362,6 +362,31 @@ function estById(id){ return (S.estimates||[]).find(function(e){return e.id===id
 function mechName(ids){ return (ids||[]).map(staffName).join(', ') || 'TBA'; }
 
 /* ---- Seed (realistic sample shop) ----------------------------------------- */
+/* ---- PMS LABOR — a standard, always-present labor item -------------------
+   Every branch's Labor Catalog carries "PMS LABOR" as its first entry. The
+   NAME is fixed (staff can't rename or delete it) but the RATE is editable per
+   branch. Its stable id also lets the labor flow recognise a PMS job
+   (isPmsLabor) for the tablet-checklist feature. */
+var PMS_LABOR_ID='lb_pms';
+var PMS_LABOR_NAME='PMS LABOR';
+function isPmsLabor(l){ return !!l && l.id===PMS_LABOR_ID; }
+/* Guarantee the reserved item exists (creating it if a branch lacks it).
+   Returns true if it had to be created, so the caller can persist. */
+function ensurePmsLabor(){
+  if(!Array.isArray(S.labor)) S.labor=[];
+  var found=null;
+  for(var i=0;i<S.labor.length;i++){ if(S.labor[i] && S.labor[i].id===PMS_LABOR_ID){ found=S.labor[i]; break; } }
+  if(!found){ S.labor.unshift({ id:PMS_LABOR_ID, name:PMS_LABOR_NAME, price:0, cost:0, pms:true, locked:true }); return true; }
+  found.name=PMS_LABOR_NAME; found.pms=true; found.locked=true;   // keep it canonical
+  return false;
+}
+/* The labor catalog with the reserved PMS item forced first — order-independent
+   of how storage/live-sync happens to return the rows. */
+function laborList(){
+  var arr=Array.isArray(S.labor)?S.labor.slice():[];
+  arr.sort(function(a,b){ return (isPmsLabor(b)?1:0)-(isPmsLabor(a)?1:0); });
+  return arr;
+}
 function seedState(){
   var sv = { id:uid('st'), name:'Ramon Cruz', role:'SV', commissionBase:'none', commissionRate:0 };
   var sa = { id:uid('st'), name:'Liza Mariano', role:'SA', commissionBase:'total', commissionRate:1 };
@@ -382,7 +407,7 @@ function seedState(){
   var l1 = { id:uid('lb'), name:'Change Oil Labor', price:350, cost:0 };
   var l2 = { id:uid('lb'), name:'Brake Service Labor', price:800, cost:0 };
   var l3 = { id:uid('lb'), name:'General Diagnosis', price:500, cost:0 };
-  var l4 = { id:uid('lb'), name:'PMS Labor (50k)', price:1800, cost:0 };
+  var l4 = { id:PMS_LABOR_ID, name:PMS_LABOR_NAME, price:1800, cost:0, pms:true, locked:true };
 
   var v1 = { id:uid('vh'), plate:'ABC 1234', owner:'Maria Dela Cruz', address:'12 Mapagkawanggawa St., Fairview, QC',
              contactPerson:'Maria Dela Cruz', contactNumber:'0917 555 1234', chassis:'MHFXX1234X0012345',
@@ -441,7 +466,7 @@ function seedState(){
     staff:[sv,sa,sm,m1,m2,ps],
     bays:[bayA,bayB,bayL],
     parts:[p1,p2,p3,p4],
-    labor:[l1,l2,l3,l4],
+    labor:[l4,l1,l2,l3],
     vehicles:[v1,v2],
     estimates:[],
     jobs:[job1],
@@ -464,6 +489,7 @@ async function loadState(){
   });
   if (!S.counters) S.counters = { est:0, jo:0, or:1000, po:0 };
   if (S.shop && !S.shop.theme) S.shop.theme = 'light';
+  if (ensurePmsLabor()) persist();   // guarantee the standard PMS LABOR item
   return S;
 }
 

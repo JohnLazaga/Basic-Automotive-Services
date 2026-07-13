@@ -268,6 +268,7 @@ function ensureStateShape(){
   if(!S.counters) S.counters={ est:0, jo:0, or:1000, po:0 };
   if(!S.shop) S.shop=seedState().shop;
   if(!S.shop.theme) S.shop.theme='light';
+  if(ensurePmsLabor()) persist();   // guarantee the standard PMS LABOR item in this branch
 }
 
 async function cloudFetchState(){

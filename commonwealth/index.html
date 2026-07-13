@@ -434,7 +434,7 @@ var BRANCH = {"id":"commonwealth","slug":"commonwealth","name":"Basic by JMSI �
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.2.0 · 2026-07-13 · 6a3b3e5';
+var APP_VERSION = 'v1.2.0 · 2026-07-13 · 46159c3';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -787,6 +787,31 @@ function estById(id){ return (S.estimates||[]).find(function(e){return e.id===id
 function mechName(ids){ return (ids||[]).map(staffName).join(', ') || 'TBA'; }
 
 /* ---- Seed (realistic sample shop) ----------------------------------------- */
+/* ---- PMS LABOR — a standard, always-present labor item -------------------
+   Every branch's Labor Catalog carries "PMS LABOR" as its first entry. The
+   NAME is fixed (staff can't rename or delete it) but the RATE is editable per
+   branch. Its stable id also lets the labor flow recognise a PMS job
+   (isPmsLabor) for the tablet-checklist feature. */
+var PMS_LABOR_ID='lb_pms';
+var PMS_LABOR_NAME='PMS LABOR';
+function isPmsLabor(l){ return !!l && l.id===PMS_LABOR_ID; }
+/* Guarantee the reserved item exists (creating it if a branch lacks it).
+   Returns true if it had to be created, so the caller can persist. */
+function ensurePmsLabor(){
+  if(!Array.isArray(S.labor)) S.labor=[];
+  var found=null;
+  for(var i=0;i<S.labor.length;i++){ if(S.labor[i] && S.labor[i].id===PMS_LABOR_ID){ found=S.labor[i]; break; } }
+  if(!found){ S.labor.unshift({ id:PMS_LABOR_ID, name:PMS_LABOR_NAME, price:0, cost:0, pms:true, locked:true }); return true; }
+  found.name=PMS_LABOR_NAME; found.pms=true; found.locked=true;   // keep it canonical
+  return false;
+}
+/* The labor catalog with the reserved PMS item forced first — order-independent
+   of how storage/live-sync happens to return the rows. */
+function laborList(){
+  var arr=Array.isArray(S.labor)?S.labor.slice():[];
+  arr.sort(function(a,b){ return (isPmsLabor(b)?1:0)-(isPmsLabor(a)?1:0); });
+  return arr;
+}
 function seedState(){
   var sv = { id:uid('st'), name:'Ramon Cruz', role:'SV', commissionBase:'none', commissionRate:0 };
   var sa = { id:uid('st'), name:'Liza Mariano', role:'SA', commissionBase:'total', commissionRate:1 };
@@ -807,7 +832,7 @@ function seedState(){
   var l1 = { id:uid('lb'), name:'Change Oil Labor', price:350, cost:0 };
   var l2 = { id:uid('lb'), name:'Brake Service Labor', price:800, cost:0 };
   var l3 = { id:uid('lb'), name:'General Diagnosis', price:500, cost:0 };
-  var l4 = { id:uid('lb'), name:'PMS Labor (50k)', price:1800, cost:0 };
+  var l4 = { id:PMS_LABOR_ID, name:PMS_LABOR_NAME, price:1800, cost:0, pms:true, locked:true };
 
   var v1 = { id:uid('vh'), plate:'ABC 1234', owner:'Maria Dela Cruz', address:'12 Mapagkawanggawa St., Fairview, QC',
              contactPerson:'Maria Dela Cruz', contactNumber:'0917 555 1234', chassis:'MHFXX1234X0012345',
@@ -866,7 +891,7 @@ function seedState(){
     staff:[sv,sa,sm,m1,m2,ps],
     bays:[bayA,bayB,bayL],
     parts:[p1,p2,p3,p4],
-    labor:[l1,l2,l3,l4],
+    labor:[l4,l1,l2,l3],
     vehicles:[v1,v2],
     estimates:[],
     jobs:[job1],
@@ -889,6 +914,7 @@ async function loadState(){
   });
   if (!S.counters) S.counters = { est:0, jo:0, or:1000, po:0 };
   if (S.shop && !S.shop.theme) S.shop.theme = 'light';
+  if (ensurePmsLabor()) persist();   // guarantee the standard PMS LABOR item
   return S;
 }
 
@@ -2005,7 +2031,7 @@ function partFields(l){
     '</div><div id="skuMsg" class="muted small">'+catalogHint()+'</div>';
 }
 function laborFields(l){
-  var laborOpts='<option value="">— free text —</option>'+S.labor.map(function(p){return '<option value="'+p.id+'" data-price="'+p.price+'" data-name="'+attr(p.name)+'"'+(l.ref===p.id?' selected':'')+'>'+esc(p.name)+'</option>';}).join('');
+  var laborOpts='<option value="">— free text —</option>'+laborList().map(function(p){return '<option value="'+p.id+'" data-price="'+p.price+'" data-name="'+attr(p.name)+'"'+(l.ref===p.id?' selected':'')+'>'+esc(p.name)+'</option>';}).join('');
   return field('From menu','<select id="lnRef" onchange="laborPick()">'+laborOpts+'</select>')+
     field('Description','<input id="lnDesc" value="'+attr(l.desc||'')+'">')+
     '<div class="grid2">'+field('Qty','<input id="lnQty" type="number" step="0.5" value="'+attr(l.qty||1)+'">')+
@@ -2844,24 +2870,41 @@ function syncPartsNow(){
 
 /* ---- Labor catalog -------------------------------------------------------- */
 VIEWS.labor = function(){
-  var rows=S.labor.map(function(l){
-    return '<tr><td>'+esc(l.name)+'</td><td class="r">'+peso(l.price)+'</td><td class="r">'+peso(l.cost||0)+'</td>'+
-      '<td class="r"><button class="ic" onclick="editLabor(\''+l.id+'\')">✎</button><button class="ic" onclick="delLabor(\''+l.id+'\')">✕</button></td></tr>';
+  ensurePmsLabor();
+  var rows=laborList().map(function(l){
+    var pms=isPmsLabor(l);
+    var nameCell=esc(l.name)+(pms?' <span class="chip gold">standard</span>':'');
+    var actions=pms
+      ? '<button class="ic" onclick="editLabor(\''+l.id+'\')" title="Edit rate">✎</button>'
+      : '<button class="ic" onclick="editLabor(\''+l.id+'\')">✎</button><button class="ic" onclick="delLabor(\''+l.id+'\')">✕</button>';
+    return '<tr><td>'+nameCell+'</td><td class="r">'+peso(l.price)+'</td><td class="r">'+peso(l.cost||0)+'</td>'+
+      '<td class="r">'+actions+'</td></tr>';
   }).join('');
   return '<div class="page"><div class="page-head"><h1>Labor Catalog</h1><button class="btn primary" onclick="editLabor()">＋ Add labor</button></div>'+
     '<div class="card pad0"><table class="tbl"><thead><tr><th>Service</th><th class="r">Rate</th><th class="r">Internal cost</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
 };
-function editLabor(id){ var l=id?S.labor.find(function(x){return x.id===id;}):{};
-  openModal(id?'Edit labor':'Add labor', field('Service name','<input id="lbName" value="'+attr(l.name||'')+'">')+
+function editLabor(id){ var l=id?S.labor.find(function(x){return x.id===id;}):{}; var pms=isPmsLabor(l);
+  openModal(id?'Edit labor':'Add labor',
+    field('Service name', pms
+      ? '<input id="lbName" value="'+attr(l.name)+'" readonly disabled>'
+      : '<input id="lbName" value="'+attr(l.name||'')+'">',
+      pms?'Standard item — rate is editable, name is fixed':'')+
     '<div class="grid2">'+field('Rate','<input id="lbPrice" type="number" step="0.01" value="'+attr(l.price||0)+'">')+
     field('Internal cost','<input id="lbCost" type="number" step="0.01" value="'+attr(l.cost||0)+'">')+'</div>',
     { onOk:'saveLabor' }); setTimeout(function(){lbCtx=id||null;},10); }
 var lbCtx=null;
-function saveLabor(){ var data={ name:val('lbName'), price:Number(val('lbPrice'))||0, cost:Number(val('lbCost'))||0 };
+function saveLabor(){
+  var editing=lbCtx?S.labor.find(function(x){return x.id===lbCtx;}):null;
+  var pms=isPmsLabor(editing);
+  // Reserved item keeps its canonical name; only the rate (and internal cost) change.
+  var data={ name:pms?PMS_LABOR_NAME:val('lbName'), price:Number(val('lbPrice'))||0, cost:Number(val('lbCost'))||0 };
   if(!data.name){toast('Name required','err');return;}
-  if(lbCtx){ Object.assign(S.labor.find(function(x){return x.id===lbCtx;}),data); } else { data.id=uid('lb'); S.labor.push(data); }
+  if(editing){ Object.assign(editing,data); } else { data.id=uid('lb'); S.labor.push(data); }
   persist(); closeModal(); render(); }
-function delLabor(id){ S.labor=S.labor.filter(function(x){return x.id!==id;}); persist(); render(); }
+function delLabor(id){
+  var l=S.labor.find(function(x){return x.id===id;});
+  if(isPmsLabor(l)){ toast('PMS LABOR is a standard item — it can’t be removed','err'); return; }
+  S.labor=S.labor.filter(function(x){return x.id!==id;}); persist(); render(); }
 
 /* ---- Purchase Orders ------------------------------------------------------ */
 VIEWS.purchaseorders = function(){
@@ -4408,6 +4451,7 @@ function ensureStateShape(){
   if(!S.counters) S.counters={ est:0, jo:0, or:1000, po:0 };
   if(!S.shop) S.shop=seedState().shop;
   if(!S.shop.theme) S.shop.theme='light';
+  if(ensurePmsLabor()) persist();   // guarantee the standard PMS LABOR item in this branch
 }
 
 async function cloudFetchState(){

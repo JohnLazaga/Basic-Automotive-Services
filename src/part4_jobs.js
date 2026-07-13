@@ -356,7 +356,7 @@ function partFields(l){
     '</div><div id="skuMsg" class="muted small">'+catalogHint()+'</div>';
 }
 function laborFields(l){
-  var laborOpts='<option value="">— free text —</option>'+S.labor.map(function(p){return '<option value="'+p.id+'" data-price="'+p.price+'" data-name="'+attr(p.name)+'"'+(l.ref===p.id?' selected':'')+'>'+esc(p.name)+'</option>';}).join('');
+  var laborOpts='<option value="">— free text —</option>'+laborList().map(function(p){return '<option value="'+p.id+'" data-price="'+p.price+'" data-name="'+attr(p.name)+'"'+(l.ref===p.id?' selected':'')+'>'+esc(p.name)+'</option>';}).join('');
   return field('From menu','<select id="lnRef" onchange="laborPick()">'+laborOpts+'</select>')+
     field('Description','<input id="lnDesc" value="'+attr(l.desc||'')+'">')+
     '<div class="grid2">'+field('Qty','<input id="lnQty" type="number" step="0.5" value="'+attr(l.qty||1)+'">')+

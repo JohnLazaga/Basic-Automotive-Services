@@ -295,24 +295,41 @@ function syncPartsNow(){
 
 /* ---- Labor catalog -------------------------------------------------------- */
 VIEWS.labor = function(){
-  var rows=S.labor.map(function(l){
-    return '<tr><td>'+esc(l.name)+'</td><td class="r">'+peso(l.price)+'</td><td class="r">'+peso(l.cost||0)+'</td>'+
-      '<td class="r"><button class="ic" onclick="editLabor(\''+l.id+'\')">✎</button><button class="ic" onclick="delLabor(\''+l.id+'\')">✕</button></td></tr>';
+  ensurePmsLabor();
+  var rows=laborList().map(function(l){
+    var pms=isPmsLabor(l);
+    var nameCell=esc(l.name)+(pms?' <span class="chip gold">standard</span>':'');
+    var actions=pms
+      ? '<button class="ic" onclick="editLabor(\''+l.id+'\')" title="Edit rate">✎</button>'
+      : '<button class="ic" onclick="editLabor(\''+l.id+'\')">✎</button><button class="ic" onclick="delLabor(\''+l.id+'\')">✕</button>';
+    return '<tr><td>'+nameCell+'</td><td class="r">'+peso(l.price)+'</td><td class="r">'+peso(l.cost||0)+'</td>'+
+      '<td class="r">'+actions+'</td></tr>';
   }).join('');
   return '<div class="page"><div class="page-head"><h1>Labor Catalog</h1><button class="btn primary" onclick="editLabor()">＋ Add labor</button></div>'+
     '<div class="card pad0"><table class="tbl"><thead><tr><th>Service</th><th class="r">Rate</th><th class="r">Internal cost</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
 };
-function editLabor(id){ var l=id?S.labor.find(function(x){return x.id===id;}):{};
-  openModal(id?'Edit labor':'Add labor', field('Service name','<input id="lbName" value="'+attr(l.name||'')+'">')+
+function editLabor(id){ var l=id?S.labor.find(function(x){return x.id===id;}):{}; var pms=isPmsLabor(l);
+  openModal(id?'Edit labor':'Add labor',
+    field('Service name', pms
+      ? '<input id="lbName" value="'+attr(l.name)+'" readonly disabled>'
+      : '<input id="lbName" value="'+attr(l.name||'')+'">',
+      pms?'Standard item — rate is editable, name is fixed':'')+
     '<div class="grid2">'+field('Rate','<input id="lbPrice" type="number" step="0.01" value="'+attr(l.price||0)+'">')+
     field('Internal cost','<input id="lbCost" type="number" step="0.01" value="'+attr(l.cost||0)+'">')+'</div>',
     { onOk:'saveLabor' }); setTimeout(function(){lbCtx=id||null;},10); }
 var lbCtx=null;
-function saveLabor(){ var data={ name:val('lbName'), price:Number(val('lbPrice'))||0, cost:Number(val('lbCost'))||0 };
+function saveLabor(){
+  var editing=lbCtx?S.labor.find(function(x){return x.id===lbCtx;}):null;
+  var pms=isPmsLabor(editing);
+  // Reserved item keeps its canonical name; only the rate (and internal cost) change.
+  var data={ name:pms?PMS_LABOR_NAME:val('lbName'), price:Number(val('lbPrice'))||0, cost:Number(val('lbCost'))||0 };
   if(!data.name){toast('Name required','err');return;}
-  if(lbCtx){ Object.assign(S.labor.find(function(x){return x.id===lbCtx;}),data); } else { data.id=uid('lb'); S.labor.push(data); }
+  if(editing){ Object.assign(editing,data); } else { data.id=uid('lb'); S.labor.push(data); }
   persist(); closeModal(); render(); }
-function delLabor(id){ S.labor=S.labor.filter(function(x){return x.id!==id;}); persist(); render(); }
+function delLabor(id){
+  var l=S.labor.find(function(x){return x.id===id;});
+  if(isPmsLabor(l)){ toast('PMS LABOR is a standard item — it can’t be removed','err'); return; }
+  S.labor=S.labor.filter(function(x){return x.id!==id;}); persist(); render(); }
 
 /* ---- Purchase Orders ------------------------------------------------------ */
 VIEWS.purchaseorders = function(){
