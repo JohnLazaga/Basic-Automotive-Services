@@ -157,6 +157,13 @@ input,select,textarea{font:inherit;font-size:13.5px;width:100%;padding:9px 11px;
 input:focus,select:focus,textarea:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-tint)}
 textarea{resize:vertical} .chk{display:flex;align-items:center;gap:8px;font-size:13px;margin:6px 0;cursor:pointer}
 .chk input{width:auto} .chk.small{font-size:12.5px}
+/* Gate prompts: missing-field checklist + highlighted empty inputs */
+.misslist{list-style:none;margin:8px 0 12px;padding:0;display:flex;flex-direction:column;gap:6px}
+.misslist li{display:flex;align-items:center;gap:9px;background:#fdecec;color:var(--brand-dark);border-left:3px solid var(--brand);border-radius:8px;padding:8px 12px;font-size:13px;font-weight:600}
+.misslist .mx{font-size:10px;line-height:1;flex:none;width:16px;height:16px;border-radius:50%;background:var(--brand);color:#fff;display:flex;align-items:center;justify-content:center}
+.fld.needfill input,.fld.needfill select,.fld.needfill textarea{border-color:var(--brand);background:var(--brand-tint);box-shadow:0 0 0 3px rgba(242,23,23,.14)}
+.fld.needfill .fld-l{color:var(--brand-dark)}
+.fld.needfill .fld-l::after{content:" • required";font-size:10.5px;color:var(--brand)}
 
 /* ---- Stepper ---- */
 .stepper{display:flex;align-items:center;gap:4px;margin-bottom:18px;flex-wrap:wrap}
@@ -359,3 +366,5 @@ textarea{resize:vertical} .chk{display:flex;align-items:center;gap:8px;font-size
 [data-theme="dark"] .nextsvc.due{color:#ff8a8a}
 [data-theme="dark"] .bay-car:hover{background:rgba(242,23,23,.28)}
 [data-theme="dark"] .p-due{border-color:rgba(242,23,23,.4)!important;background:rgba(242,23,23,.08)!important}
+[data-theme="dark"] .misslist li{background:rgba(242,23,23,.18);color:#ff9a9a;border-left-color:#ff6b6b}
+[data-theme="dark"] .fld.needfill input,[data-theme="dark"] .fld.needfill select,[data-theme="dark"] .fld.needfill textarea{background:rgba(242,23,23,.16)}

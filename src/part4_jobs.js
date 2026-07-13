@@ -87,6 +87,44 @@ function postJobMissingFields(j){
   if(!(j.mechanicIds||[]).filter(function(id){return id&&id!=='TBA';}).length) missing.push('Mechanic(s)');
   return missing;
 }
+/* Map each "missing field" label to the input it corresponds to in the Ingress
+   form and the Edit-Job-Details form, so a gate prompt can visually highlight
+   the exact boxes still to fill. Fields captured elsewhere (Service Adviser /
+   Mechanics live on the Assignment tab) have no entry here — they still appear
+   in the checklist, just without an input to outline. */
+var INGRESS_FIELD_INPUT = {
+  'Plate':'inPlate','Registered owner':'inOwner','Contact person':'inCP','Contact #':'inContact',
+  'Address':'inAddr','Chassis #':'inChassis','Year':'inYear','Make':'inMake','Model':'inModel',
+  'Ingress odometer':'inOdo' };
+var JOBDETAIL_FIELD_INPUT = {
+  'Registered owner':'jdOwner','Contact person':'jdCP','Contact #':'jdContact','Address':'jdAddr',
+  'Chassis #':'jdChassis','Year':'jdYear','Make':'jdMake','Model':'jdModel','Ingress odometer':'jdOdo',
+  'Date in':'jdDateIn','ETD':'jdEtd','Last service odometer':'jdLastOdo','Fuel level':'jdFuel','Condition':'jdCond' };
+/* A scannable checklist of the still-missing fields (replaces a comma list). */
+function missingChecklist(missing){
+  return '<ul class="misslist">'+missing.map(function(m){
+    return '<li><span class="mx">✕</span>'+esc(m)+'</li>'; }).join('')+'</ul>';
+}
+/* After a gate form renders, outline the empty required boxes and jump to the
+   first, so the user sees exactly what to complete. The outline clears itself as
+   each box is filled. `map` is label→input-id. */
+function highlightMissing(map, missing){
+  if(typeof document==='undefined' || !missing || !missing.length) return;
+  setTimeout(function(){
+    var first=null;
+    missing.forEach(function(label){
+      var id=map[label]; if(!id) return;
+      var el=document.getElementById(id); if(!el) return;
+      var box=(el.closest && el.closest('.fld')) || el;
+      box.classList.add('needfill');
+      var clear=function(){ if(String(el.value||'').trim()){ box.classList.remove('needfill');
+        el.removeEventListener('input',clear); el.removeEventListener('change',clear); } };
+      el.addEventListener('input',clear); el.addEventListener('change',clear);
+      if(!first) first=el;
+    });
+    if(first){ try{ first.focus(); first.scrollIntoView({block:'center'}); }catch(e){} }
+  }, 30);
+}
 function openIntake(draft){
   openModal('Ingress — front desk', intakeForm(draft||{}), {
     footer:'<button class="btn ghost" onclick="closeModal()">Cancel</button>'+
@@ -126,15 +164,15 @@ function intakeSubmit(kind){
 var _ingressDraft=null;
 function promptIncompleteIngress(missing){
   openModal('Complete ingress details?',
-    '<p class="muted small">These fields are still blank:</p>'+
-    '<p><b>'+missing.map(esc).join(', ')+'</b></p>'+
+    '<p class="muted small">These required fields are still blank:</p>'+
+    missingChecklist(missing)+
     '<p class="muted small">You can create the Job Order now and finish them later in Job Details — '+
     'but the <b>Post Job Report cannot be created</b> until every field is complete.</p>',
     { footer:'<button class="btn ghost" onclick="reopenIngress()">‹ Go back &amp; complete</button>'+
       '<span style="flex:1"></span>'+
       '<button class="btn primary" onclick="createJobAnyway()">Create, finish later</button>', width:'520px' });
 }
-function reopenIngress(){ openIntake(_ingressDraft||{}); }
+function reopenIngress(){ var d=_ingressDraft||{}; openIntake(d); highlightMissing(INGRESS_FIELD_INPUT, jobMissingFields(d)); }
 function createJobAnyway(){ var b=_ingressDraft||{}; _ingressDraft=null; closeModal(); createJob(b).then(function(j){ toast('Job Order '+j.no+' created — complete the remaining details later'); go('job', j.id); }); }
 
 /* ---- Job Orders list ------------------------------------------------------ */
@@ -542,6 +580,7 @@ function editJobDetails(id){
     '</div>'+ field('Service notes','<textarea id="jdNotes" rows="3">'+esc(j.notes||'')+'</textarea>'),
     { onOk:'saveJobDetails', width:'700px' });
   setTimeout(function(){jdCtx=id;},10);
+  highlightMissing(JOBDETAIL_FIELD_INPUT, postJobMissingFields(j));
 }
 var jdCtx=null;
 function saveJobDetails(){
@@ -625,7 +664,7 @@ function advancePostJob(id){
   if(missing.length){
     openModal('Complete job details first',
       '<p class="muted small">The Post Job Report can’t be created until these fields are complete. Still missing:</p>'+
-      '<p><b>'+missing.map(esc).join(', ')+'</b></p>'+
+      missingChecklist(missing)+
       '<p class="muted small">Fill these in <b>Job Details → Edit</b> (or Check-in / Assignment), then try again.</p>',
       { footer:'<button class="btn ghost" onclick="closeModal()">Close</button>'+
         '<button class="btn primary" onclick="closeModal();editJobDetails(\''+j.id+'\')">Edit Job Details</button>', width:'520px' });
