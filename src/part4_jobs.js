@@ -270,10 +270,12 @@ function jobStatusPanel(j){
 function logUpdate(id){
   var j=jobById(id);
   var opts = STATUS_ORDER.map(function(c){return '<option value="'+c+'"'+(c===j.status?' selected':'')+'>'+c+' — '+esc(STATUS[c])+'</option>';}).join('');
-  var who = optionList(S.staff, j.saId, false);
+  // No preselection — the person logging must deliberately pick who is updating,
+  // so every entry carries a real, accountable name.
+  var who = optionList(S.staff, '', false);
   openModal('Log clipboard update',
     field('Status code','<select id="luCode">'+opts+'</select>')+
-    field('Updated by','<select id="luBy">'+who+'</select>')+
+    field('Updated by','<select id="luBy">'+who+'</select>','Required — records who made this update')+
     field('Note','<textarea id="luNote" rows="2" placeholder="e.g. Brake pads installed, bleeding lines."></textarea>'),
     { onOk:'saveUpdate', okText:'Log' });
   setTimeout(function(){ openModalCtx=id; },10);
@@ -281,9 +283,22 @@ function logUpdate(id){
 var openModalCtx=null;
 function saveUpdate(){
   var j=jobById(openModalCtx); if(!j) return;
+  // Gate: no "Updated by" → the log is NOT saved. Highlight the box and stop.
+  var by=val('luBy');
+  if(!by || !staffById(by)){
+    toast('Select who is logging this update — it won’t be saved without it','err');
+    var el=document.getElementById('luBy');
+    var box=(el && el.closest) ? el.closest('.fld') : null;
+    if(box){ box.classList.add('needfill');
+      var clr=function(){ if(val('luBy')){ box.classList.remove('needfill'); el.removeEventListener('change',clr); } };
+      el.addEventListener('change',clr);
+    }
+    if(el){ try{ el.focus(); }catch(e){} }
+    return;
+  }
   var code=val('luCode');
   j.status=code;
-  j.statusLog.push({ time:new Date().toISOString(), code:code, by:val('luBy'), note:val('luNote') });
+  j.statusLog.push({ time:new Date().toISOString(), code:code, by:by, note:val('luNote') });
   persist(); closeModal(); toast('Update logged'); render();
 }
 
