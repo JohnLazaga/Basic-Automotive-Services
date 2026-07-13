@@ -344,23 +344,26 @@ function lineForm(l){
   return '<input type="hidden" id="lnType" value="'+(l.type==='labor'?'labor':'part')+'">'+
     '<div id="lnFields">'+ (l.type==='labor' ? laborFields(l) : partFields(l)) +'</div>';
 }
+/* Numeric line fields are type="text" + inputmode so the value can be SELECTED
+   on focus (number inputs can't be text-selected) — the default "1" highlights
+   and the first keystroke overwrites it, for a keyboard-only add flow. */
 function partFields(l){
   return '<div class="grid2">'+
-    field('Qty','<input id="lnQty" type="number" step="0.5" value="'+attr(l.qty||1)+'">')+
+    field('Qty','<input id="lnQty" type="text" inputmode="decimal" value="'+attr(l.qty||1)+'" onfocus="this.select()">')+
     field('SKU','<input id="lnSku" value="'+attr(l.sku||'')+'" oninput="skuLookup()" placeholder="type SKU…" autocomplete="off">')+
     '</div>'+
     field('Part name','<input id="lnDesc" value="'+attr(l.desc||'')+'" placeholder="auto-fills from SKU, or type">')+
     '<div class="grid2">'+
-    field('Net price','<input id="lnNet" type="number" step="0.01" value="'+attr(l.netPrice||0)+'">')+
-    field('SRP','<input id="lnPrice" type="number" step="0.01" value="'+attr(l.price||0)+'">')+
+    field('Net price','<input id="lnNet" type="text" inputmode="decimal" value="'+attr(l.netPrice||0)+'" onfocus="this.select()">')+
+    field('SRP','<input id="lnPrice" type="text" inputmode="decimal" value="'+attr(l.price||0)+'" onfocus="this.select()">')+
     '</div><div id="skuMsg" class="muted small">'+catalogHint()+'</div>';
 }
 function laborFields(l){
   var laborOpts='<option value="">— free text —</option>'+laborList().map(function(p){return '<option value="'+p.id+'" data-price="'+p.price+'" data-name="'+attr(p.name)+'"'+(l.ref===p.id?' selected':'')+'>'+esc(p.name)+'</option>';}).join('');
   return field('From menu','<select id="lnRef" onchange="laborPick()">'+laborOpts+'</select>')+
     field('Description','<input id="lnDesc" value="'+attr(l.desc||'')+'">')+
-    '<div class="grid2">'+field('Qty','<input id="lnQty" type="number" step="0.5" value="'+attr(l.qty||1)+'">')+
-    field('Price','<input id="lnPrice" type="number" step="0.01" value="'+attr(l.price||0)+'">')+'</div>';
+    '<div class="grid2">'+field('Qty','<input id="lnQty" type="text" inputmode="decimal" value="'+attr(l.qty||1)+'" onfocus="this.select()">')+
+    field('Price','<input id="lnPrice" type="text" inputmode="decimal" value="'+attr(l.price||0)+'" onfocus="this.select()">')+'</div>';
 }
 function catalogHint(){
   if (typeof CATALOG_STATE==='undefined') return '';
@@ -383,6 +386,7 @@ function addLine(id,type){
     footer:'<button class="btn ghost" onclick="closeModal()">Done</button>'+
       '<span style="flex:1"></span>'+
       '<button class="btn primary" onclick="saveLineMore()">Add line</button>' });
+  refocusLineForm();   // land on Qty (parts) / menu (labor), value selected
 }
 /* Save the line but KEEP the dialog open, reset for the next line — so you can
    add line after line without leaving the box. (Enter on the last field does this.) */
@@ -395,7 +399,16 @@ function saveLineMore(){
   render();                                   // refresh the lines table behind the dialog
   var body=document.querySelector('#modalRoot .modal-body');
   if(body){ body.innerHTML=lineForm({type:data.type}); }   // fresh form, same Type for fast repeats
-  setTimeout(function(){ var f=document.querySelector('#modalRoot .modal-body input,#modalRoot .modal-body select'); if(f&&f.focus){ f.focus(); if(f.select){ try{f.select();}catch(_){} } } }, 20);
+  refocusLineForm();
+}
+/* Return focus to the FIRST real field of the line form — Qty for parts, the
+   labor menu for labor — and select its value so the next keystroke overwrites.
+   Must skip the hidden #lnType input, which is first in the DOM but unfocusable. */
+function refocusLineForm(){
+  setTimeout(function(){
+    var f=document.querySelector('#modalRoot .modal-body input:not([type=hidden]),#modalRoot .modal-body select');
+    if(f&&f.focus){ f.focus(); if(f.select){ try{f.select();}catch(_){} } }
+  }, 20);
 }
 function editLine(id,lid){ var j=jobById(id); var l=j.lines.find(function(x){return x.id===lid;});
   openModal('Edit line', lineForm(l), { onOk:'saveLine' }); setTimeout(function(){lineCtx={job:id,line:lid};},10); }

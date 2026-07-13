@@ -84,6 +84,7 @@ function addEstLine(id,type){
     footer:'<button class="btn ghost" onclick="closeModal()">Done</button>'+
       '<span style="flex:1"></span>'+
       '<button class="btn primary" onclick="saveEstLineMore()">Add line</button>' });
+  refocusLineForm();   // land on Qty (parts) / menu (labor), value selected
 }
 function editEstLine(id,lid){ var e=estById(id); var l=e.lines.find(function(x){return x.id===lid;}); openModal('Edit line', lineForm(l), { onOk:'saveEstLine' }); setTimeout(function(){estLineCtx={est:id,line:lid};},10); }
 var estLineCtx=null;
@@ -98,7 +99,7 @@ function saveEstLineMore(){
   render();                                   // refresh the lines table behind the dialog
   var body=document.querySelector('#modalRoot .modal-body');
   if(body){ body.innerHTML=lineForm({type:data.type}); }   // fresh form, same Type for fast repeats
-  setTimeout(function(){ var f=document.querySelector('#modalRoot .modal-body input,#modalRoot .modal-body select'); if(f&&f.focus){ f.focus(); if(f.select){ try{f.select();}catch(_){} } } }, 20);
+  refocusLineForm();   // return to Qty (parts) / menu (labor), value selected — shared with Job Orders
 }
 /* Edit path (single line) — save and close. */
 function saveEstLine(){
