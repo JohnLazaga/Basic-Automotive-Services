@@ -154,13 +154,15 @@ function startPMS(id){
   _pmsCtx={ jobId:id, step:0 };
   go('pmsform', id);
 }
-/* Rating / L/R rows still needing a value in this section (measures + notes are optional). */
+/* Rows still needing a value in this section (rating, L/R, and numeric measures
+   are all required; free-text notes stay optional). */
 function pmsSectionMissing(sec, vals){
   var miss=[];
   sec.blocks.forEach(function(b){ (b.items||[]).forEach(function(it){
     var v=vals[it.key];
     if(b.kind==='rating'){ if(!v||!v.s) miss.push(it.key); }
     else if(b.kind==='lr'){ if(!v||!v.l||!v.r) miss.push(it.key); }
+    else if(b.kind==='measure'){ if(v==null||String(v).trim()==='') miss.push(it.key); }
   }); });
   return miss;
 }
@@ -242,15 +244,17 @@ function pmsNext(){
 }
 function pmsSaveExit(){ pmsCurrentSave(); go('pms'); }
 function pmsHighlightMissing(keys){
-  Array.prototype.forEach.call(document.querySelectorAll('.pms-row.needpick'), function(el){ el.classList.remove('needpick'); });
+  Array.prototype.forEach.call(document.querySelectorAll('.pms-row.needpick,.fld.needpick'), function(el){ el.classList.remove('needpick'); });
   var first=null;
   keys.forEach(function(k){
     var input=document.getElementById('pf_'+k)||document.getElementById('pf_'+k+'_l');
-    var row=(input&&input.closest)?input.closest('.pms-row'):null;
-    if(row){ row.classList.add('needpick'); if(!first) first=row; }
+    var cell=(input&&input.closest)?(input.closest('.pms-row')||input.closest('.fld')):null;   // rating row OR measure field
+    if(cell){ cell.classList.add('needpick'); if(!first) first=cell; }
   });
   if(first&&first.scrollIntoView) first.scrollIntoView({block:'center'});
 }
+/* Clear a measure field's "needs a value" flag as soon as the tech types in it. */
+function pmsClearFld(el){ var f=(el&&el.closest)?el.closest('.fld'):null; if(f) f.classList.remove('needpick'); }
 function pmsThumbsHTML(j){
   var grid=(j.photos||[]).map(function(p){
     return '<div class="thumb"><img src="'+(p.url||p.data)+'" onclick="openLightbox(_photoSrc(\''+j.id+'\',\''+p.id+'\'))"/>'+
@@ -269,7 +273,7 @@ function pmsBlockHTML(b, vals){
   if(b.kind==='measure'){
     return '<div class="pms-grid">'+b.items.map(function(it){
       var v=vals[it.key]; v=(v==null?'':v);
-      return field(it.label+(it.unit?' ('+it.unit+')':''),'<input id="pf_'+it.key+'" type="text" inputmode="decimal" value="'+attr(v)+'" onfocus="this.select()">');
+      return field(it.label+(it.unit?' ('+it.unit+')':''),'<input id="pf_'+it.key+'" type="text" inputmode="decimal" value="'+attr(v)+'" onfocus="this.select()" oninput="pmsClearFld(this)">');
     }).join('')+'</div>';
   }
   if(b.kind==='check'){

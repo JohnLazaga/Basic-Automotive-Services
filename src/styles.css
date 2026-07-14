@@ -221,6 +221,8 @@ textarea{resize:vertical} .chk{display:flex;align-items:center;gap:8px;font-size
 .pms-nav{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:18px 0 48px}
 .pms-nav .btn{min-height:54px;padding:0 24px;font-size:16px}
 .pms-row.needpick{background:rgba(242,23,23,.09);box-shadow:inset 4px 0 0 var(--brand);border-radius:8px}
+.pms-form .fld.needpick{background:rgba(242,23,23,.09);border-radius:8px;padding:4px 6px;margin:-4px -6px}
+.pms-form .fld.needpick input{border-color:var(--brand)}
 [data-theme="dark"] .pms-chip{background:#1e1e22}
 [data-theme="dark"] .pms-chip.done{background:#12321e;border-color:#2f7d47;color:#5fdc86}
 
