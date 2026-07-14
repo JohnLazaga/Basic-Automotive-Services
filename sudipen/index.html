@@ -182,7 +182,7 @@ textarea{resize:vertical} .chk{display:flex;align-items:center;gap:8px;font-size
 .pms-q-top{display:flex;align-items:center;gap:8px;font-size:16px;margin-bottom:2px}
 .pms-legend{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink2);margin:2px 0 12px;flex-wrap:wrap}
 .r-swatch{display:inline-block;width:20px;height:20px;border-radius:5px;border:1px solid rgba(0,0,0,.15);background:var(--canvas);cursor:pointer;padding:0;vertical-align:middle}
-.r-swatch.r-ok{background:#34C759} .r-swatch.r-att{background:#FFC000} .r-swatch.r-rep{background:#F21717}
+.r-swatch.r-ok{background:#34C759} .r-swatch.r-att{background:#FFC000} .r-swatch.r-rep{background:#F21717} .r-swatch.r-na{background:#8E8E93}
 .pms-rate .r-swatch{opacity:.32;transition:opacity .1s,transform .06s}
 .pms-rate .r-swatch.on{opacity:1;transform:scale(1.12);box-shadow:0 0 0 2px rgba(0,0,0,.12)}
 .pms-rate{display:inline-flex;gap:5px}
@@ -470,7 +470,7 @@ var BRANCH = {"id":"sudipen","slug":"sudipen","name":"Basic by JMSI — Sudipen"
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.2.0 · 2026-07-14 · f1dc994';
+var APP_VERSION = 'v1.2.0 · 2026-07-14 · bc5b1c8';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -5677,7 +5677,8 @@ function catalogCount(){ return CATALOG ? Object.keys(CATALOG).length : 0; }
 var PMS_RATINGS = [
   { s:'ok', label:'OK', cls:'r-ok' },
   { s:'attention', label:'Attention', cls:'r-att' },
-  { s:'replace', label:'Replace', cls:'r-rep' }
+  { s:'replace', label:'Replace', cls:'r-rep' },
+  { s:'na', label:'Not applicable', cls:'r-na' }
 ];
 
 /* Build helper: a rating block from "Label" list. */
@@ -5811,7 +5812,7 @@ VIEWS.pmsform = function(id){
   return '<div class="page pms-form">'+
     '<div class="page-head"><div><a class="back" onclick="go(\'pms\')">‹ PMS Queue</a>'+
       '<h1>PMS · '+esc(j.plate)+'</h1><div class="muted small">'+esc(veh)+' · JO '+esc(j.no)+'</div></div></div>'+
-    '<div class="pms-legend"><span class="r-swatch r-ok"></span>OK &nbsp; <span class="r-swatch r-att"></span>Requires attention &nbsp; <span class="r-swatch r-rep"></span>Needs replacement</div>'+
+    '<div class="pms-legend"><span class="r-swatch r-ok"></span>OK &nbsp; <span class="r-swatch r-att"></span>Requires attention &nbsp; <span class="r-swatch r-rep"></span>Needs replacement &nbsp; <span class="r-swatch r-na"></span>Not applicable</div>'+
     sections+
     /* damage photos reuse the job photo system */
     '<div class="card"><div class="card-head"><h2>Damage / condition photos</h2>'+
@@ -6012,8 +6013,8 @@ afterRender = function(){
 };
 
 /* ---- Printable / downloadable PMS report ---------------------------------- */
-function pmsStateLabel(s){ return s==='ok'?'OK':s==='attention'?'Requires attention':s==='replace'?'Needs replacement':'—'; }
-function pmsDot(s){ var c=s==='ok'?'#34C759':s==='attention'?'#FFC000':s==='replace'?'#F21717':'#ccc';
+function pmsStateLabel(s){ return s==='ok'?'OK':s==='attention'?'Requires attention':s==='replace'?'Needs replacement':s==='na'?'Not applicable':'—'; }
+function pmsDot(s){ var c=s==='ok'?'#34C759':s==='attention'?'#FFC000':s==='replace'?'#F21717':s==='na'?'#8E8E93':'#ccc';
   return '<span style="display:inline-block;width:11px;height:11px;border-radius:3px;background:'+c+';vertical-align:middle"></span>'; }
 function docPMS(j){
   var r=pmsReport(j)||{values:{}}; var vals=r.values||{};

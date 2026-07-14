@@ -17,7 +17,8 @@
 var PMS_RATINGS = [
   { s:'ok', label:'OK', cls:'r-ok' },
   { s:'attention', label:'Attention', cls:'r-att' },
-  { s:'replace', label:'Replace', cls:'r-rep' }
+  { s:'replace', label:'Replace', cls:'r-rep' },
+  { s:'na', label:'Not applicable', cls:'r-na' }
 ];
 
 /* Build helper: a rating block from "Label" list. */
@@ -151,7 +152,7 @@ VIEWS.pmsform = function(id){
   return '<div class="page pms-form">'+
     '<div class="page-head"><div><a class="back" onclick="go(\'pms\')">‹ PMS Queue</a>'+
       '<h1>PMS · '+esc(j.plate)+'</h1><div class="muted small">'+esc(veh)+' · JO '+esc(j.no)+'</div></div></div>'+
-    '<div class="pms-legend"><span class="r-swatch r-ok"></span>OK &nbsp; <span class="r-swatch r-att"></span>Requires attention &nbsp; <span class="r-swatch r-rep"></span>Needs replacement</div>'+
+    '<div class="pms-legend"><span class="r-swatch r-ok"></span>OK &nbsp; <span class="r-swatch r-att"></span>Requires attention &nbsp; <span class="r-swatch r-rep"></span>Needs replacement &nbsp; <span class="r-swatch r-na"></span>Not applicable</div>'+
     sections+
     /* damage photos reuse the job photo system */
     '<div class="card"><div class="card-head"><h2>Damage / condition photos</h2>'+
@@ -352,8 +353,8 @@ afterRender = function(){
 };
 
 /* ---- Printable / downloadable PMS report ---------------------------------- */
-function pmsStateLabel(s){ return s==='ok'?'OK':s==='attention'?'Requires attention':s==='replace'?'Needs replacement':'—'; }
-function pmsDot(s){ var c=s==='ok'?'#34C759':s==='attention'?'#FFC000':s==='replace'?'#F21717':'#ccc';
+function pmsStateLabel(s){ return s==='ok'?'OK':s==='attention'?'Requires attention':s==='replace'?'Needs replacement':s==='na'?'Not applicable':'—'; }
+function pmsDot(s){ var c=s==='ok'?'#34C759':s==='attention'?'#FFC000':s==='replace'?'#F21717':s==='na'?'#8E8E93':'#ccc';
   return '<span style="display:inline-block;width:11px;height:11px;border-radius:3px;background:'+c+';vertical-align:middle"></span>'; }
 function docPMS(j){
   var r=pmsReport(j)||{values:{}}; var vals=r.values||{};
