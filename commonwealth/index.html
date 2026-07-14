@@ -201,6 +201,29 @@ textarea{resize:vertical} .chk{display:flex;align-items:center;gap:8px;font-size
 [data-theme="dark"] .pms-q{background:#1e1e22}
 [data-theme="dark"] .r-swatch{border-color:rgba(255,255,255,.2)}
 
+/* ---- PMS form: tablet / kiosk touch targets ------------------------------- */
+/* The checklist is filled on a shared tablet, so every tap target is enlarged
+   and rows are spaced out. Scoped to .pms-form so desktop views are unchanged. */
+.pms-form .pms-legend{font-size:14px;gap:9px} .pms-form .pms-legend .r-swatch{width:22px;height:22px}
+.pms-form .pms-rate{gap:11px}
+.pms-form .pms-rate .r-swatch{width:40px;height:40px;border-radius:10px;opacity:.4}
+.pms-form .pms-rate .r-swatch.on{opacity:1}
+.pms-form .pms-rows{gap:0}
+.pms-form .pms-row{padding:11px 2px;gap:14px;min-height:58px;border-bottom:1px solid var(--hair);flex-wrap:nowrap}
+.pms-form .pms-row:last-child{border-bottom:0}
+.pms-form .pms-lbl{font-size:16px;min-width:0}
+.pms-form .pms-row.pms-lr{flex-wrap:wrap;padding:12px 2px}
+.pms-form .pms-side{font-size:14px;gap:8px}
+.pms-form .pms-grid{gap:12px 14px}
+.pms-form .pms-grid input,.pms-form textarea,.pms-form select{font-size:16px;padding:11px 12px}
+.pms-form .pms-grid input,.pms-form select{min-height:50px}
+.pms-form .card{padding:18px 20px}
+.pms-form .card h2,.pms-form .card-head h2{font-size:19px}
+.pms-form .btn{min-height:48px;font-size:15px}
+.pms-form .pms-cta .btn{min-height:52px}
+/* PMS Queue cards: bigger tap area on the tablet landing screen */
+.pms-q{padding:18px} .pms-q .btn.full{min-height:50px;font-size:15px}
+
 /* ---- Stepper ---- */
 .stepper{display:flex;align-items:center;gap:4px;margin-bottom:18px;flex-wrap:wrap}
 .step{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--ink2);font-weight:600}
@@ -470,7 +493,7 @@ var BRANCH = {"id":"commonwealth","slug":"commonwealth","name":"Basic by JMSI �
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.2.0 · 2026-07-14 · 9765b9c';
+var APP_VERSION = 'v1.2.0 · 2026-07-14 · a81019a';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
