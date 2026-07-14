@@ -98,6 +98,13 @@ var PMS_TEMPLATE = [
   { title:'Notes', blocks:[ pmsText('Notes') ] }
 ];
 
+/* Give every section a free-text notes field at its end — skip sections whose
+   last block is already a free-text area (Exterior, Test drive, Notes). */
+PMS_TEMPLATE.forEach(function(sec){
+  var blocks=sec.blocks||[];
+  if(!blocks.length || blocks[blocks.length-1].kind!=='text'){ blocks.push(pmsText(sec.title+' notes')); }
+});
+
 /* ---- Ticket lifecycle (embedded on the job) ------------------------------- */
 function jobHasOpenPMS(j){ return !!(j && j.pms && j.pms.status && j.pms.status!=='done'); }
 function pmsReport(j){ return (j && j.pms && j.pms.report) || null; }

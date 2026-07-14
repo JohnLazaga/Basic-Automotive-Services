@@ -470,7 +470,7 @@ var BRANCH = {"id":"commonwealth","slug":"commonwealth","name":"Basic by JMSI �
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.2.0 · 2026-07-14 · 5446883';
+var APP_VERSION = 'v1.2.0 · 2026-07-14 · 9765b9c';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -5757,6 +5757,13 @@ var PMS_TEMPLATE = [
 
   { title:'Notes', blocks:[ pmsText('Notes') ] }
 ];
+
+/* Give every section a free-text notes field at its end — skip sections whose
+   last block is already a free-text area (Exterior, Test drive, Notes). */
+PMS_TEMPLATE.forEach(function(sec){
+  var blocks=sec.blocks||[];
+  if(!blocks.length || blocks[blocks.length-1].kind!=='text'){ blocks.push(pmsText(sec.title+' notes')); }
+});
 
 /* ---- Ticket lifecycle (embedded on the job) ------------------------------- */
 function jobHasOpenPMS(j){ return !!(j && j.pms && j.pms.status && j.pms.status!=='done'); }
