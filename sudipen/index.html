@@ -470,7 +470,7 @@ var BRANCH = {"id":"sudipen","slug":"sudipen","name":"Basic by JMSI — Sudipen"
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.2.0 · 2026-07-14 · bc5b1c8';
+var APP_VERSION = 'v1.2.0 · 2026-07-14 · 7b45777';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -5691,7 +5691,7 @@ function pmsText(label){ return { kind:'text', key:pmsKey(label), label:label };
 function pmsKey(l){ return String(l).toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,''); }
 
 var PMS_TEMPLATE = [
-  { title:'Exterior', blocks:[ pmsCheck([
+  { title:'Exterior', blocks:[ pmsRate([
     'Park light','Low beam','High beam','Fog lights','Signal lights front','Wiper FR','Wiper RR',
     'Wiper washer','Brake lights','Third brake','Signal lights RR','Door handle','Door locks',
     'Fender lights','Side mirrors','Signal lights side','Windows','Reverse light','Rear park light','Plate light' ]) ] },
@@ -5702,9 +5702,9 @@ var PMS_TEMPLATE = [
       ['Spare pressure before','PSI'],['Spare pressure after','PSI']]),
     pmsRate(['Tire depth FR','Tire depth FL','Tire depth RR','Tire depth RL','Tire depth Spare']),
     pmsRate(['Tire pattern/damage FR','Tire pattern/damage FL','Tire pattern/damage RR','Tire pattern/damage RL','Tire pattern/damage Spare']),
-    pmsCheck(['Tires rotated','Balanced']) ] },
+    pmsRate(['Tires rotated','Balanced']) ] },
 
-  { title:'Interior', blocks:[ pmsCheck([
+  { title:'Interior', blocks:[ pmsRate([
     'Horn','Gauge','Seats','Seat belts','Shift knob','Matting','Windows interior','AC control','Radio system',
     'Wiper controls','Map/dome light','Hood release','Trunk release' ]) ] },
 
@@ -5714,7 +5714,7 @@ var PMS_TEMPLATE = [
     pmsRate(['Brake caliper/cylinder FR','Brake caliper/cylinder FL','Brake caliper/cylinder RR','Brake caliper/cylinder RL']),
     pmsRate(['Brake hose FR','Brake hose FL','Brake hose RR','Brake hose RL']),
     pmsRate(['Brake fluid condition']),
-    pmsCheck(['Brakes cleaned','Parking brake adjusted']) ] },
+    pmsRate(['Brakes cleaned','Parking brake adjusted']) ] },
 
   { title:'Test drive notes / fault codes', blocks:[ pmsText('Test drive notes / fault codes') ] },
 
@@ -5725,18 +5725,18 @@ var PMS_TEMPLATE = [
     ['Battery voltage','V'],['Stock battery CCA','CCA'],['Actual battery CCA','CCA'],['Charging voltage','V'],['Battery health','%'] ]) ] },
 
   { title:'Engine Bay — Systems', blocks:[
-    pmsCheck(['Air filter','Fuel filter','Cabin filter',
+    pmsRate(['Air filter','Fuel filter','Cabin filter',
       'Radiator cap','Radiator hoses','Bypass hoses','Reservoir','Clutch fan/motor',
       'Ignition coil','Spark plugs','Distributor','Spark plug cable',
       'Engine mount','Trans mount','Torque mount',
       'Alternator','Water pump','Power steering pump','Vacuum pump','Aircon compressor']),
     pmsRate(['Main belt','Auxiliary belts']) ] },
 
-  { title:'Oil / Fluid Leaks', blocks:[ pmsCheck([
+  { title:'Oil / Fluid Leaks', blocks:[ pmsRate([
     'Valve cover gasket','Intake hose','Turbo hose','Intercooler','Spool valve','Oil pan gasket','Axle oil seals',
     'Camshaft oil seal','Front crank seal','Rear crank seal','Trans oil seal','Diff oil seal' ]) ] },
 
-  { title:'Drivetrain', blocks:[ pmsCheck([
+  { title:'Drivetrain', blocks:[ pmsRate([
     'Clutch pedal','Shifter linkage/cable','Inner CV joint front','Inner CV joint rear','Outer CV joint front',
     'Outer CV joint rear','CV boots & straps','Clutch master','Clutch slave','Wheel bearing RR','Wheel bearing RL',
     'Wheel bearing FR','Wheel bearing FL','Cross joint','Differential','Center bearing' ]) ] },
@@ -5747,10 +5747,10 @@ var PMS_TEMPLATE = [
       'Upper arm big bushing','Upper arm small bushing','Upper arm ball joint',
       'Shock piston front','Shock boots front','Shock mounting front','Shock bushing front',
       'Shock piston rear','Shock boots rear','Shock mounting rear','Shock bushing rear']),
-    pmsCheck(['Rear suspension bushings','Torsion bar front','Torsion beam','Trailing arms','Panhard rod','Leaf springs',
+    pmsRate(['Rear suspension bushings','Torsion bar front','Torsion beam','Trailing arms','Panhard rod','Leaf springs',
       'Leaf spring bushings','Coil springs','Coil spring pads','Lateral links','Rear ball joints']),
     pmsLR(['Outer tie rod','Inner tie rod/rack end','Steering boots']),
-    pmsCheck(['Steering rack assembly','Steering gear box','Center link','Idler arm','Center post','Pitman arm','Power steering hoses']) ] },
+    pmsRate(['Steering rack assembly','Steering gear box','Center link','Idler arm','Center post','Pitman arm','Power steering hoses']) ] },
 
   { title:'Notes', blocks:[ pmsText('Notes') ] }
 ];
@@ -5862,17 +5862,15 @@ function pmsBlockHTML(b, vals){
   if(b.kind==='rating'){
     return '<div class="pms-rows">'+b.items.map(function(it){
       var cur=vals[it.key]||{}; return '<div class="pms-row"><span class="pms-lbl">'+esc(it.label)+'</span>'+
-        pmsRatingSwitch('pf_'+it.key, cur.s)+
-        '<input class="pms-note" id="pf_'+it.key+'_n" value="'+attr(cur.n||'')+'" placeholder="note" onfocus="this.select()"></div>';
+        pmsRatingSwitch('pf_'+it.key, cur.s)+'</div>';
     }).join('')+'</div>';
   }
   if(b.kind==='lr'){
     return '<div class="pms-rows">'+b.items.map(function(it){
-      var cur=vals[it.key]||{}; var na=cur.na?' checked':'';
+      var cur=vals[it.key]||{};
       return '<div class="pms-row pms-lr"><span class="pms-lbl">'+esc(it.label)+'</span>'+
         '<span class="pms-side">L'+pmsRatingSwitch('pf_'+it.key+'_l', cur.l)+'</span>'+
-        '<span class="pms-side">R'+pmsRatingSwitch('pf_'+it.key+'_r', cur.r)+'</span>'+
-        '<label class="pms-chk sm"><input type="checkbox" id="pf_'+it.key+'_na"'+na+'> N/A</label></div>';
+        '<span class="pms-side">R'+pmsRatingSwitch('pf_'+it.key+'_r', cur.r)+'</span></div>';
     }).join('')+'</div>';
   }
   return '';
@@ -5930,8 +5928,8 @@ function readPmsValues(){
     (b.items||[]).forEach(function(it){
       if(b.kind==='measure'){ vals[it.key]=val('pf_'+it.key); }
       else if(b.kind==='check'){ vals[it.key]={ c:checked('pf_'+it.key+'_c'), n:val('pf_'+it.key+'_n') }; }
-      else if(b.kind==='rating'){ vals[it.key]={ s:val('pf_'+it.key), n:val('pf_'+it.key+'_n') }; }
-      else if(b.kind==='lr'){ vals[it.key]={ l:val('pf_'+it.key+'_l'), r:val('pf_'+it.key+'_r'), na:checked('pf_'+it.key+'_na') }; }
+      else if(b.kind==='rating'){ vals[it.key]={ s:val('pf_'+it.key) }; }
+      else if(b.kind==='lr'){ vals[it.key]={ l:val('pf_'+it.key+'_l'), r:val('pf_'+it.key+'_r') }; }
     });
   }); });
   return vals;
