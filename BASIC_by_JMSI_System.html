@@ -470,7 +470,7 @@ var BRANCH = {"id":"main","slug":"main","name":"Basic by JMSI — Fairview (Main
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.2.0 · 2026-07-14 · 7b45777';
+var APP_VERSION = 'v1.2.0 · 2026-07-14 · be4710b';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -5692,9 +5692,11 @@ function pmsKey(l){ return String(l).toLowerCase().replace(/[^a-z0-9]+/g,'_').re
 
 var PMS_TEMPLATE = [
   { title:'Exterior', blocks:[ pmsRate([
-    'Park light','Low beam','High beam','Fog lights','Signal lights front','Wiper FR','Wiper RR',
-    'Wiper washer','Brake lights','Third brake','Signal lights RR','Door handle','Door locks',
-    'Fender lights','Side mirrors','Signal lights side','Windows','Reverse light','Rear park light','Plate light' ]) ] },
+    'Park lights front','Headlight Low beam','Headlight High beam','Fog lights','Signal lights front',
+    'Front Windshield','Wiper Front','Wiper Blades Front','Wiper Washer Front','Headlight Washers',
+    'Brake Lights','Third brake light','Signal lights Rear','Reverse Lights','Park lights Rear',
+    'Fog Lights rear','Plate Lights','Rear Windshield','Wiper rear','Wiper blade rear','Wiper washer rear',
+    'Door Handles','Door locks','Fender Lights','Side Mirror','Side Mirror Lights','Other Signal Lights','Windows' ]) ] },
 
   { title:'Tires', blocks:[
     pmsMeasure([['FR pressure before','PSI'],['FR pressure after','PSI'],['FL pressure before','PSI'],['FL pressure after','PSI'],
