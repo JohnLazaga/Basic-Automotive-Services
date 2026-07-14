@@ -14,10 +14,13 @@
 <body>
 <div id="app"><div style="padding:40px;font-family:-apple-system,Segoe UI,sans-serif;color:#6E6E73">Loading Basic by JMSI…</div></div>
 <!-- Firebase SDK (compat build — exposes global `firebase`). Deferred so it
-     downloads in parallel without blocking first paint. Storage omitted (unused). -->
+     downloads in parallel without blocking first paint. Storage is REQUIRED so
+     job/PMS photos upload to Cloud Storage instead of being crammed into the
+     Firestore document (which has a hard 1 MB limit). -->
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
 <script>
 /*__JS__*/
 </script>

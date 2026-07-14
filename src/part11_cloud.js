@@ -325,8 +325,9 @@ async function cloudPersist(){
       var id = ids[k], rec = cur[id], js = JSON.stringify(rec);
       if (prev[id] === js) continue;                            // unchanged
       try {
-        if (c==='jobs') await uploadJobPhotos(rec);             // relocate base64 → Storage
-        await bcol(c).doc(id).set(plain(rec));
+        var toWrite = rec;
+        if (c==='jobs'){ await uploadJobPhotos(rec); toWrite = jobForCloud(rec); }  // base64 → Storage; keep any un-uploaded photo out of the doc
+        await bcol(c).doc(id).set(plain(toWrite));
         prev[id] = js;                                          // mark synced only on success
       } catch(e){ console.error('save '+c+'/'+id, e); }         // keep stale -> retried next save
     }
@@ -345,18 +346,57 @@ function rememberSnap(){
 }
 
 /* ---- Photos → Firebase Storage ------------------------------------------- */
+/* Photos MUST land in Cloud Storage, never in the Firestore doc: a Firestore
+   document is capped at 1 MB, so even a couple of base64 images would push the
+   job record over the limit and make every save fail (and, on a tablet, the
+   repeated multi-hundred-KB writes + re-renders could crash the tab). */
 async function uploadJobPhotos(job){
-  if (!job || !Array.isArray(job.photos) || !FB.storage) return;
+  if (!job || !Array.isArray(job.photos)) return;
+  // lazy-init in case the storage SDK finished loading after initFirebase() ran
+  if (!FB.storage){ try { FB.storage = firebase.storage(); } catch(e){} }
   for (var i=0;i<job.photos.length;i++){
     var p = job.photos[i];
     if (p.url || !p.data) continue;                            // already uploaded / nothing to do
+    if (!FB.storage) continue;                                 // no storage → leave base64 for a later retry; stripCloudPhotos keeps it out of the doc
     try {
       var ref = FB.storage.ref('photos/'+job.id+'/'+p.id+'.jpg');
       await ref.putString(p.data, 'data_url');
       var url = await ref.getDownloadURL();
       job.photos[i] = { id:p.id, url:url, caption:p.caption||'', ts:p.ts };
-    } catch(e){ console.error('photo upload failed', e); /* keep base64 as fallback */ }
+    } catch(e){ console.error('photo upload failed', e); /* keep base64 for retry; stripped from the doc write below */ }
   }
+}
+/* A Firestore-safe view of a job: any photo still holding base64 (upload not yet
+   done / failed) is written WITHOUT its `data` so the document can never exceed
+   the 1 MB limit. The base64 stays in local state (S) so the thumbnail keeps
+   showing and the next save retries the upload. */
+function jobForCloud(job){
+  if (!job || !Array.isArray(job.photos) || !job.photos.some(function(p){ return p && p.data && !p.url; })) return job;
+  var copy = {}; for (var k in job){ if(Object.prototype.hasOwnProperty.call(job,k)) copy[k]=job[k]; }
+  copy.photos = job.photos.map(function(p){
+    if (p && p.data && !p.url){ return { id:p.id, caption:p.caption||'', ts:p.ts, pending:true }; }
+    return p;
+  });
+  return copy;
+}
+/* Inverse of jobForCloud on the read side: a photo that came back `pending`
+   (its base64 was stripped from the doc) is refilled from the local copy we
+   still hold, so the thumbnail keeps rendering and the upload retries. */
+function rehydratePendingPhotos(incomingJobs, localJobs){
+  if (!Array.isArray(incomingJobs) || !Array.isArray(localJobs)) return incomingJobs;
+  var localById = {}; localJobs.forEach(function(j){ if(j&&j.id) localById[j.id]=j; });
+  incomingJobs.forEach(function(j){
+    if (!j || !Array.isArray(j.photos)) return;
+    var lj = localById[j.id]; if (!lj || !Array.isArray(lj.photos)) return;
+    var localPhoto = {}; lj.photos.forEach(function(p){ if(p&&p.id) localPhoto[p.id]=p; });
+    j.photos = j.photos.map(function(p){
+      if (p && p.pending && !p.url && localPhoto[p.id] && localPhoto[p.id].data){
+        return { id:p.id, data:localPhoto[p.id].data, caption:p.caption||'', ts:p.ts };
+      }
+      return p;
+    });
+  });
+  return incomingJobs;
 }
 
 /* ---- Real-time listeners ------------------------------------------------- */
@@ -366,7 +406,9 @@ function cloudSubscribe(){
     var u = bcol(c).onSnapshot(function(snap){
       if (snap.metadata.hasPendingWrites) return;             // ignore our own local writes
       _applyingRemote = true;
-      S[c] = snap.docs.map(function(d){ return d.data(); });
+      var incoming = snap.docs.map(function(d){ return d.data(); });
+      if (c==='jobs') incoming = rehydratePendingPhotos(incoming, S.jobs);  // keep local base64 for photos not yet in Storage
+      S[c] = incoming;
       _cloudSnap[c] = snapMap(S[c]);
       _applyingRemote = false;
       if (!modalOpen()) render();
