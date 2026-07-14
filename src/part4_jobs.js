@@ -234,6 +234,7 @@ VIEWS.job = function(id){
       '<div class="colmain">'+
         jobStatusPanel(j)+
         jobLinesPanel(j)+
+        (typeof pmsReportPanel==='function'?pmsReportPanel(j):'')+
         jobInspectionPanel(j)+
         jobPhotosPanel(j)+
       '</div>'+
@@ -363,7 +364,8 @@ function laborFields(l){
   return field('From menu','<select id="lnRef" onchange="laborPick()">'+laborOpts+'</select>')+
     field('Description','<input id="lnDesc" value="'+attr(l.desc||'')+'">')+
     '<div class="grid2">'+field('Qty','<input id="lnQty" type="text" inputmode="decimal" value="'+attr(l.qty||1)+'" onfocus="this.select()">')+
-    field('Price','<input id="lnPrice" type="text" inputmode="decimal" value="'+attr(l.price||0)+'" onfocus="this.select()">')+'</div>';
+    field('Price','<input id="lnPrice" type="text" inputmode="decimal" value="'+attr(l.price||0)+'" onfocus="this.select()">')+'</div>'+
+    '<div id="pmsLaborBtn">'+(typeof pmsLaborBtnHTML==='function'?pmsLaborBtnHTML(l.ref):'')+'</div>';
 }
 function catalogHint(){
   if (typeof CATALOG_STATE==='undefined') return '';
@@ -379,9 +381,12 @@ function skuLookup(){
   else if(msg){ msg.textContent = (typeof CATALOG_STATE!=='undefined'&&CATALOG_STATE==='loading')?'Loading catalog…':'No match — enter the details manually.'; msg.className='muted small'; }
 }
 function laborPick(){ var sel=document.getElementById('lnRef'); var o=sel.options[sel.selectedIndex];
-  if(o&&o.value){ setVal('lnDesc',o.getAttribute('data-name')); setVal('lnPrice',o.getAttribute('data-price')); } }
+  if(o&&o.value){ setVal('lnDesc',o.getAttribute('data-name')); setVal('lnPrice',o.getAttribute('data-price')); }
+  var box=document.getElementById('pmsLaborBtn'); if(box&&typeof pmsLaborBtnHTML==='function') box.innerHTML=pmsLaborBtnHTML(o?o.value:''); }
+var _pmsLineJob=null;   // job id when a JOB add-labor dialog is open (gates the "Perform PMS" button)
 function addLine(id,type){
   lineCtx={job:id,line:null,type:type||'part'};
+  _pmsLineJob=id;
   openModal(type==='labor'?'Add labor':'Add parts', lineForm({type:type||'part'}), {
     footer:'<button class="btn ghost" onclick="closeModal()">Done</button>'+
       '<span style="flex:1"></span>'+
@@ -410,7 +415,7 @@ function refocusLineForm(){
     if(f&&f.focus){ f.focus(); if(f.select){ try{f.select();}catch(_){} } }
   }, 20);
 }
-function editLine(id,lid){ var j=jobById(id); var l=j.lines.find(function(x){return x.id===lid;});
+function editLine(id,lid){ var j=jobById(id); var l=j.lines.find(function(x){return x.id===lid;}); _pmsLineJob=null;
   openModal('Edit line', lineForm(l), { onOk:'saveLine' }); setTimeout(function(){lineCtx={job:id,line:lid};},10); }
 var lineCtx=null;
 function readLine(){

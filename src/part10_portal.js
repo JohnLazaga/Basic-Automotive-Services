@@ -37,7 +37,8 @@ function portalDataForVehicle(v){
           lines:(j.lines||[]).map(function(l){ return { type:l.type, sku:(l.type==='part'?(l.sku||''):''), desc:l.desc, qty:Number(l.qty)||0, price:Number(l.price)||0, total:lineTotal(l) }; }),
           addl:(j.addlWork||[]).filter(function(a){return a.approved;}).map(function(a){ return { desc:a.desc, amount:Number(a.amount)||0 }; }),
           vatable:b.vatable, vat:b.vat, exempt:!!b.exempt, disc:b.disc, gross:b.gross, vatRate:Number((S.shop||{}).vatRate)||12,
-          supervisor:staffNameIfRole(j.approvedReleaseBy,'SV'), secretary:staffNameIfRole(j.paymentReceivedBy,'Secretary')
+          supervisor:staffNameIfRole(j.approvedReleaseBy,'SV'), secretary:staffNameIfRole(j.paymentReceivedBy,'Secretary'),
+        pms:(j.pms&&j.pms.report)? { values:j.pms.report.values||{}, completedAt:j.pms.report.completedAt||'', mechanic:staffName(j.pms.report.mechanicId), sigTech:j.pms.report.sigTech||'', sigClient:j.pms.report.sigClient||'' } : null
         }
       };
     }),
@@ -131,6 +132,7 @@ function portalReportHTML(h, d){
     '<div class="p-card"><div class="p-card-t">Labor</div>'+
       '<table class="p-tbl"><thead><tr><th>Description</th><th class="r">Qty</th><th class="r">Unit</th><th class="r">Amount</th></tr></thead><tbody>'+lineRows(rowsL,false)+'</tbody></table></div>'+
     (addlRows?'<div class="p-card"><div class="p-card-t">Additional work</div><table class="p-tbl"><tbody>'+addlRows+'</tbody></table></div>':'')+
+    (r.pms&&typeof portalPmsHTML==='function'?portalPmsHTML(r.pms):'')+
     '<div class="p-card">'+tot+'</div>'+
     sig+
     '<div class="p-foot">'+esc(sh.name)+' · '+esc(sh.address)+'<br>THIS DOCUMENT IS NOT VALID FOR CLAIM OF INPUT TAX</div>'+

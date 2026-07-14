@@ -25,7 +25,8 @@ var NAV = [
     { id:'board', label:'Board', icon:'▦' },
     { id:'appointments', label:'Appointments', icon:'▤', cap:'appointments' },
     { id:'jobs', label:'Job Orders', icon:'▧' },
-    { id:'estimates', label:'Estimates', icon:'✎', cap:'estimates' }
+    { id:'estimates', label:'Estimates', icon:'✎', cap:'estimates' },
+    { id:'pms', label:'PMS Queue', icon:'🔧' }
   ]},
   { group:'ANALYTICS', items:[
     { id:'reports', label:'Reports', icon:'▣', cap:'reports' },

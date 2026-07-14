@@ -79,14 +79,14 @@ VIEWS.estimate = function(id){
 
 function setEstField(id,f,v){ var e=estById(id); e[f]=v; persist(); }
 function addEstLine(id,type){
-  estLineCtx={est:id,line:null};
+  estLineCtx={est:id,line:null}; if(typeof _pmsLineJob!=='undefined') _pmsLineJob=null;
   openModal(type==='labor'?'Add labor':'Add part', lineForm({type:type||'part'}), {
     footer:'<button class="btn ghost" onclick="closeModal()">Done</button>'+
       '<span style="flex:1"></span>'+
       '<button class="btn primary" onclick="saveEstLineMore()">Add line</button>' });
   refocusLineForm();   // land on Qty (parts) / menu (labor), value selected
 }
-function editEstLine(id,lid){ var e=estById(id); var l=e.lines.find(function(x){return x.id===lid;}); openModal('Edit line', lineForm(l), { onOk:'saveEstLine' }); setTimeout(function(){estLineCtx={est:id,line:lid};},10); }
+function editEstLine(id,lid){ var e=estById(id); var l=e.lines.find(function(x){return x.id===lid;}); if(typeof _pmsLineJob!=='undefined') _pmsLineJob=null; openModal('Edit line', lineForm(l), { onOk:'saveEstLine' }); setTimeout(function(){estLineCtx={est:id,line:lid};},10); }
 var estLineCtx=null;
 /* Save the line but KEEP the dialog open, reset for the next line — so you can
    add part after part (or labor after labor) without leaving the box. */
