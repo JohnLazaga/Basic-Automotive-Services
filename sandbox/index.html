@@ -223,6 +223,17 @@ textarea{resize:vertical} .chk{display:flex;align-items:center;gap:8px;font-size
 .pms-form .pms-cta .btn{min-height:52px}
 /* PMS Queue cards: bigger tap area on the tablet landing screen */
 .pms-q{padding:18px} .pms-q .btn.full{min-height:50px;font-size:15px}
+/* Section wizard: stepper chips (jump to any section), progress marker, nav bar */
+.pms-stepper{display:flex;gap:6px;overflow-x:auto;padding:6px 0 10px;margin-bottom:6px;-webkit-overflow-scrolling:touch}
+.pms-chip{flex:0 0 auto;min-width:40px;height:40px;padding:0 8px;border-radius:11px;border:1px solid var(--hair);background:var(--card);color:var(--ink2);font-weight:700;font-size:15px;cursor:pointer}
+.pms-chip.done{background:#e9f9ee;border-color:#34C759;color:#1a8a3d}
+.pms-chip.cur{outline:3px solid var(--brand);outline-offset:1px;color:var(--ink)}
+.pms-stepmark{font-size:17px;margin:2px 0 12px} .pms-stepmark b{font-size:19px}
+.pms-nav{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:18px 0 48px}
+.pms-nav .btn{min-height:54px;padding:0 24px;font-size:16px}
+.pms-row.needpick{background:rgba(242,23,23,.09);box-shadow:inset 4px 0 0 var(--brand);border-radius:8px}
+[data-theme="dark"] .pms-chip{background:#1e1e22}
+[data-theme="dark"] .pms-chip.done{background:#12321e;border-color:#2f7d47;color:#5fdc86}
 
 /* ---- Stepper ---- */
 .stepper{display:flex;align-items:center;gap:4px;margin-bottom:18px;flex-wrap:wrap}
@@ -493,7 +504,7 @@ var BRANCH = {"id":"sandbox","slug":"sandbox","name":"Basic by JMSI — Sandbox 
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.2.0 · 2026-07-14 · a81019a';
+var APP_VERSION = 'v1.2.0 · 2026-07-14 · ed4b05e';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -5825,45 +5836,115 @@ VIEWS.pms = function(){
     '<div class="pms-qgrid">'+cards+'</div></div>';
 };
 
-/* ---- Kiosk: fill the checklist -------------------------------------------- */
-var _pmsCtx=null;   // { jobId }
+/* ---- Kiosk: fill the checklist (section-by-section wizard) ---------------- */
+/* One section per page with a completion gate: the tech must rate every row in a
+   section before "Done" advances. A stepper lets them jump back and forth to any
+   section for editing. Values autosave into j.pms.report on every navigation. */
+var _pmsCtx=null;   // { jobId, step }  step: 0..N-1 = sections, N = sign-off page
 function startPMS(id){
   var j=jobById(id); if(!j) return;
   if(!j.pms) j.pms={status:'open'};
   if(j.pms.status==='open'){ j.pms.status='in_progress'; persist(); }
-  _pmsCtx={ jobId:id };
+  _pmsCtx={ jobId:id, step:0 };
   go('pmsform', id);
 }
+/* Rating / L/R rows still needing a value in this section (measures + notes are optional). */
+function pmsSectionMissing(sec, vals){
+  var miss=[];
+  sec.blocks.forEach(function(b){ (b.items||[]).forEach(function(it){
+    var v=vals[it.key];
+    if(b.kind==='rating'){ if(!v||!v.s) miss.push(it.key); }
+    else if(b.kind==='lr'){ if(!v||!v.l||!v.r) miss.push(it.key); }
+  }); });
+  return miss;
+}
+function pmsSectionDone(sec, vals){ return pmsSectionMissing(sec, vals||{}).length===0; }
+var PMS_LEGEND='<div class="pms-legend"><span class="r-swatch r-ok"></span>OK &nbsp; <span class="r-swatch r-att"></span>Requires attention &nbsp; <span class="r-swatch r-rep"></span>Needs replacement &nbsp; <span class="r-swatch r-na"></span>Not applicable</div>';
+
 VIEWS.pmsform = function(id){
   var j=jobById(id||(_pmsCtx&&_pmsCtx.jobId)); if(!j) return '<div class="page">'+emptyState('Job not found.')+'</div>';
-  _pmsCtx={ jobId:j.id };
+  if(!_pmsCtx || _pmsCtx.jobId!==j.id) _pmsCtx={ jobId:j.id, step:0 };
+  if(_pmsCtx.step==null) _pmsCtx.step=0;
   var r=(j.pms&&j.pms.report)||{ values:{} }; var vals=r.values||{};
   var veh=(j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:'');
+  var N=PMS_TEMPLATE.length;
+  var step=Math.max(0, Math.min(_pmsCtx.step, N));
+
+  var chips=PMS_TEMPLATE.map(function(sec,i){
+    var cls='pms-chip'+(i===step?' cur':'')+(pmsSectionDone(sec,vals)?' done':'');
+    return '<button type="button" class="'+cls+'" onclick="pmsGoto('+i+')" title="'+esc(sec.title)+'">'+(pmsSectionDone(sec,vals)?'✓':(i+1))+'</button>';
+  }).join('')+'<button type="button" class="pms-chip'+(step>=N?' cur':'')+'" onclick="pmsGoto('+N+')" title="Sign-off">⎘</button>';
+  var head='<div class="page-head"><div><a class="back" onclick="pmsSaveExit()">‹ PMS Queue</a>'+
+      '<h1>PMS · '+esc(j.plate)+'</h1><div class="muted small">'+esc(veh)+' · JO '+esc(j.no)+'</div></div></div>'+
+    '<div class="pms-stepper">'+chips+'</div>';
+
+  if(step<N){
+    var sec=PMS_TEMPLATE[step];
+    var marker='<div class="pms-stepmark"><b>'+(step+1)+' / '+N+'</b> · '+esc(sec.title)+'</div>';
+    var nav='<div class="pms-nav">'+
+      (step>0?'<button class="btn ghost" onclick="pmsPrev()">‹ Back</button>':'<span></span>')+
+      '<button class="btn primary" onclick="pmsNext()">'+(step===N-1?'Done — Review & sign-off →':'Done — next section →')+'</button></div>';
+    return '<div class="page pms-form">'+head+marker+PMS_LEGEND+
+      '<div class="card">'+pmsSectionHTML(sec, vals)+'</div>'+nav+'</div>';
+  }
+
+  // sign-off page (step === N)
   var staffOpts=optionList(S.staff, r.mechanicId||'', false);
   var saOpts=optionList(S.staff, r.saId||j.saId||'', false);
-  var sections=PMS_TEMPLATE.map(function(sec){ return pmsSectionHTML(sec, vals); }).join('');
-  return '<div class="page pms-form">'+
-    '<div class="page-head"><div><a class="back" onclick="go(\'pms\')">‹ PMS Queue</a>'+
-      '<h1>PMS · '+esc(j.plate)+'</h1><div class="muted small">'+esc(veh)+' · JO '+esc(j.no)+'</div></div></div>'+
-    '<div class="pms-legend"><span class="r-swatch r-ok"></span>OK &nbsp; <span class="r-swatch r-att"></span>Requires attention &nbsp; <span class="r-swatch r-rep"></span>Needs replacement &nbsp; <span class="r-swatch r-na"></span>Not applicable</div>'+
-    sections+
-    /* damage photos reuse the job photo system */
+  var doneCount=PMS_TEMPLATE.filter(function(sec){ return pmsSectionDone(sec, vals); }).length;
+  return '<div class="page pms-form">'+head+
+    '<div class="pms-stepmark"><b>Sign-off</b> · Review & complete</div>'+
+    '<div class="muted small" style="margin:-4px 0 10px">'+doneCount+' / '+N+' sections complete</div>'+
     '<div class="card"><div class="card-head"><h2>Damage / condition photos</h2>'+
       '<label class="btn sm"><input type="file" accept="image/*" multiple style="display:none" onchange="addPhotos(\''+j.id+'\',this.files)">＋ Add photos</label></div>'+
       '<div class="thumbs" id="pmsThumbs">'+pmsThumbsHTML(j)+'</div></div>'+
-    /* signatures + who performed */
     '<div class="card"><h2>Sign-off</h2><div class="grid2">'+
       field('Performed by (Mechanic)','<select id="pmsMech">'+staffOpts+'</select>')+
       field('Service Adviser','<select id="pmsSA">'+saOpts+'</select>')+'</div>'+
       '<div class="grid2">'+
         pmsSigField('Technician signature','pmsSigTech', r.sigTech)+
         pmsSigField('Client signature','pmsSigClient', r.sigClient)+'</div></div>'+
-    '<div class="row gap" style="margin:8px 0 40px">'+
-      '<button class="btn ghost" onclick="pmsSnapshot();go(\'pms\')">Save & exit</button>'+
-      '<span style="flex:1"></span>'+
+    '<div class="pms-nav"><button class="btn ghost" onclick="pmsPrev()">‹ Back</button>'+
       '<button class="btn primary" onclick="submitPMS(\''+j.id+'\')">✓ Complete PMS</button></div>'+
   '</div>';
 };
+/* Save whatever fields are in the DOM right now (current section OR sign-off page)
+   into the report, without clobbering the other sections. */
+function pmsCurrentSave(){
+  var j=_pmsCtx&&jobById(_pmsCtx.jobId); if(!j) return null;
+  j.pms=j.pms||{status:'in_progress'};
+  j.pms.report=j.pms.report||{values:{}};
+  j.pms.report.values=readPmsValues(j.pms.report.values||{});
+  if(document.getElementById('pmsMech')){
+    j.pms.report.mechanicId=val('pmsMech')||j.pms.report.mechanicId||'';
+    j.pms.report.saId=val('pmsSA')||j.pms.report.saId||'';
+    var st=pmsReadSig('pmsSigTech'); if(st) j.pms.report.sigTech=st;
+    var sc=pmsReadSig('pmsSigClient'); if(sc) j.pms.report.sigClient=sc;
+  }
+  persist(); return j;
+}
+function pmsGoto(i){ pmsCurrentSave(); _pmsCtx.step=i; render(); if(typeof window!=='undefined') window.scrollTo(0,0); }
+function pmsPrev(){ pmsCurrentSave(); if(_pmsCtx.step>0) _pmsCtx.step--; render(); if(typeof window!=='undefined') window.scrollTo(0,0); }
+function pmsNext(){
+  var j=pmsCurrentSave(); if(!j) return;
+  var N=PMS_TEMPLATE.length, step=_pmsCtx.step;
+  if(step<N){
+    var miss=pmsSectionMissing(PMS_TEMPLATE[step], (j.pms.report.values)||{});
+    if(miss.length){ pmsHighlightMissing(miss); toast(miss.length+' item'+(miss.length>1?'s':'')+' still need a rating in this section','err'); return; }
+  }
+  _pmsCtx.step=Math.min(step+1, N); render(); if(typeof window!=='undefined') window.scrollTo(0,0);
+}
+function pmsSaveExit(){ pmsCurrentSave(); go('pms'); }
+function pmsHighlightMissing(keys){
+  Array.prototype.forEach.call(document.querySelectorAll('.pms-row.needpick'), function(el){ el.classList.remove('needpick'); });
+  var first=null;
+  keys.forEach(function(k){
+    var input=document.getElementById('pf_'+k)||document.getElementById('pf_'+k+'_l');
+    var row=(input&&input.closest)?input.closest('.pms-row'):null;
+    if(row){ row.classList.add('needpick'); if(!first) first=row; }
+  });
+  if(first&&first.scrollIntoView) first.scrollIntoView({block:'center'});
+}
 function pmsThumbsHTML(j){
   var grid=(j.photos||[]).map(function(p){
     return '<div class="thumb"><img src="'+(p.url||p.data)+'" onclick="openLightbox(_photoSrc(\''+j.id+'\',\''+p.id+'\'))"/>'+
@@ -5923,6 +6004,7 @@ function pmsSetRating(id, s, el){
   var wrap=el.parentNode; var sw=wrap.querySelectorAll('.r-swatch');
   for(var i=0;i<sw.length;i++) sw[i].classList.remove('on');
   if(toggled) el.classList.add('on');
+  var row=(el.closest)?el.closest('.pms-row'):null; if(row) row.classList.remove('needpick');   // clear the "needs a rating" flag once picked
 }
 
 /* ---- Signature pad -------------------------------------------------------- */
@@ -5954,29 +6036,36 @@ function pmsReadSig(id){ var c=document.getElementById(id); if(!c) return '';
   var img=document.getElementById(id+'_img'); return img?img.src:''; }
 
 /* ---- Read + submit -------------------------------------------------------- */
-function readPmsValues(){
-  var vals={};
+/* Merge the fields currently in the DOM into `into` (only those present), so the
+   wizard can save one section at a time without wiping the others. */
+function readPmsValues(into){
+  var vals=into||{};
   PMS_TEMPLATE.forEach(function(sec){ sec.blocks.forEach(function(b){
-    if(b.kind==='text'){ vals[b.key]=val('pf_'+b.key); return; }
+    if(b.kind==='text'){ var te=document.getElementById('pf_'+b.key); if(te) vals[b.key]=te.value; return; }
     (b.items||[]).forEach(function(it){
-      if(b.kind==='measure'){ vals[it.key]=val('pf_'+it.key); }
-      else if(b.kind==='check'){ vals[it.key]={ c:checked('pf_'+it.key+'_c'), n:val('pf_'+it.key+'_n') }; }
-      else if(b.kind==='rating'){ vals[it.key]={ s:val('pf_'+it.key) }; }
-      else if(b.kind==='lr'){ vals[it.key]={ l:val('pf_'+it.key+'_l'), r:val('pf_'+it.key+'_r') }; }
+      if(b.kind==='measure'){ var em=document.getElementById('pf_'+it.key); if(em) vals[it.key]=em.value; }
+      else if(b.kind==='rating'){ var er=document.getElementById('pf_'+it.key); if(er) vals[it.key]={ s:er.value }; }
+      else if(b.kind==='lr'){ var l=document.getElementById('pf_'+it.key+'_l'); if(l){ var rr=document.getElementById('pf_'+it.key+'_r'); vals[it.key]={ l:l.value, r:rr?rr.value:'' }; } }
     });
   }); });
   return vals;
 }
 function submitPMS(id){
   var j=jobById(id); if(!j) return;
+  pmsCurrentSave();                                  // capture the sign-off fields + persist
   var mech=val('pmsMech'); if(!mech || !staffById(mech)){ toast('Select who performed the PMS','err'); var e=document.getElementById('pmsMech'); if(e) e.focus(); return; }
-  j.pms=j.pms||{};
-  j.pms.report={
-    values:readPmsValues(),
-    mechanicId:mech, saId:val('pmsSA')||j.saId||'',
-    sigTech:pmsReadSig('pmsSigTech'), sigClient:pmsReadSig('pmsSigClient'),
+  var vals=(j.pms&&j.pms.report&&j.pms.report.values)||{};
+  for(var i=0;i<PMS_TEMPLATE.length;i++){                // every section must be complete
+    if(!pmsSectionDone(PMS_TEMPLATE[i], vals)){
+      toast('Finish “'+PMS_TEMPLATE[i].title+'” before completing','err');
+      _pmsCtx.step=i; render(); if(typeof window!=='undefined') window.scrollTo(0,0); return;
+    }
+  }
+  j.pms.report=Object.assign(j.pms.report||{}, {
+    values:vals, mechanicId:mech, saId:val('pmsSA')||j.saId||'',
+    sigTech:pmsReadSig('pmsSigTech')||j.pms.report.sigTech||'', sigClient:pmsReadSig('pmsSigClient')||j.pms.report.sigClient||'',
     completedAt:new Date().toISOString()
-  };
+  });
   j.pms.status='done';
   persist(); toast('PMS completed and attached to '+j.no);
   go('job', j.id);
@@ -5984,13 +6073,7 @@ function submitPMS(id){
 /* Save progress without completing (Save & exit just navigates; values persist on
    photos/status only — the full form is re-read on submit). We snapshot current
    field values when leaving the form so partial work isn't lost. */
-function pmsSnapshot(){
-  if(!_pmsCtx) return; var j=jobById(_pmsCtx.jobId); if(!j || !document.getElementById('pf_notes')) return;
-  j.pms=j.pms||{status:'in_progress'};
-  j.pms.report=Object.assign({}, j.pms.report||{}, { values:readPmsValues(),
-    mechanicId:val('pmsMech')||'', saId:val('pmsSA')||'', sigTech:pmsReadSig('pmsSigTech'), sigClient:pmsReadSig('pmsSigClient') });
-  persist();
-}
+function pmsSnapshot(){ pmsCurrentSave(); }
 
 /* ---- In-app report view (read-only summary on the job) -------------------- */
 function pmsReportPanel(j){
