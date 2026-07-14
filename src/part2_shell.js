@@ -423,8 +423,24 @@ function handlePhotoFiles(files, cb){
     r.readAsDataURL(f);
   });
 }
-function openLightbox(src){
-  openModal('', '<img src="'+src+'" style="width:100%;border-radius:12px"/>', { footer:'<button class="btn ghost" onclick="closeModal()">Close</button>', width:'720px' });
+/* Save a data-URL (or image URL) to the computer as a file. Staff-only — never
+   wired into the public customer portal. */
+function downloadDataUrl(src, filename){
+  if(!src || typeof document==='undefined') return;
+  try{
+    var a=document.createElement('a');
+    a.href=src; a.download=filename||('photo-'+Date.now()+'.jpg');
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){ if(a.parentNode) a.parentNode.removeChild(a); }, 0);
+  }catch(e){ try{ window.open(src,'_blank'); }catch(_){} }
+}
+var _lightboxSrc=null, _lightboxName=null;
+function openLightbox(src, filename){
+  _lightboxSrc=src; _lightboxName=filename||('photo-'+Date.now()+'.jpg');
+  openModal('', '<img src="'+src+'" style="width:100%;border-radius:12px"/>',
+    { footer:'<button class="btn ghost" onclick="closeModal()">Close</button>'+
+             '<button class="btn primary" onclick="downloadDataUrl(_lightboxSrc,_lightboxName)">⬇ Download</button>',
+      width:'720px' });
 }
 
 /* ---- Print ---------------------------------------------------------------- */

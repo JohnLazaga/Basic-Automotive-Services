@@ -517,13 +517,20 @@ function saveInspection(){
 }
 
 /* ---- Photos panel --------------------------------------------------------- */
+/* Safe filename base for downloaded photos, e.g. ABC1234_JO-0001 */
+function photoFileBase(j){
+  return (String(j.plate||'').replace(/[^A-Za-z0-9]+/g,'')||'photo')+
+    (j.no?'_'+String(j.no).replace(/[^A-Za-z0-9]+/g,''):'');
+}
 function jobPhotosPanel(j){
-  var grid=(j.photos||[]).map(function(p){
-    return '<div class="thumb"><img src="'+(p.url||p.data)+'" onclick="openLightbox(_photoSrc(\''+j.id+'\',\''+p.id+'\'))"/>'+
+  var grid=(j.photos||[]).map(function(p,idx){
+    var nm=photoFileBase(j)+'_'+(idx+1)+'.jpg';
+    return '<div class="thumb"><img src="'+(p.url||p.data)+'" onclick="openLightbox(_photoSrc(\''+j.id+'\',\''+p.id+'\'),\''+nm+'\')"/>'+
       '<button class="thumb-x" onclick="delPhoto(\''+j.id+'\',\''+p.id+'\')">✕</button></div>';
   }).join('');
   return '<div class="card"><div class="card-head"><h2>Photos <span class="muted small">('+(j.photos||[]).length+'/12)</span></h2>'+
     '<div class="row gap">'+
+      ((j.photos||[]).length? '<button class="btn sm ghost" onclick="downloadJobPhotos(\''+j.id+'\')">⬇ Download</button>' : '')+
       ((j.photos||[]).length? '<button class="btn sm ghost" onclick="printPhotos(\''+j.id+'\')">⎙ Print</button>' : '')+
       '<button class="btn sm ghost" onclick="showPhotoQR(\''+j.id+'\')">📱 Add by phone</button>'+
       '<label class="btn sm"><input type="file" accept="image/*" multiple style="display:none" onchange="addPhotos(\''+j.id+'\',this.files)">＋ Add photos</label>'+
@@ -531,6 +538,18 @@ function jobPhotosPanel(j){
     '<div class="thumbs">'+(grid||emptyState('No photos attached.'))+'</div></div>';
 }
 function _photoSrc(jid,pid){ var j=jobById(jid); var p=(j.photos||[]).find(function(x){return x.id===pid;}); return p?(p.url||p.data):''; }
+/* Save every photo on this job to the computer (one file each). Staff-only — the
+   customer QR portal never exposes photos. */
+function downloadJobPhotos(id){
+  var j=jobById(id); if(!j) return;
+  var photos=(j.photos||[]); if(!photos.length){ toast('No photos to download','err'); return; }
+  var base=photoFileBase(j);
+  photos.forEach(function(p,i){
+    var src=p.url||p.data; if(!src) return;
+    setTimeout(function(){ downloadDataUrl(src, base+'_'+(i+1)+'.jpg'); }, i*350);   // stagger so the browser allows the batch
+  });
+  toast(photos.length===1?'Downloading photo…':'Downloading '+photos.length+' photos…');
+}
 
 /* ---- "Add photos by phone" QR + mobile uploader --------------------------- */
 /* Must encode the branch's PUBLIC URL (S.shop.portalUrl — the same base the
