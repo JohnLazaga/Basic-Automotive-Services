@@ -10,6 +10,15 @@ function portalVehicleId(){
 }
 function isPortalRoute(){ return !!portalVehicleId(); }
 
+/* Deep link from the "Add photos" QR sticker (staff-facing, NOT public): opens
+   #addphoto=<jobId>. Unlike the portal, writing photos needs a signed-in staff
+   session, so render() only acts on this once FB.user exists. */
+function photoRouteJobId(){
+  if (typeof location==='undefined') return null;
+  var m=(location.hash||'').match(/#addphoto=([^&]+)/);
+  return m? decodeURIComponent(m[1]) : null;
+}
+
 /* Minimal, PUBLIC-safe snapshot of one vehicle — the ONLY shape ever written to
    the public `portal` collection. Deliberately excludes prices, chassis/VIN,
    TIN, customer contact number and photos. */

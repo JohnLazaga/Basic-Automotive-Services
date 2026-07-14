@@ -310,7 +310,15 @@ function render(){
   // any other route just keeps the login screen. (No-op in local/test mode.)
   if (typeof cloudOn==='function' && cloudOn() && typeof FB!=='undefined' && FB && FB.ready && !FB.user){
     if (typeof isPortalRoute==='function' && isPortalRoute() && typeof loadPublicPortal==='function') loadPublicPortal();
-    return;
+    return;   // not signed in yet → login screen holds the DOM; the #addphoto hash survives for after login
+  }
+  // "Add photos by phone" QR deep link (#addphoto=<jobId>): now that a staff
+  // session exists, jump straight to the mobile uploader. Consume the hash once
+  // so normal navigation afterwards isn't pinned to this route.
+  var _photoJob = (typeof photoRouteJobId==='function') ? photoRouteJobId() : null;
+  if (_photoJob){
+    try { if (window.history && history.replaceState) history.replaceState(null, '', location.pathname + location.search); } catch(e){}
+    ROUTE.view = 'photoup'; ROUTE.arg = _photoJob;
   }
   bindKeys();
   var mode = isPortalRoute() ? 'portal' : 'app';

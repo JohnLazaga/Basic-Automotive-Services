@@ -523,10 +523,74 @@ function jobPhotosPanel(j){
       '<button class="thumb-x" onclick="delPhoto(\''+j.id+'\',\''+p.id+'\')">✕</button></div>';
   }).join('');
   return '<div class="card"><div class="card-head"><h2>Photos <span class="muted small">('+(j.photos||[]).length+'/12)</span></h2>'+
-    '<label class="btn sm"><input type="file" accept="image/*" multiple style="display:none" onchange="addPhotos(\''+j.id+'\',this.files)">＋ Add photos</label></div>'+
+    '<div class="row gap">'+
+      '<button class="btn sm ghost" onclick="showPhotoQR(\''+j.id+'\')">📱 Add by phone</button>'+
+      '<label class="btn sm"><input type="file" accept="image/*" multiple style="display:none" onchange="addPhotos(\''+j.id+'\',this.files)">＋ Add photos</label>'+
+    '</div></div>'+
     '<div class="thumbs">'+(grid||emptyState('No photos attached.'))+'</div></div>';
 }
 function _photoSrc(jid,pid){ var j=jobById(jid); var p=(j.photos||[]).find(function(x){return x.id===pid;}); return p?(p.url||p.data):''; }
+
+/* ---- "Add photos by phone" QR + mobile uploader --------------------------- */
+/* Must encode the branch's PUBLIC URL (S.shop.portalUrl — the same base the
+   customer QR stickers use), NOT location.href: staff often view the app on
+   localhost / a LAN IP / a file:// path that a phone can't reach. Falls back to
+   the current origin only if no public URL is configured. */
+function photoUploadBase(){
+  var pu = (S.shop && S.shop.portalUrl) ? String(S.shop.portalUrl).trim() : '';
+  if (pu) return pu.replace(/\/+$/,'');
+  if (typeof location!=='undefined' && location.origin && location.origin.indexOf('http')===0){
+    return (location.origin + location.pathname).replace(/\/+$/,'');
+  }
+  return '';
+}
+function photoUploadLink(jobId){ return photoUploadBase() + '/#addphoto=' + encodeURIComponent(jobId); }
+function showPhotoQR(jobId){
+  var j=jobById(jobId); if(!j) return;
+  var base=photoUploadBase();
+  if(!base){
+    openModal('Add photos by phone',
+      '<div class="photoqr"><p class="muted">Set your public app address first: <b>Settings → Portal URL</b>. That’s the link a phone scans — without it, the QR points at this computer, which the phone can’t reach.</p></div>',
+      { footer:'<button class="btn ghost" onclick="closeModal()">Close</button>', width:'360px' });
+    return;
+  }
+  var url=photoUploadLink(jobId);
+  openModal('Add photos by phone',
+    '<div class="photoqr">'+
+      '<p class="muted">Scan with a phone to snap photos straight into <b>'+esc(j.no||'')+' · '+esc(j.plate||'')+'</b>.</p>'+
+      '<div id="photoQRbox" class="qr-box"></div>'+
+      '<p class="muted small">First scan asks the phone to sign in once; after that, scanning opens the camera uploader instantly.</p>'+
+      '<p class="muted" style="font-size:10.5px;word-break:break-all;opacity:.7">'+esc(url)+'</p>'+
+    '</div>',
+    { footer:'<button class="btn ghost" onclick="closeModal()">Close</button>', width:'360px' });
+  renderQR('photoQRbox', url);
+}
+/* Stripped-down, mobile-first uploader reached from the QR deep link. Big camera
+   button + gallery option, live thumbnails, then straight into the job order. */
+VIEWS.photoup = function(jobId){
+  var j = jobById(jobId);
+  if(!j){
+    return '<div class="page photoup"><div class="pu-card">'+
+      '<h1>Add photos</h1>'+
+      '<p class="muted">Looking for this job order. If this keeps showing, the link may belong to a different branch, or the job was removed.</p>'+
+      '<button class="btn" onclick="go(\'board\')">Go to Board</button></div></div>';
+  }
+  var veh=(j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:'');
+  var n=(j.photos||[]).length;
+  var grid=(j.photos||[]).map(function(p){
+    return '<div class="thumb"><img src="'+(p.url||p.data)+'" onclick="openLightbox(_photoSrc(\''+j.id+'\',\''+p.id+'\'))"/>'+
+      '<button class="thumb-x" onclick="delPhoto(\''+j.id+'\',\''+p.id+'\')">✕</button></div>';
+  }).join('');
+  return '<div class="page photoup"><div class="pu-card">'+
+    '<div class="pu-head"><div class="pu-plate">'+esc(j.plate)+'</div>'+
+      '<div class="muted small">'+esc(veh||'—')+' · JO '+esc(j.no)+'</div></div>'+
+    '<label class="btn primary pu-shoot"><input type="file" accept="image/*" capture="environment" multiple style="display:none" onchange="addPhotos(\''+j.id+'\',this.files)">📷 Take photo</label>'+
+    '<label class="btn ghost pu-pick"><input type="file" accept="image/*" multiple style="display:none" onchange="addPhotos(\''+j.id+'\',this.files)">🖼 Choose from gallery</label>'+
+    '<div class="pu-count muted small">'+n+'/12 attached</div>'+
+    '<div class="thumbs pu-thumbs">'+(grid||emptyState('No photos yet — tap “Take photo” above.'))+'</div>'+
+    '<button class="btn ghost full" onclick="go(\'job\',\''+j.id+'\')">Done — open job order</button>'+
+  '</div></div>';
+};
 function addPhotos(id,files){
   var j=jobById(id);
   handlePhotoFiles(files, function(datas){
