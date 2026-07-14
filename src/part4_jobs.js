@@ -433,7 +433,26 @@ function saveLine(){
   else { data.id=uid('ln'); j.lines.push(data); }
   persist(); closeModal(); render();
 }
-function delLine(id,lid){ var j=jobById(id); j.lines=j.lines.filter(function(x){return x.id!==lid;}); persist(); render(); }
+function delLine(id,lid){
+  var j=jobById(id); var l=(j.lines||[]).find(function(x){return x.id===lid;});
+  // Removing the PMS LABOR line while a PMS is still queued/in-progress:
+  // confirm once, and if the user is sure also cancel & remove that PMS queue ticket.
+  // A job line points at its catalog item via .ref (its own .id is a line uid),
+  // so match PMS LABOR on the ref — isPmsLabor() alone is for catalog items.
+  var lineIsPms = l && l.type==='labor' && typeof PMS_LABOR_ID!=='undefined' && l.ref===PMS_LABOR_ID;
+  if(lineIsPms && typeof jobHasOpenPMS==='function' && jobHasOpenPMS(j)){
+    confirmModal('Remove PMS LABOR?',
+      'A PMS inspection is currently in the queue for this vehicle. Deleting this line will also cancel that PMS and remove it from the queue. Continue?',
+      function(){
+        j.lines=j.lines.filter(function(x){return x.id!==lid;});
+        j.pms=null;                       // cancel & clear the queued PMS ticket
+        persist(); render();
+        toast('PMS LABOR removed · PMS queue cancelled');
+      },'Delete', true);
+    return;
+  }
+  j.lines=j.lines.filter(function(x){return x.id!==lid;}); persist(); render();
+}
 
 /* Admin-only: delete an entire job order (with warning). */
 function deleteJobConfirm(id){
