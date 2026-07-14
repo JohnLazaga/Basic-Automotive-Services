@@ -524,6 +524,7 @@ function jobPhotosPanel(j){
   }).join('');
   return '<div class="card"><div class="card-head"><h2>Photos <span class="muted small">('+(j.photos||[]).length+'/12)</span></h2>'+
     '<div class="row gap">'+
+      ((j.photos||[]).length? '<button class="btn sm ghost" onclick="printPhotos(\''+j.id+'\')">⎙ Print</button>' : '')+
       '<button class="btn sm ghost" onclick="showPhotoQR(\''+j.id+'\')">📱 Add by phone</button>'+
       '<label class="btn sm"><input type="file" accept="image/*" multiple style="display:none" onchange="addPhotos(\''+j.id+'\',this.files)">＋ Add photos</label>'+
     '</div></div>'+

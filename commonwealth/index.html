@@ -470,7 +470,7 @@ var BRANCH = {"id":"commonwealth","slug":"commonwealth","name":"Basic by JMSI �
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.2.0 · 2026-07-14 · 9663c19';
+var APP_VERSION = 'v1.2.0 · 2026-07-14 · c2903b5';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -2244,6 +2244,7 @@ function jobPhotosPanel(j){
   }).join('');
   return '<div class="card"><div class="card-head"><h2>Photos <span class="muted small">('+(j.photos||[]).length+'/12)</span></h2>'+
     '<div class="row gap">'+
+      ((j.photos||[]).length? '<button class="btn sm ghost" onclick="printPhotos(\''+j.id+'\')">⎙ Print</button>' : '')+
       '<button class="btn sm ghost" onclick="showPhotoQR(\''+j.id+'\')">📱 Add by phone</button>'+
       '<label class="btn sm"><input type="file" accept="image/*" multiple style="display:none" onchange="addPhotos(\''+j.id+'\',this.files)">＋ Add photos</label>'+
     '</div></div>'+
@@ -3752,6 +3753,11 @@ function printCSS(){
     '.foot{margin-top:18px;font-size:10.5px;color:#6E6E73;text-align:center}'+
     '.pagebreak{page-break-after:always}'+
     '.notes{font-size:12px;background:#F5F5F7;border-radius:8px;padding:8px 10px;margin:8px 0}'+
+    '.pgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px}'+
+    '.pcell{margin:0;border:1px solid #E5E5EA;border-radius:8px;overflow:hidden;page-break-inside:avoid}'+
+    '.pcell img{width:100%;display:block;object-fit:contain;background:#F5F5F7;max-height:340px}'+
+    '.pcell figcaption{font-size:11.5px;padding:4px 8px}'+
+    '.pnum{font-size:10.5px;color:#6E6E73;padding:2px 8px 6px}'+
     '.checks{columns:2;font-size:12px}.checks div{margin:2px 0}'+
     '.totbox{margin-left:auto;width:300px;font-size:13px}.totbox .l2{display:flex;justify-content:space-between;padding:3px 0}'+
     '.totbox .grand{border-top:2px solid #1D1D1F;font-weight:800;font-size:15px;padding-top:6px;margin-top:4px}'+
@@ -4041,6 +4047,32 @@ function docQRSticker(v){
   return docShell('QR · '+v.plate, body);
 }
 function printQRSticker(id){ printDoc(docQRSticker(vehicleById(id))); }
+
+/* ---- Job photos (printable contact sheet) --------------------------------- */
+function docPhotos(j){
+  var photos=(j.photos||[]);
+  var veh=(j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:'');
+  var grid = photos.length
+    ? '<div class="pgrid">'+photos.map(function(p,i){
+        var src=p.url||p.data||'';
+        return '<figure class="pcell"><img src="'+src+'"/>'+
+          (p.caption?'<figcaption>'+esc(p.caption)+'</figcaption>':'')+
+          '<div class="pnum">Photo '+(i+1)+(p.ts?' · '+esc(fmtDateTime(p.ts)):'')+'</div></figure>';
+      }).join('')+'</div>'
+    : '<p>No photos attached.</p>';
+  var body = docHeader('Vehicle Photos · '+j.no)+
+    metaCols(
+      [['Plate',esc(j.plate)],['Owner',esc(j.owner)],['Vehicle',esc(veh)]],
+      [['JO #',esc(j.no)],['Date in',fmtDate(j.dateIn)],['Photos',String(photos.length)]] )+
+    grid+
+    '<div class="foot">'+esc(S.shop.name)+' · '+String(photos.length)+' photo'+(photos.length===1?'':'s')+'</div>';
+  return docShell('Photos · '+j.no, body);
+}
+function printPhotos(id){
+  var j=jobById(id); if(!j) return;
+  if(!(j.photos||[]).length){ toast('No photos to print','err'); return; }
+  printDoc(docPhotos(j));
+}
 
 
 /* ===== */
