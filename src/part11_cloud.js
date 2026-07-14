@@ -282,6 +282,10 @@ async function cloudFetchState(){
     var snap = await bcol(c).get();
     st[c] = snap.docs.map(function(d){ return d.data(); });
   }
+  // photos live in their own collection (one doc each) — load + attach to jobs
+  var psnap = await bcol('jobphotos').get();
+  indexJobPhotos(psnap.docs);
+  attachJobPhotos(st.jobs, st.jobs);   // st.jobs may also carry legacy embedded photos; attachJobPhotos keeps those not yet in the collection (they auto-migrate on next save)
   return st;
 }
 
@@ -291,8 +295,15 @@ async function cloudMigrate(base){
   for (var i=0;i<COLLECTIONS.length;i++){
     var c = COLLECTIONS[i]; var arr = base[c]||[];
     for (var j=0;j<arr.length;j++){
-      var rec = arr[j]; if (c==='jobs') await uploadJobPhotos(rec);
-      await bcol(c).doc(rec.id).set(plain(rec));
+      var rec = arr[j];
+      if (c==='jobs'){
+        // photos → their own docs; job doc goes in without photo bytes
+        var phs = Array.isArray(rec.photos)? rec.photos : [];
+        for (var pi=0; pi<phs.length; pi++){ var p=phs[pi]; if(p&&p.id&&p.data){ try{ await bcol('jobphotos').doc(p.id).set(plain(photoDocForm(rec.id, p))); }catch(e){ console.error('migrate jobphoto', e); } } }
+        await bcol(c).doc(rec.id).set(plain(jobDocForCloud(rec)));
+      } else {
+        await bcol(c).doc(rec.id).set(plain(rec));
+      }
     }
   }
 }
@@ -322,12 +333,12 @@ async function cloudPersist(){
     // upserts (new or changed) — each isolated so one failure never aborts the rest
     var ids = Object.keys(cur);
     for (var k=0;k<ids.length;k++){
-      var id = ids[k], rec = cur[id], js = JSON.stringify(rec);
-      if (prev[id] === js) continue;                            // unchanged
+      var id = ids[k], rec = cur[id];
+      var docForm = (c==='jobs') ? jobDocForCloud(rec) : rec;   // job doc carries no photo bytes
+      var js = JSON.stringify(docForm);
+      if (prev[id] === js) continue;                            // unchanged (photo-only edits don't rewrite the job doc)
       try {
-        var toWrite = rec;
-        if (c==='jobs'){ await uploadJobPhotos(rec); toWrite = jobForCloud(rec); }  // base64 → Storage; keep any un-uploaded photo out of the doc
-        await bcol(c).doc(id).set(plain(toWrite));
+        await bcol(c).doc(id).set(plain(docForm));
         prev[id] = js;                                          // mark synced only on success
       } catch(e){ console.error('save '+c+'/'+id, e); }         // keep stale -> retried next save
     }
@@ -337,66 +348,79 @@ async function cloudPersist(){
       if(!cur[did]){ try { await bcol(c).doc(did).delete(); delete prev[did]; } catch(e){ console.error('del '+c+'/'+did, e); } }
     }
   }
+  await cloudPersistPhotos();     // photos sync as their own docs in `jobphotos`
 }
 
 function rememberSnap(){
-  COLLECTIONS.forEach(function(c){ _cloudSnap[c]=snapMap(S[c]); });
+  COLLECTIONS.forEach(function(c){
+    if (c==='jobs'){ var m={}; (S.jobs||[]).forEach(function(j){ if(j&&j.id) m[j.id]=JSON.stringify(jobDocForCloud(j)); }); _cloudSnap[c]=m; }
+    else _cloudSnap[c]=snapMap(S[c]);
+  });
   _metaSnap.shop = JSON.stringify(S.shop);
   _metaSnap.counters = JSON.stringify(S.counters);
 }
 
-/* ---- Photos → Firebase Storage ------------------------------------------- */
-/* Photos MUST land in Cloud Storage, never in the Firestore doc: a Firestore
-   document is capped at 1 MB, so even a couple of base64 images would push the
-   job record over the limit and make every save fail (and, on a tablet, the
-   repeated multi-hundred-KB writes + re-renders could crash the tab). */
-async function uploadJobPhotos(job){
-  if (!job || !Array.isArray(job.photos)) return;
-  // lazy-init in case the storage SDK finished loading after initFirebase() ran
-  if (!FB.storage){ try { FB.storage = firebase.storage(); } catch(e){} }
-  for (var i=0;i<job.photos.length;i++){
-    var p = job.photos[i];
-    if (p.url || !p.data) continue;                            // already uploaded / nothing to do
-    if (!FB.storage) continue;                                 // no storage → leave base64 for a later retry; stripCloudPhotos keeps it out of the doc
-    try {
-      var ref = FB.storage.ref('photos/'+job.id+'/'+p.id+'.jpg');
-      await ref.putString(p.data, 'data_url');
-      var url = await ref.getDownloadURL();
-      job.photos[i] = { id:p.id, url:url, caption:p.caption||'', ts:p.ts };
-    } catch(e){ console.error('photo upload failed', e); /* keep base64 for retry; stripped from the doc write below */ }
-  }
-}
-/* A Firestore-safe view of a job: any photo still holding base64 (upload not yet
-   done / failed) is written WITHOUT its `data` so the document can never exceed
-   the 1 MB limit. The base64 stays in local state (S) so the thumbnail keeps
-   showing and the next save retries the upload. */
-function jobForCloud(job){
-  if (!job || !Array.isArray(job.photos) || !job.photos.some(function(p){ return p && p.data && !p.url; })) return job;
+/* ---- Photos → their own Firestore collection ----------------------------- */
+/* A Firestore document is capped at 1 MB, so base64 photos can't live inside the
+   job doc. Instead each photo is ONE doc in the `jobphotos` collection, tagged
+   with jobId. A single compressed photo (~200–500 KB base64) sits comfortably
+   under the per-doc limit, needs no Cloud Storage / billing, and syncs to every
+   device through the same real-time listener as everything else. */
+var _photosByJob = {};     /* jobId -> [ {id,data,caption,ts} ] (authoritative, from the collection) */
+var _photoSnap = {};       /* photoId -> jsonString, for the write-diff */
+
+function photoDocForm(jobId, p){ return { id:p.id, jobId:jobId, data:p.data||'', caption:p.caption||'', ts:p.ts||'' }; }
+
+/* Job document written to Firestore carries NO photo bytes — photos are their
+   own docs. Keeps the job record tiny and immune to the 1 MB limit. */
+function jobDocForCloud(job){
+  if (!job || !Array.isArray(job.photos) || !job.photos.length) return job;
   var copy = {}; for (var k in job){ if(Object.prototype.hasOwnProperty.call(job,k)) copy[k]=job[k]; }
-  copy.photos = job.photos.map(function(p){
-    if (p && p.data && !p.url){ return { id:p.id, caption:p.caption||'', ts:p.ts, pending:true }; }
-    return p;
-  });
+  copy.photos = [];
   return copy;
 }
-/* Inverse of jobForCloud on the read side: a photo that came back `pending`
-   (its base64 was stripped from the doc) is refilled from the local copy we
-   still hold, so the thumbnail keeps rendering and the upload retries. */
-function rehydratePendingPhotos(incomingJobs, localJobs){
-  if (!Array.isArray(incomingJobs) || !Array.isArray(localJobs)) return incomingJobs;
-  var localById = {}; localJobs.forEach(function(j){ if(j&&j.id) localById[j.id]=j; });
-  incomingJobs.forEach(function(j){
-    if (!j || !Array.isArray(j.photos)) return;
-    var lj = localById[j.id]; if (!lj || !Array.isArray(lj.photos)) return;
-    var localPhoto = {}; lj.photos.forEach(function(p){ if(p&&p.id) localPhoto[p.id]=p; });
-    j.photos = j.photos.map(function(p){
-      if (p && p.pending && !p.url && localPhoto[p.id] && localPhoto[p.id].data){
-        return { id:p.id, data:localPhoto[p.id].data, caption:p.caption||'', ts:p.ts };
-      }
-      return p;
-    });
+/* Attach photos to each job from the collection, preserving any just-added local
+   photo not yet echoed back by the server (so it never flickers out). */
+function attachJobPhotos(jobs, oldJobs){
+  var oldById = {}; (oldJobs||[]).forEach(function(j){ if(j&&j.id) oldById[j.id]=j; });
+  (jobs||[]).forEach(function(j){
+    var coll = (_photosByJob[j.id]||[]).slice();
+    var have = {}; coll.forEach(function(p){ if(p&&p.id) have[p.id]=1; });
+    var old = (oldById[j.id] && Array.isArray(oldById[j.id].photos)) ? oldById[j.id].photos : [];
+    old.forEach(function(p){ if(p && p.id && p.data && !have[p.id]){ coll.push(p); } });   // keep un-synced local photos
+    coll.sort(function(a,b){ return (a.ts||'')<(b.ts||'')?-1:1; });
+    j.photos = coll;
   });
-  return incomingJobs;
+  return jobs;
+}
+/* Rebuild the photos index from a jobphotos snapshot's docs. */
+function indexJobPhotos(docs){
+  _photosByJob = {}; _photoSnap = {};
+  docs.forEach(function(d){
+    var p = d.data(); if(!p || !p.id) return;
+    (_photosByJob[p.jobId] = _photosByJob[p.jobId] || []).push({ id:p.id, data:p.data||'', caption:p.caption||'', ts:p.ts||'' });
+    _photoSnap[p.id] = JSON.stringify({ id:p.id, jobId:p.jobId, data:p.data||'', caption:p.caption||'', ts:p.ts||'' });
+  });
+}
+/* Diff every job's photos against the last sync; write new photo docs, delete
+   removed ones. Called at the end of cloudPersist(). */
+async function cloudPersistPhotos(){
+  if (!FB.ready || !FB.user || _applyingRemote) return;
+  var cur = {};
+  (S.jobs||[]).forEach(function(j){
+    (j.photos||[]).forEach(function(p){ if(p && p.id) cur[p.id] = photoDocForm(j.id, p); });
+  });
+  var ids = Object.keys(cur);
+  for (var k=0;k<ids.length;k++){
+    var id=ids[k], rec=cur[id], js=JSON.stringify(rec);
+    if (_photoSnap[id] === js) continue;
+    try { await bcol('jobphotos').doc(id).set(plain(rec)); _photoSnap[id]=js; }
+    catch(e){ console.error('save jobphoto '+id, e); }
+  }
+  var prevIds = Object.keys(_photoSnap);
+  for (var d=0; d<prevIds.length; d++){ var did=prevIds[d];
+    if(!cur[did]){ try{ await bcol('jobphotos').doc(did).delete(); delete _photoSnap[did]; }catch(e){ console.error('del jobphoto '+did, e); } }
+  }
 }
 
 /* ---- Real-time listeners ------------------------------------------------- */
@@ -407,14 +431,24 @@ function cloudSubscribe(){
       if (snap.metadata.hasPendingWrites) return;             // ignore our own local writes
       _applyingRemote = true;
       var incoming = snap.docs.map(function(d){ return d.data(); });
-      if (c==='jobs') incoming = rehydratePendingPhotos(incoming, S.jobs);  // keep local base64 for photos not yet in Storage
+      if (c==='jobs'){ attachJobPhotos(incoming, S.jobs); _cloudSnap[c]={}; incoming.forEach(function(j){ if(j&&j.id) _cloudSnap[c][j.id]=JSON.stringify(jobDocForCloud(j)); }); }
       S[c] = incoming;
-      _cloudSnap[c] = snapMap(S[c]);
+      if (c!=='jobs') _cloudSnap[c] = snapMap(S[c]);
       _applyingRemote = false;
       if (!modalOpen()) render();
     }, function(err){ console.error('listener '+c, err); });
     _cloudSubs.push(u);
   });
+  // photos: their own collection, one doc per photo, keyed by jobId
+  var up = bcol('jobphotos').onSnapshot(function(snap){
+    if (snap.metadata.hasPendingWrites) return;                 // ignore our own local writes
+    _applyingRemote = true;
+    indexJobPhotos(snap.docs);
+    attachJobPhotos(S.jobs, S.jobs);   // re-attach, keeping any just-added local photo not yet echoed
+    _applyingRemote = false;
+    if (!modalOpen()) render();
+  }, function(err){ console.error('listener jobphotos', err); });
+  _cloudSubs.push(up);
   var um = bcol('meta').onSnapshot(function(snap){
     if (snap.metadata.hasPendingWrites) return;
     snap.docs.forEach(function(d){
