@@ -36,7 +36,8 @@ var PMS_TEMPLATE = [
     'Front Windshield','Wiper Front','Wiper Blades Front','Wiper Washer Front','Headlight Washers',
     'Brake Lights','Third brake light','Signal lights Rear','Reverse Lights','Park lights Rear',
     'Fog Lights rear','Plate Lights','Rear Windshield','Wiper rear','Wiper blade rear','Wiper washer rear',
-    'Door Handles','Door locks','Fender Lights','Side Mirror','Side Mirror Lights','Other Signal Lights','Windows' ]) ] },
+    'Door Handles','Door locks','Fender Lights','Side Mirror','Side Mirror Lights','Other Signal Lights','Windows' ]),
+    pmsText('Exterior notes') ] },
 
   { title:'Tires', blocks:[
     pmsMeasure([['FR pressure before','PSI'],['FR pressure after','PSI'],['FL pressure before','PSI'],['FL pressure after','PSI'],
