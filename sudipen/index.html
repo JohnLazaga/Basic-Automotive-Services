@@ -224,10 +224,10 @@ textarea{resize:vertical} .chk{display:flex;align-items:center;gap:8px;font-size
 /* PMS Queue cards: bigger tap area on the tablet landing screen */
 .pms-q{padding:18px} .pms-q .btn.full{min-height:50px;font-size:15px}
 /* Section wizard: stepper chips (jump to any section), progress marker, nav bar */
-.pms-stepper{display:flex;gap:6px;overflow-x:auto;padding:6px 0 10px;margin-bottom:6px;-webkit-overflow-scrolling:touch}
+.pms-stepper{display:flex;gap:8px;overflow-x:auto;padding:6px 4px 10px;margin-bottom:6px;-webkit-overflow-scrolling:touch}
 .pms-chip{flex:0 0 auto;min-width:40px;height:40px;padding:0 8px;border-radius:11px;border:1px solid var(--hair);background:var(--card);color:var(--ink2);font-weight:700;font-size:15px;cursor:pointer}
 .pms-chip.done{background:#e9f9ee;border-color:#34C759;color:#1a8a3d}
-.pms-chip.cur{outline:3px solid var(--brand);outline-offset:1px;color:var(--ink)}
+.pms-chip.cur{box-shadow:inset 0 0 0 3px var(--brand);border-color:var(--brand);color:var(--ink)}
 .pms-stepmark{font-size:17px;margin:2px 0 12px} .pms-stepmark b{font-size:19px}
 .pms-nav{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:18px 0 48px}
 .pms-nav .btn{min-height:54px;padding:0 24px;font-size:16px}
@@ -506,7 +506,7 @@ var BRANCH = {"id":"sudipen","slug":"sudipen","name":"Basic by JMSI — Sudipen"
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.2.0 · 2026-07-14 · b4f91c4';
+var APP_VERSION = 'v1.2.0 · 2026-07-16 · 1d1bd73';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
