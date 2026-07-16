@@ -53,7 +53,9 @@ function pmsLeafBlocks(sec){
 }
 
 var PMS_TEMPLATE = [
-  { title:'Test drive notes / fault codes', blocks:[ pmsText('Test drive notes / fault codes') ] },
+  { title:'Pre-PMS Test Drive Notes', blocks:[
+    pmsText('Pre-PMS Test Drive Notes'),
+    { kind:'faultcode', key:pmsKey('Fault Code'), label:'Fault Code' } ] },
 
   { title:'Interior', blocks:[ pmsRate([
     'Horn','Gauge','Seats','Seat belts','Shift knob','Matting','Windows interior','AC control','Radio system',
@@ -124,8 +126,8 @@ var PMS_TEMPLATE = [
 /* Give every section a free-text notes field at its end — skip sections whose
    last block is already a free-text area (Exterior, Test drive, Notes). */
 PMS_TEMPLATE.forEach(function(sec){
-  var blocks=sec.blocks||[];
-  if(!blocks.length || blocks[blocks.length-1].kind!=='text'){ blocks.push(pmsText(sec.title+' notes')); }
+  var blocks=sec.blocks||[]; var last=blocks[blocks.length-1];
+  if(!blocks.length || (last.kind!=='text' && last.kind!=='faultcode')){ blocks.push(pmsText(sec.title+' notes')); }
 });
 
 /* ---- Ticket lifecycle (embedded on the job) ------------------------------- */
@@ -181,7 +183,9 @@ function startPMS(id){
    are all required; free-text notes stay optional). */
 function pmsSectionMissing(sec, vals){
   var miss=[];
-  pmsLeafBlocks(sec).forEach(function(b){ (b.items||[]).forEach(function(it){
+  pmsLeafBlocks(sec).forEach(function(b){
+    if(b.kind==='faultcode'){ var fv=vals[b.key]; if(!fv||!fv.v) miss.push(b.key); return; }   // Yes/No required; note + photo optional
+    (b.items||[]).forEach(function(it){
     var v=vals[it.key];
     if(b.kind==='rating'){ if(!v||!v.s) miss.push(it.key); }
     else if(b.kind==='condition'){ if(!v||!v.s) miss.push(it.key); }   // condition rating required; Tire DOT year optional
@@ -344,6 +348,22 @@ function pmsBlockHTML(b, vals){
         '<span class="pms-ynset"><input type="hidden" id="pf_'+it.key+'" value="'+attr(cur)+'">'+boxes+'</span></div>';
     }).join('')+'</div>';
   }
+  if(b.kind==='faultcode'){
+    var cur=vals[b.key]||{}; var YN=['Yes','No'];
+    var boxes=YN.map(function(o){ var on=(cur.v===o)?' on':'';
+      return '<button type="button" class="pms-ynbox'+on+'" onclick="pmsSetYN(\''+b.key+'\',\''+o+'\',this)">'+o+'</button>'; }).join('');
+    var thumbs=(cur.photos||[]).map(function(src,i){
+      return '<div class="thumb"><img src="'+src+'" onclick="pmsFaultPhotoOpen(\''+b.key+'\','+i+')"/>'+
+        '<button class="thumb-x" onclick="pmsDelFaultPhoto(\''+b.key+'\','+i+')">✕</button></div>'; }).join('');
+    return '<div class="pms-fault">'+
+      '<div class="pms-row pms-ynrow"><span class="pms-lbl">'+esc(b.label)+'</span>'+
+        '<span class="pms-ynset"><input type="hidden" id="pf_'+b.key+'" value="'+attr(cur.v||'')+'">'+boxes+'</span></div>'+
+      field('Fault code notes','<textarea id="pf_'+b.key+'_note" rows="3" placeholder="Describe the fault code(s) read during the test drive" onfocus="this.select()">'+esc(cur.n||'')+'</textarea>')+
+      '<div class="pms-fault-photos"><div class="pms-fault-head"><span class="lbl">Fault code photo</span>'+
+        '<label class="btn sm"><input type="file" accept="image/*" capture="environment" multiple style="display:none" onchange="pmsAddFaultPhoto(\''+b.key+'\',this.files)">📷 Take / add photo</label></div>'+
+        '<div class="thumbs">'+(thumbs||emptyState('No photo yet — tap “Take / add photo”.'))+'</div></div>'+
+    '</div>';
+  }
   if(b.kind==='condition'){
     var head='<div class="pms-row pms-cond pms-cond-head"><span class="pms-lbl"></span>'+
       '<span class="pms-cond-rate">General Tire Condition</span><span class="pms-cond-dot">Tire DOT</span></div>';
@@ -397,6 +417,32 @@ function pmsSetYN(key, v, el){
   var row=(el.closest)?el.closest('.pms-row'):null; if(row) row.classList.remove('needpick');
 }
 
+/* ---- Fault-code row photos (Pre-PMS test drive) --------------------------- */
+/* Photos attach to the report value (values[key].photos), not the job's photo
+   grid, so they travel with the checklist into the report + portal. Capture the
+   current Yes/No + note first (pmsCurrentSave) so a re-render doesn't lose them. */
+function pmsAddFaultPhoto(key, files){
+  var j=_pmsCtx&&jobById(_pmsCtx.jobId); if(!j) return;
+  pmsCurrentSave();
+  handlePhotoFiles(files, function(datas){
+    j.pms=j.pms||{status:'in_progress'}; j.pms.report=j.pms.report||{values:{}}; j.pms.report.values=j.pms.report.values||{};
+    var cur=j.pms.report.values[key]||{}; cur.photos=cur.photos||[];
+    datas.forEach(function(d){ if(cur.photos.length>=6) return; cur.photos.push(d); });
+    j.pms.report.values[key]=cur; persist(); toast('Photo added'); render();
+  });
+}
+function pmsDelFaultPhoto(key, i){
+  var j=_pmsCtx&&jobById(_pmsCtx.jobId); if(!j) return;
+  pmsCurrentSave();
+  var cur=(j.pms.report.values||{})[key];
+  if(cur&&cur.photos){ cur.photos.splice(i,1); persist(); render(); }
+}
+function pmsFaultPhotoOpen(key, i){
+  var j=_pmsCtx&&jobById(_pmsCtx.jobId);
+  var cur=j&&j.pms&&j.pms.report&&j.pms.report.values&&j.pms.report.values[key];
+  if(cur&&cur.photos&&cur.photos[i]) openLightbox(cur.photos[i]);
+}
+
 /* ---- Signature pad -------------------------------------------------------- */
 function pmsSigField(label, id, existing){
   var shown = existing ? '<img class="sig-show" id="'+id+'_img" src="'+existing+'">' : '';
@@ -432,6 +478,8 @@ function readPmsValues(into){
   var vals=into||{};
   PMS_TEMPLATE.forEach(function(sec){ pmsLeafBlocks(sec).forEach(function(b){
     if(b.kind==='text'){ var te=document.getElementById('pf_'+b.key); if(te) vals[b.key]=te.value; return; }
+    if(b.kind==='faultcode'){ var fv=document.getElementById('pf_'+b.key), fn=document.getElementById('pf_'+b.key+'_note');
+      if(fv||fn){ var prev=vals[b.key]||{}; vals[b.key]={ v: fv?fv.value:(prev.v||''), n: fn?fn.value:(prev.n||''), photos: prev.photos||[] }; } return; }
     (b.items||[]).forEach(function(it){
       if(b.kind==='measure'){ var em=document.getElementById('pf_'+it.key); if(em) vals[it.key]=em.value; }
       else if(b.kind==='rating'){ var er=document.getElementById('pf_'+it.key); if(er) vals[it.key]={ s:er.value }; }
@@ -534,6 +582,9 @@ function docPMS(j){
   var body=PMS_TEMPLATE.map(function(sec){
     var rows=pmsLeafBlocks(sec).map(function(b){
       if(b.kind==='text'){ var t=vals[b.key]; return t?'<tr><td colspan="2">'+esc(t)+'</td></tr>':''; }
+      if(b.kind==='faultcode'){ var fv=vals[b.key]; if(!fv||(!fv.v&&!fv.n&&!(fv.photos&&fv.photos.length))) return '';
+        var ph=(fv.photos||[]).map(function(s){ return '<img src="'+s+'" style="max-width:130px;max-height:100px;margin:4px 6px 0 0;border-radius:6px;vertical-align:top"/>'; }).join('');
+        return '<tr><td>'+esc(b.label)+'</td><td>'+(fv.v?'<b>'+esc(fv.v)+'</b>':'—')+(fv.n?' · '+esc(fv.n):'')+(ph?'<div style="margin-top:4px">'+ph+'</div>':'')+'</td></tr>'; }
       return (b.items||[]).map(function(it){
         var v=vals[it.key];
         if(b.kind==='measure'){ if(v==null||v==='') return ''; return '<tr><td>'+esc(it.label)+'</td><td class="r">'+esc(v)+(it.unit?' '+esc(it.unit):'')+'</td></tr>'; }
@@ -564,6 +615,9 @@ function portalPmsHTML(pms){
   var secs=PMS_TEMPLATE.map(function(sec){
     var rows=pmsLeafBlocks(sec).map(function(b){
       if(b.kind==='text'){ var t=vals[b.key]; return t?'<tr><td colspan="2">'+esc(t)+'</td></tr>':''; }
+      if(b.kind==='faultcode'){ var fv=vals[b.key]; if(!fv||(!fv.v&&!fv.n&&!(fv.photos&&fv.photos.length))) return '';
+        var ph=(fv.photos||[]).map(function(s){ return '<img src="'+s+'" style="max-width:130px;max-height:100px;margin:4px 6px 0 0;border-radius:6px;vertical-align:top"/>'; }).join('');
+        return '<tr><td>'+esc(b.label)+'</td><td>'+(fv.v?esc(fv.v):'—')+(fv.n?' · '+esc(fv.n):'')+(ph?'<div style="margin-top:4px">'+ph+'</div>':'')+'</td></tr>'; }
       return (b.items||[]).map(function(it){
         var v=vals[it.key];
         if(b.kind==='measure'){ if(v==null||v==='') return ''; return '<tr><td>'+esc(it.label)+'</td><td class="r">'+esc(v)+(it.unit?' '+esc(it.unit):'')+'</td></tr>'; }
