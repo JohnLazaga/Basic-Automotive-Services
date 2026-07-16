@@ -53,6 +53,8 @@ function pmsLeafBlocks(sec){
 }
 
 var PMS_TEMPLATE = [
+  { title:'Test drive notes / fault codes', blocks:[ pmsText('Test drive notes / fault codes') ] },
+
   { title:'Exterior', blocks:[ pmsRate([
     'Park lights front','Headlight Low beam','Headlight High beam','Fog lights','Signal lights front',
     'Front Windshield','Wiper Front','Wiper Blades Front','Wiper Washer Front','Headlight Washers',
@@ -80,8 +82,6 @@ var PMS_TEMPLATE = [
     pmsRate(['Brake hose FR','Brake hose FL','Brake hose RR','Brake hose RL']),
     pmsRate(['Brake fluid condition']),
     pmsRate(['Brakes cleaned','Parking brake adjusted']) ] },
-
-  { title:'Test drive notes / fault codes', blocks:[ pmsText('Test drive notes / fault codes') ] },
 
   { title:'Engine Bay — Fluids', blocks:[ pmsRate([
     'Engine oil','Coolant','Brake fluid (engine)','Clutch fluid','PS fluid','Trans fluid','Diff oil','Washer fluid' ]) ] },
