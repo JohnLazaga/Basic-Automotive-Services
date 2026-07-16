@@ -232,6 +232,9 @@ textarea{resize:vertical} .chk{display:flex;align-items:center;gap:8px;font-size
 .pms-nav{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:18px 0 48px}
 .pms-nav .btn{min-height:54px;padding:0 24px;font-size:16px}
 .pms-row.needpick{background:rgba(242,23,23,.09);box-shadow:inset 4px 0 0 var(--brand);border-radius:8px}
+.pms-sec-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap} .pms-sec-head h2{margin:0}
+.pms-secnote{background:#fff4d6;color:#8a6600;border:1px solid #ffdf8a;border-radius:8px;padding:6px 11px;font-size:13.5px;font-weight:700}
+[data-theme="dark"] .pms-secnote{background:#3a3115;color:#ffd766;border-color:#5c4d1f}
 .pms-form .fld.needpick{background:rgba(242,23,23,.09);border-radius:8px;padding:4px 6px;margin:-4px -6px}
 .pms-form .fld.needpick input{border-color:var(--brand)}
 [data-theme="dark"] .pms-chip{background:#1e1e22}
@@ -506,7 +509,7 @@ var BRANCH = {"id":"sudipen","slug":"sudipen","name":"Basic by JMSI — Sudipen"
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.2.0 · 2026-07-16 · 1d1bd73';
+var APP_VERSION = 'v1.2.0 · 2026-07-16 · 69333f5';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -5735,10 +5738,8 @@ var PMS_TEMPLATE = [
     'Door Handles','Door locks','Fender Lights','Side Mirror','Side Mirror Lights','Other Signal Lights','Windows' ]),
     pmsText('Exterior notes') ] },
 
-  { title:'Tires', blocks:[
-    pmsMeasure([['FR pressure before','PSI'],['FR pressure after','PSI'],['FL pressure before','PSI'],['FL pressure after','PSI'],
-      ['RR pressure before','PSI'],['RR pressure after','PSI'],['RL pressure before','PSI'],['RL pressure after','PSI'],
-      ['Spare pressure before','PSI'],['Spare pressure after','PSI']]),
+  { title:'Tires', note:'Do tire pressure reading AFTER rotation and balancing!', blocks:[
+    pmsMeasure([['Front Left Pressure','PSI'],['Front Right Pressure','PSI'],['Rear Left Pressure','PSI'],['Rear Right Pressure','PSI'],['Spare Tire Pressure','PSI']]),
     pmsRate(['Tire depth FR','Tire depth FL','Tire depth RR','Tire depth RL','Tire depth Spare']),
     pmsRate(['Tire pattern/damage FR','Tire pattern/damage FL','Tire pattern/damage RR','Tire pattern/damage RL','Tire pattern/damage Spare']),
     pmsRate(['Tires rotated','Balanced']) ] },
@@ -5962,7 +5963,8 @@ function pmsThumbsHTML(j){
 /* Section → HTML (renders each block type). */
 function pmsSectionHTML(sec, vals){
   var body=sec.blocks.map(function(b){ return pmsBlockHTML(b, vals); }).join('');
-  return '<div class="card pms-sec"><h2>'+esc(sec.title)+'</h2>'+body+'</div>';
+  var note=sec.note?'<span class="pms-secnote">⚠ '+esc(sec.note)+'</span>':'';
+  return '<div class="card pms-sec"><div class="pms-sec-head"><h2>'+esc(sec.title)+'</h2>'+note+'</div>'+body+'</div>';
 }
 function pmsBlockHTML(b, vals){
   if(b.kind==='text'){ var tv=vals[b.key]||''; return field(b.label,'<textarea id="pf_'+b.key+'" rows="3">'+esc(tv)+'</textarea>'); }

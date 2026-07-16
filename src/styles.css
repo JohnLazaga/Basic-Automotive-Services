@@ -221,6 +221,9 @@ textarea{resize:vertical} .chk{display:flex;align-items:center;gap:8px;font-size
 .pms-nav{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:18px 0 48px}
 .pms-nav .btn{min-height:54px;padding:0 24px;font-size:16px}
 .pms-row.needpick{background:rgba(242,23,23,.09);box-shadow:inset 4px 0 0 var(--brand);border-radius:8px}
+.pms-sec-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap} .pms-sec-head h2{margin:0}
+.pms-secnote{background:#fff4d6;color:#8a6600;border:1px solid #ffdf8a;border-radius:8px;padding:6px 11px;font-size:13.5px;font-weight:700}
+[data-theme="dark"] .pms-secnote{background:#3a3115;color:#ffd766;border-color:#5c4d1f}
 .pms-form .fld.needpick{background:rgba(242,23,23,.09);border-radius:8px;padding:4px 6px;margin:-4px -6px}
 .pms-form .fld.needpick input{border-color:var(--brand)}
 [data-theme="dark"] .pms-chip{background:#1e1e22}

@@ -39,10 +39,8 @@ var PMS_TEMPLATE = [
     'Door Handles','Door locks','Fender Lights','Side Mirror','Side Mirror Lights','Other Signal Lights','Windows' ]),
     pmsText('Exterior notes') ] },
 
-  { title:'Tires', blocks:[
-    pmsMeasure([['FR pressure before','PSI'],['FR pressure after','PSI'],['FL pressure before','PSI'],['FL pressure after','PSI'],
-      ['RR pressure before','PSI'],['RR pressure after','PSI'],['RL pressure before','PSI'],['RL pressure after','PSI'],
-      ['Spare pressure before','PSI'],['Spare pressure after','PSI']]),
+  { title:'Tires', note:'Do tire pressure reading AFTER rotation and balancing!', blocks:[
+    pmsMeasure([['Front Left Pressure','PSI'],['Front Right Pressure','PSI'],['Rear Left Pressure','PSI'],['Rear Right Pressure','PSI'],['Spare Tire Pressure','PSI']]),
     pmsRate(['Tire depth FR','Tire depth FL','Tire depth RR','Tire depth RL','Tire depth Spare']),
     pmsRate(['Tire pattern/damage FR','Tire pattern/damage FL','Tire pattern/damage RR','Tire pattern/damage RL','Tire pattern/damage Spare']),
     pmsRate(['Tires rotated','Balanced']) ] },
@@ -266,7 +264,8 @@ function pmsThumbsHTML(j){
 /* Section → HTML (renders each block type). */
 function pmsSectionHTML(sec, vals){
   var body=sec.blocks.map(function(b){ return pmsBlockHTML(b, vals); }).join('');
-  return '<div class="card pms-sec"><h2>'+esc(sec.title)+'</h2>'+body+'</div>';
+  var note=sec.note?'<span class="pms-secnote">⚠ '+esc(sec.note)+'</span>':'';
+  return '<div class="card pms-sec"><div class="pms-sec-head"><h2>'+esc(sec.title)+'</h2>'+note+'</div>'+body+'</div>';
 }
 function pmsBlockHTML(b, vals){
   if(b.kind==='text'){ var tv=vals[b.key]||''; return field(b.label,'<textarea id="pf_'+b.key+'" rows="3">'+esc(tv)+'</textarea>'); }
