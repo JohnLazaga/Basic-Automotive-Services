@@ -31,6 +31,8 @@ function pmsText(label){ return { kind:'text', key:pmsKey(label), label:label };
 function pmsDepth(items){ return { kind:'depth', items:items.map(function(l){ return { key:pmsKey('tire depth '+l), label:l }; }) }; }
 /* Per-tire general condition (4-colour rating) + a "Tire DOT" year dropdown. */
 function pmsCondition(items){ return { kind:'condition', items:items.map(function(l){ return { key:pmsKey('tire condition '+l), dotKey:pmsKey('tire dot '+l), label:l }; }) }; }
+/* Yes / No selector: two gray boxes per row. */
+function pmsYesNo(items){ return { kind:'yesno', items:items.map(function(l){ return { key:pmsKey(l), label:l }; }) }; }
 /* <option> list of years from ~20 years back up to the present year (year only). */
 function pmsYearOptions(sel){
   var cur=parseInt(String(typeof todayISO==='function'?todayISO():'2026-01-01').slice(0,4),10)||2026;
@@ -65,7 +67,7 @@ var PMS_TEMPLATE = [
       left:[ pmsMeasure([['Front Left Pressure','PSI'],['Front Right Pressure','PSI'],['Rear Left Pressure','PSI'],['Rear Right Pressure','PSI'],['Spare Tire Pressure','PSI']]) ],
       right:[ pmsDepth(['Front Left','Front Right','Rear Left','Rear Right','Spare']) ] },
     pmsCondition(['Front Left','Front Right','Rear Left','Rear Right','Spare']),
-    pmsRate(['Tires rotated','Balanced']) ] },
+    pmsYesNo(['Tires rotated','Balanced']) ] },
 
   { title:'Interior', blocks:[ pmsRate([
     'Horn','Gauge','Seats','Seat belts','Shift knob','Matting','Windows interior','AC control','Radio system',
@@ -184,6 +186,7 @@ function pmsSectionMissing(sec, vals){
     else if(b.kind==='condition'){ if(!v||!v.s) miss.push(it.key); }   // condition rating required; Tire DOT year optional
     else if(b.kind==='lr'){ if(!v||!v.l||!v.r) miss.push(it.key); }
     else if(b.kind==='depth'){ if(!v||!v.d) miss.push(it.key); }
+    else if(b.kind==='yesno'){ if(!v||!v.v) miss.push(it.key); }
     else if(b.kind==='measure'){ if(v==null||String(v).trim()==='') miss.push(it.key); }
   }); });
   return miss;
@@ -330,6 +333,16 @@ function pmsBlockHTML(b, vals){
         '<span class="pms-depthset"><input type="hidden" id="pf_'+it.key+'" value="'+attr(cur)+'">'+boxes+'</span></div>';
     }).join('')+'</div>';
   }
+  if(b.kind==='yesno'){
+    var YN=['Yes','No'];
+    return '<div class="pms-rows">'+b.items.map(function(it){
+      var cur=(vals[it.key]&&vals[it.key].v)||'';
+      var boxes=YN.map(function(o){ var on=(cur===o)?' on':'';
+        return '<button type="button" class="pms-ynbox'+on+'" onclick="pmsSetYN(\''+it.key+'\',\''+o+'\',this)">'+o+'</button>'; }).join('');
+      return '<div class="pms-row pms-ynrow"><span class="pms-lbl">'+esc(it.label)+'</span>'+
+        '<span class="pms-ynset"><input type="hidden" id="pf_'+it.key+'" value="'+attr(cur)+'">'+boxes+'</span></div>';
+    }).join('')+'</div>';
+  }
   if(b.kind==='condition'){
     var head='<div class="pms-row pms-cond pms-cond-head"><span class="pms-lbl"></span>'+
       '<span class="pms-cond-rate">General Tire Condition</span><span class="pms-cond-dot">Tire DOT</span></div>';
@@ -369,6 +382,15 @@ function pmsSetDepth(key, d, el){
   var toggled = h.value===d ? '' : d;   // tap the active box again to clear
   h.value=toggled;
   var wrap=el.parentNode; var bx=wrap.querySelectorAll('.pms-depthbox');
+  for(var i=0;i<bx.length;i++) bx[i].classList.remove('on');
+  if(toggled) el.classList.add('on');
+  var row=(el.closest)?el.closest('.pms-row'):null; if(row) row.classList.remove('needpick');
+}
+function pmsSetYN(key, v, el){
+  var h=document.getElementById('pf_'+key); if(!h) return;
+  var toggled = h.value===v ? '' : v;
+  h.value=toggled;
+  var wrap=el.parentNode; var bx=wrap.querySelectorAll('.pms-ynbox');
   for(var i=0;i<bx.length;i++) bx[i].classList.remove('on');
   if(toggled) el.classList.add('on');
   var row=(el.closest)?el.closest('.pms-row'):null; if(row) row.classList.remove('needpick');
@@ -413,6 +435,7 @@ function readPmsValues(into){
       if(b.kind==='measure'){ var em=document.getElementById('pf_'+it.key); if(em) vals[it.key]=em.value; }
       else if(b.kind==='rating'){ var er=document.getElementById('pf_'+it.key); if(er) vals[it.key]={ s:er.value }; }
       else if(b.kind==='depth'){ var ed=document.getElementById('pf_'+it.key); if(ed) vals[it.key]={ d:ed.value }; }
+      else if(b.kind==='yesno'){ var ey=document.getElementById('pf_'+it.key); if(ey) vals[it.key]={ v:ey.value }; }
       else if(b.kind==='condition'){ var ec=document.getElementById('pf_'+it.key); if(ec) vals[it.key]={ s:ec.value }; var edot=document.getElementById('pf_'+it.dotKey); if(edot) vals[it.dotKey]=edot.value; }
       else if(b.kind==='lr'){ var l=document.getElementById('pf_'+it.key+'_l'); if(l){ var rr=document.getElementById('pf_'+it.key+'_r'); vals[it.key]={ l:l.value, r:rr?rr.value:'' }; } }
     });
@@ -515,6 +538,7 @@ function docPMS(j){
         if(b.kind==='measure'){ if(v==null||v==='') return ''; return '<tr><td>'+esc(it.label)+'</td><td class="r">'+esc(v)+(it.unit?' '+esc(it.unit):'')+'</td></tr>'; }
         if(b.kind==='depth'){ if(!v||!v.d) return ''; return '<tr><td>'+esc(it.label)+' tread</td><td class="r">'+esc(v.d)+'%</td></tr>'; }
         if(b.kind==='condition'){ var dt=vals[it.dotKey]; if((!v||!v.s)&&!dt) return ''; return '<tr><td>'+esc(it.label)+' tire</td><td>'+((v&&v.s)?pmsDot(v.s)+' '+pmsStateLabel(v.s):'—')+(dt?' · DOT '+esc(dt):'')+'</td></tr>'; }
+        if(b.kind==='yesno'){ if(!v||!v.v) return ''; return '<tr><td>'+esc(it.label)+'</td><td>'+esc(v.v)+'</td></tr>'; }
         if(b.kind==='check'){ if(!v) return ''; return '<tr><td>'+esc(it.label)+'</td><td>'+(v.c?'✓ done':'—')+(v.n?' · '+esc(v.n):'')+'</td></tr>'; }
         if(b.kind==='rating'){ if(!v||!v.s) return ''; return '<tr><td>'+esc(it.label)+'</td><td>'+pmsDot(v.s)+' '+pmsStateLabel(v.s)+(v.n?' · '+esc(v.n):'')+'</td></tr>'; }
         if(b.kind==='lr'){ if(!v||(!v.l&&!v.r&&!v.na)) return ''; return '<tr><td>'+esc(it.label)+'</td><td>'+(v.na?'N/A':('L '+pmsDot(v.l)+' '+pmsStateLabel(v.l)+' &nbsp; R '+pmsDot(v.r)+' '+pmsStateLabel(v.r)))+'</td></tr>'; }
@@ -544,6 +568,7 @@ function portalPmsHTML(pms){
         if(b.kind==='measure'){ if(v==null||v==='') return ''; return '<tr><td>'+esc(it.label)+'</td><td class="r">'+esc(v)+(it.unit?' '+esc(it.unit):'')+'</td></tr>'; }
         if(b.kind==='depth'){ if(!v||!v.d) return ''; return '<tr><td>'+esc(it.label)+' tread</td><td class="r">'+esc(v.d)+'%</td></tr>'; }
         if(b.kind==='condition'){ var dt=vals[it.dotKey]; if((!v||!v.s)&&!dt) return ''; return '<tr><td>'+esc(it.label)+' tire</td><td>'+((v&&v.s)?pmsDot(v.s)+' '+pmsStateLabel(v.s):'—')+(dt?' · DOT '+esc(dt):'')+'</td></tr>'; }
+        if(b.kind==='yesno'){ if(!v||!v.v) return ''; return '<tr><td>'+esc(it.label)+'</td><td>'+esc(v.v)+'</td></tr>'; }
         if(b.kind==='check'){ if(!v||(!v.c&&!v.n)) return ''; return '<tr><td>'+esc(it.label)+'</td><td>'+(v.c?'✓':'')+(v.n?' '+esc(v.n):'')+'</td></tr>'; }
         if(b.kind==='rating'){ if(!v||!v.s) return ''; return '<tr><td>'+esc(it.label)+'</td><td>'+pmsDot(v.s)+' '+pmsStateLabel(v.s)+(v.n?' · '+esc(v.n):'')+'</td></tr>'; }
         if(b.kind==='lr'){ if(!v||(!v.l&&!v.r&&!v.na)) return ''; return '<tr><td>'+esc(it.label)+'</td><td>'+(v.na?'N/A':('L '+pmsDot(v.l)+' &nbsp; R '+pmsDot(v.r)))+'</td></tr>'; }

@@ -251,6 +251,13 @@ textarea{resize:vertical} .chk{display:flex;align-items:center;gap:8px;font-size
 @media (max-width:640px){ .pms-2col{grid-template-columns:1fr} }
 [data-theme="dark"] .pms-depthbox{background:#33333a;border-color:#4a4a52;color:#c9c9cf}
 [data-theme="dark"] .pms-depthbox.on{background:#9a9aa2;color:#111;border-color:#9a9aa2}
+/* Yes / No: two gray boxes */
+.pms-form .pms-ynrow .pms-ynset{margin-left:auto}
+.pms-ynset{display:inline-flex;gap:8px}
+.pms-ynbox{min-width:74px;height:40px;padding:0 16px;border-radius:9px;border:1px solid var(--hair);background:#e6e6ea;color:var(--ink2);font-weight:700;font-size:14px;cursor:pointer}
+.pms-ynbox.on{background:#6b6b70;color:#fff;border-color:#6b6b70}
+[data-theme="dark"] .pms-ynbox{background:#33333a;border-color:#4a4a52;color:#c9c9cf}
+[data-theme="dark"] .pms-ynbox.on{background:#9a9aa2;color:#111;border-color:#9a9aa2}
 .pms-secnote{background:#fff4d6;color:#8a6600;border:1px solid #ffdf8a;border-radius:8px;padding:6px 11px;font-size:13.5px;font-weight:700}
 [data-theme="dark"] .pms-secnote{background:#3a3115;color:#ffd766;border-color:#5c4d1f}
 .pms-form .fld.needpick{background:rgba(242,23,23,.09);border-radius:8px;padding:4px 6px;margin:-4px -6px}
@@ -527,7 +534,7 @@ var BRANCH = {"id":"main","slug":"main","name":"Basic by JMSI — Fairview (Main
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.2.0 · 2026-07-16 · 7f870bf';
+var APP_VERSION = 'v1.2.0 · 2026-07-16 · 77201fe';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -5748,6 +5755,8 @@ function pmsText(label){ return { kind:'text', key:pmsKey(label), label:label };
 function pmsDepth(items){ return { kind:'depth', items:items.map(function(l){ return { key:pmsKey('tire depth '+l), label:l }; }) }; }
 /* Per-tire general condition (4-colour rating) + a "Tire DOT" year dropdown. */
 function pmsCondition(items){ return { kind:'condition', items:items.map(function(l){ return { key:pmsKey('tire condition '+l), dotKey:pmsKey('tire dot '+l), label:l }; }) }; }
+/* Yes / No selector: two gray boxes per row. */
+function pmsYesNo(items){ return { kind:'yesno', items:items.map(function(l){ return { key:pmsKey(l), label:l }; }) }; }
 /* <option> list of years from ~20 years back up to the present year (year only). */
 function pmsYearOptions(sel){
   var cur=parseInt(String(typeof todayISO==='function'?todayISO():'2026-01-01').slice(0,4),10)||2026;
@@ -5782,7 +5791,7 @@ var PMS_TEMPLATE = [
       left:[ pmsMeasure([['Front Left Pressure','PSI'],['Front Right Pressure','PSI'],['Rear Left Pressure','PSI'],['Rear Right Pressure','PSI'],['Spare Tire Pressure','PSI']]) ],
       right:[ pmsDepth(['Front Left','Front Right','Rear Left','Rear Right','Spare']) ] },
     pmsCondition(['Front Left','Front Right','Rear Left','Rear Right','Spare']),
-    pmsRate(['Tires rotated','Balanced']) ] },
+    pmsYesNo(['Tires rotated','Balanced']) ] },
 
   { title:'Interior', blocks:[ pmsRate([
     'Horn','Gauge','Seats','Seat belts','Shift knob','Matting','Windows interior','AC control','Radio system',
@@ -5901,6 +5910,7 @@ function pmsSectionMissing(sec, vals){
     else if(b.kind==='condition'){ if(!v||!v.s) miss.push(it.key); }   // condition rating required; Tire DOT year optional
     else if(b.kind==='lr'){ if(!v||!v.l||!v.r) miss.push(it.key); }
     else if(b.kind==='depth'){ if(!v||!v.d) miss.push(it.key); }
+    else if(b.kind==='yesno'){ if(!v||!v.v) miss.push(it.key); }
     else if(b.kind==='measure'){ if(v==null||String(v).trim()==='') miss.push(it.key); }
   }); });
   return miss;
@@ -6047,6 +6057,16 @@ function pmsBlockHTML(b, vals){
         '<span class="pms-depthset"><input type="hidden" id="pf_'+it.key+'" value="'+attr(cur)+'">'+boxes+'</span></div>';
     }).join('')+'</div>';
   }
+  if(b.kind==='yesno'){
+    var YN=['Yes','No'];
+    return '<div class="pms-rows">'+b.items.map(function(it){
+      var cur=(vals[it.key]&&vals[it.key].v)||'';
+      var boxes=YN.map(function(o){ var on=(cur===o)?' on':'';
+        return '<button type="button" class="pms-ynbox'+on+'" onclick="pmsSetYN(\''+it.key+'\',\''+o+'\',this)">'+o+'</button>'; }).join('');
+      return '<div class="pms-row pms-ynrow"><span class="pms-lbl">'+esc(it.label)+'</span>'+
+        '<span class="pms-ynset"><input type="hidden" id="pf_'+it.key+'" value="'+attr(cur)+'">'+boxes+'</span></div>';
+    }).join('')+'</div>';
+  }
   if(b.kind==='condition'){
     var head='<div class="pms-row pms-cond pms-cond-head"><span class="pms-lbl"></span>'+
       '<span class="pms-cond-rate">General Tire Condition</span><span class="pms-cond-dot">Tire DOT</span></div>';
@@ -6086,6 +6106,15 @@ function pmsSetDepth(key, d, el){
   var toggled = h.value===d ? '' : d;   // tap the active box again to clear
   h.value=toggled;
   var wrap=el.parentNode; var bx=wrap.querySelectorAll('.pms-depthbox');
+  for(var i=0;i<bx.length;i++) bx[i].classList.remove('on');
+  if(toggled) el.classList.add('on');
+  var row=(el.closest)?el.closest('.pms-row'):null; if(row) row.classList.remove('needpick');
+}
+function pmsSetYN(key, v, el){
+  var h=document.getElementById('pf_'+key); if(!h) return;
+  var toggled = h.value===v ? '' : v;
+  h.value=toggled;
+  var wrap=el.parentNode; var bx=wrap.querySelectorAll('.pms-ynbox');
   for(var i=0;i<bx.length;i++) bx[i].classList.remove('on');
   if(toggled) el.classList.add('on');
   var row=(el.closest)?el.closest('.pms-row'):null; if(row) row.classList.remove('needpick');
@@ -6130,6 +6159,7 @@ function readPmsValues(into){
       if(b.kind==='measure'){ var em=document.getElementById('pf_'+it.key); if(em) vals[it.key]=em.value; }
       else if(b.kind==='rating'){ var er=document.getElementById('pf_'+it.key); if(er) vals[it.key]={ s:er.value }; }
       else if(b.kind==='depth'){ var ed=document.getElementById('pf_'+it.key); if(ed) vals[it.key]={ d:ed.value }; }
+      else if(b.kind==='yesno'){ var ey=document.getElementById('pf_'+it.key); if(ey) vals[it.key]={ v:ey.value }; }
       else if(b.kind==='condition'){ var ec=document.getElementById('pf_'+it.key); if(ec) vals[it.key]={ s:ec.value }; var edot=document.getElementById('pf_'+it.dotKey); if(edot) vals[it.dotKey]=edot.value; }
       else if(b.kind==='lr'){ var l=document.getElementById('pf_'+it.key+'_l'); if(l){ var rr=document.getElementById('pf_'+it.key+'_r'); vals[it.key]={ l:l.value, r:rr?rr.value:'' }; } }
     });
@@ -6232,6 +6262,7 @@ function docPMS(j){
         if(b.kind==='measure'){ if(v==null||v==='') return ''; return '<tr><td>'+esc(it.label)+'</td><td class="r">'+esc(v)+(it.unit?' '+esc(it.unit):'')+'</td></tr>'; }
         if(b.kind==='depth'){ if(!v||!v.d) return ''; return '<tr><td>'+esc(it.label)+' tread</td><td class="r">'+esc(v.d)+'%</td></tr>'; }
         if(b.kind==='condition'){ var dt=vals[it.dotKey]; if((!v||!v.s)&&!dt) return ''; return '<tr><td>'+esc(it.label)+' tire</td><td>'+((v&&v.s)?pmsDot(v.s)+' '+pmsStateLabel(v.s):'—')+(dt?' · DOT '+esc(dt):'')+'</td></tr>'; }
+        if(b.kind==='yesno'){ if(!v||!v.v) return ''; return '<tr><td>'+esc(it.label)+'</td><td>'+esc(v.v)+'</td></tr>'; }
         if(b.kind==='check'){ if(!v) return ''; return '<tr><td>'+esc(it.label)+'</td><td>'+(v.c?'✓ done':'—')+(v.n?' · '+esc(v.n):'')+'</td></tr>'; }
         if(b.kind==='rating'){ if(!v||!v.s) return ''; return '<tr><td>'+esc(it.label)+'</td><td>'+pmsDot(v.s)+' '+pmsStateLabel(v.s)+(v.n?' · '+esc(v.n):'')+'</td></tr>'; }
         if(b.kind==='lr'){ if(!v||(!v.l&&!v.r&&!v.na)) return ''; return '<tr><td>'+esc(it.label)+'</td><td>'+(v.na?'N/A':('L '+pmsDot(v.l)+' '+pmsStateLabel(v.l)+' &nbsp; R '+pmsDot(v.r)+' '+pmsStateLabel(v.r)))+'</td></tr>'; }
@@ -6261,6 +6292,7 @@ function portalPmsHTML(pms){
         if(b.kind==='measure'){ if(v==null||v==='') return ''; return '<tr><td>'+esc(it.label)+'</td><td class="r">'+esc(v)+(it.unit?' '+esc(it.unit):'')+'</td></tr>'; }
         if(b.kind==='depth'){ if(!v||!v.d) return ''; return '<tr><td>'+esc(it.label)+' tread</td><td class="r">'+esc(v.d)+'%</td></tr>'; }
         if(b.kind==='condition'){ var dt=vals[it.dotKey]; if((!v||!v.s)&&!dt) return ''; return '<tr><td>'+esc(it.label)+' tire</td><td>'+((v&&v.s)?pmsDot(v.s)+' '+pmsStateLabel(v.s):'—')+(dt?' · DOT '+esc(dt):'')+'</td></tr>'; }
+        if(b.kind==='yesno'){ if(!v||!v.v) return ''; return '<tr><td>'+esc(it.label)+'</td><td>'+esc(v.v)+'</td></tr>'; }
         if(b.kind==='check'){ if(!v||(!v.c&&!v.n)) return ''; return '<tr><td>'+esc(it.label)+'</td><td>'+(v.c?'✓':'')+(v.n?' '+esc(v.n):'')+'</td></tr>'; }
         if(b.kind==='rating'){ if(!v||!v.s) return ''; return '<tr><td>'+esc(it.label)+'</td><td>'+pmsDot(v.s)+' '+pmsStateLabel(v.s)+(v.n?' · '+esc(v.n):'')+'</td></tr>'; }
         if(b.kind==='lr'){ if(!v||(!v.l&&!v.r&&!v.na)) return ''; return '<tr><td>'+esc(it.label)+'</td><td>'+(v.na?'N/A':('L '+pmsDot(v.l)+' &nbsp; R '+pmsDot(v.r)))+'</td></tr>'; }
