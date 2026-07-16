@@ -229,6 +229,14 @@ textarea{resize:vertical} .chk{display:flex;align-items:center;gap:8px;font-size
 .pms-depthset{display:inline-flex;gap:7px;flex-wrap:wrap}
 .pms-depthbox{min-width:54px;height:40px;padding:0 6px;border-radius:9px;border:1px solid var(--hair);background:#e6e6ea;color:var(--ink2);font-weight:700;font-size:13px;cursor:pointer}
 .pms-depthbox.on{background:#6b6b70;color:#fff;border-color:#6b6b70}
+/* General tire condition: label | rating | Tire DOT year dropdown */
+.pms-form .pms-cond{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.pms-form .pms-cond .pms-lbl{flex:0 0 120px;min-width:0}
+.pms-cond-rate{display:inline-flex;align-items:center}
+.pms-cond-dot{margin-left:auto;display:inline-flex;align-items:center;gap:6px}
+.pms-cond-dot select{min-height:44px;font-size:15px;padding:6px 10px;border-radius:8px;border:1px solid var(--hair);background:var(--card)}
+.pms-cond-head{min-height:0!important;border-bottom:1px solid var(--hair);padding-bottom:6px!important}
+.pms-cond-head .pms-cond-rate,.pms-cond-head .pms-cond-dot{font-size:12.5px;font-weight:700;color:var(--ink2)}
 @media (max-width:640px){ .pms-2col{grid-template-columns:1fr} }
 [data-theme="dark"] .pms-depthbox{background:#33333a;border-color:#4a4a52;color:#c9c9cf}
 [data-theme="dark"] .pms-depthbox.on{background:#9a9aa2;color:#111;border-color:#9a9aa2}
