@@ -55,6 +55,10 @@ function pmsLeafBlocks(sec){
 var PMS_TEMPLATE = [
   { title:'Test drive notes / fault codes', blocks:[ pmsText('Test drive notes / fault codes') ] },
 
+  { title:'Interior', blocks:[ pmsRate([
+    'Horn','Gauge','Seats','Seat belts','Shift knob','Matting','Windows interior','AC control','Radio system',
+    'Wiper controls','Map/dome light','Hood release','Trunk release' ]) ] },
+
   { title:'Exterior', blocks:[ pmsRate([
     'Park lights front','Headlight Low beam','Headlight High beam','Fog lights','Signal lights front',
     'Front Windshield','Wiper Front','Wiper Blades Front','Wiper Washer Front','Headlight Washers',
@@ -62,18 +66,6 @@ var PMS_TEMPLATE = [
     'Fog Lights rear','Plate Lights','Rear Windshield','Wiper rear','Wiper blade rear','Wiper washer rear',
     'Door Handles','Door locks','Fender Lights','Side Mirror','Side Mirror Lights','Other Signal Lights','Windows' ]),
     pmsText('Exterior notes') ] },
-
-  { title:'Tires', note:'Do tire pressure reading AFTER rotation and balancing!', blocks:[
-    { kind:'cols',
-      leftTitle:'Tire Pressure', rightTitle:'Tire Depth (tread remaining)',
-      left:[ pmsMeasure([['Front Left Pressure','PSI'],['Front Right Pressure','PSI'],['Rear Left Pressure','PSI'],['Rear Right Pressure','PSI'],['Spare Tire Pressure','PSI']]) ],
-      right:[ pmsDepth(['Front Left','Front Right','Rear Left','Rear Right','Spare']) ] },
-    pmsCondition(['Front Left','Front Right','Rear Left','Rear Right','Spare']),
-    pmsYesNo(['Tires rotated','Balanced']) ] },
-
-  { title:'Interior', blocks:[ pmsRate([
-    'Horn','Gauge','Seats','Seat belts','Shift knob','Matting','Windows interior','AC control','Radio system',
-    'Wiper controls','Map/dome light','Hood release','Trunk release' ]) ] },
 
   { title:'Brakes', blocks:[
     pmsRate(['Brake pads/shoe FR','Brake pads/shoe FL','Brake pads/shoe RR','Brake pads/shoe RL']),
@@ -83,11 +75,20 @@ var PMS_TEMPLATE = [
     pmsRate(['Brake fluid condition']),
     pmsRate(['Brakes cleaned','Parking brake adjusted']) ] },
 
-  { title:'Engine Bay — Fluids', blocks:[ pmsRate([
-    'Engine oil','Coolant','Brake fluid (engine)','Clutch fluid','PS fluid','Trans fluid','Diff oil','Washer fluid' ]) ] },
+  { title:'Tires', note:'Do tire pressure reading AFTER rotation and balancing!', blocks:[
+    { kind:'cols',
+      leftTitle:'Tire Pressure', rightTitle:'Tire Depth (tread remaining)',
+      left:[ pmsMeasure([['Front Left Pressure','PSI'],['Front Right Pressure','PSI'],['Rear Left Pressure','PSI'],['Rear Right Pressure','PSI'],['Spare Tire Pressure','PSI']]) ],
+      right:[ pmsDepth(['Front Left','Front Right','Rear Left','Rear Right','Spare']) ] },
+    pmsCondition(['Front Left','Front Right','Rear Left','Rear Right','Spare']),
+    pmsYesNo(['Tires rotated','Tires balanced']),
+    pmsRate(['Hub bolts','Lug nuts']) ] },
 
   { title:'Battery', blocks:[ pmsMeasure([
     ['Battery voltage','V'],['Stock battery CCA','CCA'],['Actual battery CCA','CCA'],['Charging voltage','V'],['Battery health','%'] ]) ] },
+
+  { title:'Engine Bay — Fluids', blocks:[ pmsRate([
+    'Engine oil','Coolant','Brake fluid (engine)','Clutch fluid','PS fluid','Trans fluid','Diff oil','Washer fluid' ]) ] },
 
   { title:'Engine Bay — Systems', blocks:[
     pmsRate(['Air filter','Fuel filter','Cabin filter',
