@@ -131,7 +131,7 @@ var PMS_TEMPLATE = [
 
   { title:'Post PMS Notes', blocks:[
     { kind:'text', key:pmsKey('Post-PMS Drive Test Notes'), label:'Post-PMS Drive Test Notes', yn:{ key:pmsKey('Post-PMS test driven'), label:'Test Driven?' } },
-    pmsText('Notes') ] }
+    pmsText('General PMS Notes') ] }
 ];
 
 /* Give every section a free-text notes field at its end — skip sections whose
@@ -190,6 +190,23 @@ function startPMS(id){
   _pmsCtx={ jobId:id, step:0 };
   go('pmsform', id);
 }
+/* Append a Job Order clipboard-log entry from the PMS flow (start / complete).
+   "By" is the PMS mechanic once picked, else the job's first mechanic / SA. */
+function pmsLog(j, note){
+  if(!j) return;
+  j.statusLog=j.statusLog||[];
+  var by=(j.pms&&j.pms.report&&j.pms.report.mechanicId)||((j.mechanicIds||[]).filter(function(x){return x&&x!=='TBA';})[0])||j.saId||'';
+  j.statusLog.push({ time:new Date().toISOString(), code:j.status||'', by:by, note:note });
+}
+/* "Start Job" (section 1) — stamps the start time and logs it on the Job Order. */
+function pmsStartJob(id){
+  var j=jobById(id); if(!j) return;
+  if(j.pms&&j.pms.startedAt){ toast('Job already started'); return; }
+  j.pms=j.pms||{status:'in_progress'};
+  j.pms.startedAt=new Date().toISOString();
+  pmsLog(j, 'PMS inspection started.');
+  persist(); toast('Job started — logged on the Job Order'); render();
+}
 /* Rows still needing a value in this section (rating, L/R, and numeric measures
    are all required; free-text notes stay optional). */
 function pmsSectionMissing(sec, vals){
@@ -211,7 +228,31 @@ function pmsSectionMissing(sec, vals){
   return miss;
 }
 function pmsSectionDone(sec, vals){ return pmsSectionMissing(sec, vals||{}).length===0; }
-var PMS_LEGEND='<div class="pms-legend"><span class="r-swatch r-ok"></span>OK &nbsp; <span class="r-swatch r-att"></span>Requires attention &nbsp; <span class="r-swatch r-rep"></span>Needs replacement &nbsp; <span class="r-swatch r-na"></span>Not applicable</div>';
+/* Per-section rating tally — how many of the section's items are in each state. */
+function pmsSectionCounts(sec, vals){
+  var c={ok:0,attention:0,replace:0,na:0}; vals=vals||{};
+  pmsLeafBlocks(sec).forEach(function(b){
+    if(b.kind==='condphoto'){ var cv=vals[b.key]; if(cv&&cv.s&&c[cv.s]!=null) c[cv.s]++; return; }
+    (b.items||[]).forEach(function(it){ var v=vals[it.key]; if(!v) return;
+      if((b.kind==='rating'||b.kind==='condition') && v.s && c[v.s]!=null) c[v.s]++;
+      else if(b.kind==='lr'){ if(v.l&&c[v.l]!=null) c[v.l]++; if(v.r&&c[v.r]!=null) c[v.r]++; }
+    });
+  });
+  return c;
+}
+/* The colour legend at the top of a section, with a live count beside each colour. */
+function pmsLegend(sec, vals){
+  var c=pmsSectionCounts(sec, vals);
+  function item(s,cls,label){ return '<span class="pms-leg"><span class="r-swatch pms-legsw '+cls+'"><b id="pmsLeg-'+s+'">'+c[s]+'</b></span>'+label+'</span>'; }
+  return '<div class="pms-legend">'+item('ok','r-ok','OK')+item('attention','r-att','Requires attention')+
+    item('replace','r-rep','Needs replacement')+item('na','r-na','Not applicable')+'</div>';
+}
+/* Recompute the legend counts live from the current section's rating swatches. */
+function pmsUpdateLegend(){
+  var c={ok:0,attention:0,replace:0,na:0};
+  Array.prototype.forEach.call(document.querySelectorAll('.pms-form .pms-rate input[type="hidden"]'), function(h){ if(c[h.value]!=null) c[h.value]++; });
+  ['ok','attention','replace','na'].forEach(function(s){ var el=document.getElementById('pmsLeg-'+s); if(el) el.textContent=c[s]; });
+}
 
 VIEWS.pmsform = function(id){
   var j=jobById(id||(_pmsCtx&&_pmsCtx.jobId)); if(!j) return '<div class="page">'+emptyState('Job not found.')+'</div>';
@@ -233,10 +274,14 @@ VIEWS.pmsform = function(id){
   if(step<N){
     var sec=PMS_TEMPLATE[step];
     var marker='<div class="pms-stepmark"><b>'+(step+1)+' / '+N+'</b> · '+esc(sec.title)+'</div>';
+    var startBar = step!==0 ? '' : ((j.pms&&j.pms.startedAt)
+      ? '<div class="pms-startbar started">✓ Job started · '+esc(fmtDateTime(j.pms.startedAt))+' · logged on the Job Order</div>'
+      : '<div class="pms-startbar"><button class="btn primary" onclick="pmsStartJob(\''+j.id+'\')">▶ Start Job</button>'+
+        '<span class="muted small">Records the PMS start time on the Job Order.</span></div>');
     var nav='<div class="pms-nav">'+
       (step>0?'<button class="btn ghost" onclick="pmsPrev()">‹ Back</button>':'<span></span>')+
       '<button class="btn primary" onclick="pmsNext()">'+(step===N-1?'Done — Review & sign-off →':'Done — next section →')+'</button></div>';
-    return '<div class="page pms-form">'+head+marker+PMS_LEGEND+
+    return '<div class="page pms-form">'+head+marker+pmsLegend(sec, vals)+startBar+
       '<div class="card">'+pmsSectionHTML(sec, vals)+'</div>'+nav+'</div>';
   }
 
@@ -247,9 +292,7 @@ VIEWS.pmsform = function(id){
   return '<div class="page pms-form">'+head+
     '<div class="pms-stepmark"><b>Sign-off</b> · Review & complete</div>'+
     '<div class="muted small" style="margin:-4px 0 10px">'+doneCount+' / '+N+' sections complete</div>'+
-    '<div class="card"><div class="card-head"><h2>Damage / condition photos</h2>'+
-      '<label class="btn sm"><input type="file" accept="image/*" multiple style="display:none" onchange="addPhotos(\''+j.id+'\',this.files)">＋ Add photos</label></div>'+
-      '<div class="thumbs" id="pmsThumbs">'+pmsThumbsHTML(j)+'</div></div>'+
+    pmsSummaryHTML(j)+
     '<div class="card"><h2>Sign-off</h2><div class="grid2">'+
       field('Performed by (Mechanic)','<select id="pmsMech">'+staffOpts+'</select>')+
       field('Service Adviser','<select id="pmsSA">'+saOpts+'</select>')+'</div>'+
@@ -425,6 +468,7 @@ function pmsSetRating(id, s, el){
   for(var i=0;i<sw.length;i++) sw[i].classList.remove('on');
   if(toggled) el.classList.add('on');
   var row=(el.closest)?el.closest('.pms-row'):null; if(row) row.classList.remove('needpick');   // clear the "needs a rating" flag once picked
+  if(typeof pmsUpdateLegend==='function') pmsUpdateLegend();   // keep the per-colour counts live
 }
 function pmsSetDepth(key, d, el){
   var h=document.getElementById('pf_'+key); if(!h) return;
@@ -584,6 +628,7 @@ function submitPMS(id){
     completedAt:new Date().toISOString()
   });
   j.pms.status='done';
+  pmsLog(j, 'PMS inspection completed.');           // logged on the Job Order (uses the picked mechanic)
   persist(); toast('PMS completed and attached to '+j.no);
   go('job', j.id);
 }
@@ -617,6 +662,34 @@ function pmsFlagged(r){
     });
   }); });
   return out;
+}
+/* Tally of rating states across every rated item (rating/condition/lr/condphoto). */
+function pmsSummaryCounts(vals){
+  var c={ok:0,attention:0,replace:0,na:0};
+  PMS_TEMPLATE.forEach(function(sec){ pmsLeafBlocks(sec).forEach(function(b){
+    if(b.kind==='condphoto'){ var cv=vals[b.key]; if(cv&&cv.s&&c[cv.s]!=null) c[cv.s]++; return; }
+    (b.items||[]).forEach(function(it){ var v=vals[it.key]; if(!v) return;
+      if((b.kind==='rating'||b.kind==='condition') && v.s && c[v.s]!=null) c[v.s]++;
+      else if(b.kind==='lr'){ if(v.l&&c[v.l]!=null) c[v.l]++; if(v.r&&c[v.r]!=null) c[v.r]++; }
+    });
+  }); });
+  return c;
+}
+/* Sign-off summary of the whole PMS: rating tally + the flagged (attention/replace) items. */
+function pmsSummaryHTML(j){
+  var r=(j.pms&&j.pms.report)||{values:{}}; var vals=r.values||{};
+  var c=pmsSummaryCounts(vals); var flagged=pmsFlagged(r);
+  var chips='<div class="pms-sum-tally">'+
+    '<span class="pms-sum-chip"><span class="r-swatch r-ok"></span>'+c.ok+' OK</span>'+
+    '<span class="pms-sum-chip"><span class="r-swatch r-att"></span>'+c.attention+' Attention</span>'+
+    '<span class="pms-sum-chip"><span class="r-swatch r-rep"></span>'+c.replace+' Replace</span>'+
+    '<span class="pms-sum-chip"><span class="r-swatch r-na"></span>'+c.na+' N/A</span></div>';
+  var body=flagged.length
+    ? '<div class="pms-sum-head">Items needing attention or replacement</div><ul class="pms-flags">'+
+        flagged.map(function(f){ return '<li><span class="r-swatch '+(f.s==='replace'?'r-rep':'r-att')+'"></span>'+esc(f.label)+(f.n?' — '+esc(f.n):'')+'</li>'; }).join('')+'</ul>'
+    : '<div class="muted small" style="margin-top:10px">✓ All inspected items are OK — nothing flagged for attention or replacement.</div>';
+  return '<div class="card"><div class="card-head"><h2>PMS Summary</h2>'+
+    '<button class="btn sm ghost" onclick="printPMS(\''+j.id+'\')">⎙ Print full report</button></div>'+chips+body+'</div>';
 }
 
 /* ---- Add-labor dialog: the "Perform PMS" button --------------------------- */
