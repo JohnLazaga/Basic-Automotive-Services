@@ -264,6 +264,16 @@ textarea{resize:vertical} .chk{display:flex;align-items:center;gap:8px;font-size
 .pms-form .pms-fault-photos{margin-top:12px}
 .pms-form .pms-fault-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
 .pms-form .pms-fault-head .lbl{font-weight:700;color:var(--ink2)}
+.pms-form .pms-photo-empty{color:#8e8e93;font-size:13.5px;padding:16px;border:1px dashed var(--hair);border-radius:10px;text-align:center;background:rgba(0,0,0,.02)}
+.pms-form .pms-secphoto{margin-top:16px;padding-top:14px;border-top:1px solid var(--hair)}
+.pms-form .pms-photo-note{margin-top:8px;font-size:12px;line-height:1.45;color:#8a6600;background:#fff4d6;border:1px solid #ffdf8a;border-radius:8px;padding:7px 10px}
+[data-theme="dark"] .pms-form .pms-photo-note{color:#ffd766;background:#3a3115;border-color:#5c4d1f}
+[data-theme="dark"] .pms-form .pms-photo-empty{background:rgba(255,255,255,.03)}
+/* Text field with an inline Yes/No header (Pre-PMS notes → "Test Driven?") */
+.pms-form .pms-texthead{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+.pms-form .pms-texthead .fld-l{margin:0}
+.pms-form .pms-textyn{display:inline-flex;align-items:center;gap:10px}
+.pms-form .pms-textyn-lbl{font-weight:700;color:var(--ink2)}
 .pms-secnote{background:#fff4d6;color:#8a6600;border:1px solid #ffdf8a;border-radius:8px;padding:6px 11px;font-size:13.5px;font-weight:700}
 [data-theme="dark"] .pms-secnote{background:#3a3115;color:#ffd766;border-color:#5c4d1f}
 .pms-form .fld.needpick{background:rgba(242,23,23,.09);border-radius:8px;padding:4px 6px;margin:-4px -6px}
@@ -540,7 +550,7 @@ var BRANCH = {"id":"sudipen","slug":"sudipen","name":"Basic by JMSI — Sudipen"
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.2.0 · 2026-07-16 · f53f3d4';
+var APP_VERSION = 'v1.2.0 · 2026-07-17 · 5dcbc63';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -5784,8 +5794,9 @@ function pmsLeafBlocks(sec){
 
 var PMS_TEMPLATE = [
   { title:'Pre-PMS Test Drive Notes', blocks:[
-    pmsText('Pre-PMS Test Drive Notes'),
-    { kind:'faultcode', key:pmsKey('Fault Code'), label:'Fault Code' } ] },
+    { kind:'text', key:pmsKey('Pre-PMS Test Drive Notes'), label:'Pre-PMS Test Drive Notes', yn:{ key:pmsKey('Test driven'), label:'Test Driven?' } },
+    { kind:'faultcode', key:pmsKey('Fault Code'), label:'Fault Code' },
+    { kind:'condphoto', key:pmsKey('General Condition of Vehicle'), label:'General Condition of Vehicle' } ] },
 
   { title:'Interior', blocks:[ pmsRate([
     'Horn','Gauge','Seats','Seat belts','Shift knob','Matting','Windows interior','AC control','Radio system',
@@ -5806,15 +5817,6 @@ var PMS_TEMPLATE = [
     pmsRate(['Brake hose FR','Brake hose FL','Brake hose RR','Brake hose RL']),
     pmsRate(['Brake fluid condition']),
     pmsRate(['Brakes cleaned','Parking brake adjusted']) ] },
-
-  { title:'Tires', note:'Do tire pressure reading AFTER rotation and balancing!', blocks:[
-    { kind:'cols',
-      leftTitle:'Tire Pressure', rightTitle:'Tire Depth (tread remaining)',
-      left:[ pmsMeasure([['Front Left Pressure','PSI'],['Front Right Pressure','PSI'],['Rear Left Pressure','PSI'],['Rear Right Pressure','PSI'],['Spare Tire Pressure','PSI']]) ],
-      right:[ pmsDepth(['Front Left','Front Right','Rear Left','Rear Right','Spare']) ] },
-    pmsCondition(['Front Left','Front Right','Rear Left','Rear Right','Spare']),
-    pmsYesNo(['Tires rotated','Tires balanced']),
-    pmsRate(['Hub bolts','Lug nuts']) ] },
 
   { title:'Battery', blocks:[ pmsMeasure([
     ['Battery voltage','V'],['Stock battery CCA','CCA'],['Actual battery CCA','CCA'],['Charging voltage','V'],['Battery health','%'] ]) ] },
@@ -5850,6 +5852,15 @@ var PMS_TEMPLATE = [
     pmsLR(['Outer tie rod','Inner tie rod/rack end','Steering boots']),
     pmsRate(['Steering rack assembly','Steering gear box','Center link','Idler arm','Center post','Pitman arm','Power steering hoses']) ] },
 
+  { title:'Tires', note:'Do tire pressure reading AFTER rotation and balancing!', blocks:[
+    { kind:'cols',
+      leftTitle:'Tire Pressure', rightTitle:'Tire Depth (tread remaining)',
+      left:[ pmsMeasure([['Front Left Pressure','PSI'],['Front Right Pressure','PSI'],['Rear Left Pressure','PSI'],['Rear Right Pressure','PSI'],['Spare Tire Pressure','PSI']]) ],
+      right:[ pmsDepth(['Front Left','Front Right','Rear Left','Rear Right','Spare']) ] },
+    pmsCondition(['Front Left','Front Right','Rear Left','Rear Right','Spare']),
+    pmsYesNo(['Tires rotated','Tires balanced']),
+    pmsRate(['Hub bolts','Lug nuts']) ] },
+
   { title:'Notes', blocks:[ pmsText('Notes') ] }
 ];
 
@@ -5857,7 +5868,7 @@ var PMS_TEMPLATE = [
    last block is already a free-text area (Exterior, Test drive, Notes). */
 PMS_TEMPLATE.forEach(function(sec){
   var blocks=sec.blocks||[]; var last=blocks[blocks.length-1];
-  if(!blocks.length || (last.kind!=='text' && last.kind!=='faultcode')){ blocks.push(pmsText(sec.title+' notes')); }
+  if(!blocks.length || (last.kind!=='text' && last.kind!=='faultcode' && last.kind!=='condphoto')){ blocks.push(pmsText(sec.title+' notes')); }
 });
 
 /* ---- Ticket lifecycle (embedded on the job) ------------------------------- */
@@ -5914,7 +5925,9 @@ function startPMS(id){
 function pmsSectionMissing(sec, vals){
   var miss=[];
   pmsLeafBlocks(sec).forEach(function(b){
+    if(b.kind==='text'){ if(b.yn){ var tyv=vals[b.yn.key]; if(!tyv||!tyv.v) miss.push(b.yn.key); } return; }   // Test driven? Yes/No required when present
     if(b.kind==='faultcode'){ var fv=vals[b.key]; if(!fv||!fv.v) miss.push(b.key); return; }   // Yes/No required; note + photo optional
+    if(b.kind==='condphoto'){ var cv=vals[b.key]; if(!cv||!cv.s) miss.push(b.key); return; }   // rating required; note + photo optional
     (b.items||[]).forEach(function(it){
     var v=vals[it.key];
     if(b.kind==='rating'){ if(!v||!v.s) miss.push(it.key); }
@@ -6027,10 +6040,21 @@ function pmsThumbsHTML(j){
 function pmsSectionHTML(sec, vals){
   var body=sec.blocks.map(function(b){ return pmsBlockHTML(b, vals); }).join('');
   var note=sec.note?'<span class="pms-secnote">⚠ '+esc(sec.note)+'</span>':'';
-  return '<div class="card pms-sec"><div class="pms-sec-head"><h2>'+esc(sec.title)+'</h2>'+note+'</div>'+body+'</div>';
+  var pk=pmsSecPhotoKey(sec);
+  var photoBlk='<div class="pms-secphoto">'+pmsPhotoBlock(pk, (vals[pk]&&vals[pk].photos)||[])+'</div>';
+  return '<div class="card pms-sec"><div class="pms-sec-head"><h2>'+esc(sec.title)+'</h2>'+note+'</div>'+body+photoBlk+'</div>';
 }
 function pmsBlockHTML(b, vals){
-  if(b.kind==='text'){ var tv=vals[b.key]||''; return field(b.label,'<textarea id="pf_'+b.key+'" rows="3">'+esc(tv)+'</textarea>'); }
+  if(b.kind==='text'){ var tv=vals[b.key]||'';
+    if(b.yn){ var yc=(vals[b.yn.key]&&vals[b.yn.key].v)||'';
+      var ynb=['Yes','No'].map(function(o){ var on=(yc===o)?' on':'';
+        return '<button type="button" class="pms-ynbox'+on+'" onclick="pmsSetYN(\''+b.yn.key+'\',\''+o+'\',this)">'+o+'</button>'; }).join('');
+      return '<div class="fld pms-textfld"><div class="pms-texthead"><span class="fld-l">'+esc(b.label)+'</span>'+
+        '<span class="pms-textyn"><span class="pms-textyn-lbl">'+esc(b.yn.label)+'</span>'+
+        '<span class="pms-ynset"><input type="hidden" id="pf_'+b.yn.key+'" value="'+attr(yc)+'">'+ynb+'</span></span></div>'+
+        '<textarea id="pf_'+b.key+'" rows="3">'+esc(tv)+'</textarea></div>';
+    }
+    return field(b.label,'<textarea id="pf_'+b.key+'" rows="3">'+esc(tv)+'</textarea>'); }
   if(b.kind==='measure'){
     return '<div class="pms-grid">'+b.items.map(function(it){
       var v=vals[it.key]; v=(v==null?'':v);
@@ -6082,16 +6106,19 @@ function pmsBlockHTML(b, vals){
     var cur=vals[b.key]||{}; var YN=['Yes','No'];
     var boxes=YN.map(function(o){ var on=(cur.v===o)?' on':'';
       return '<button type="button" class="pms-ynbox'+on+'" onclick="pmsSetYN(\''+b.key+'\',\''+o+'\',this)">'+o+'</button>'; }).join('');
-    var thumbs=(cur.photos||[]).map(function(src,i){
-      return '<div class="thumb"><img src="'+src+'" onclick="pmsFaultPhotoOpen(\''+b.key+'\','+i+')"/>'+
-        '<button class="thumb-x" onclick="pmsDelFaultPhoto(\''+b.key+'\','+i+')">✕</button></div>'; }).join('');
     return '<div class="pms-fault">'+
       '<div class="pms-row pms-ynrow"><span class="pms-lbl">'+esc(b.label)+'</span>'+
         '<span class="pms-ynset"><input type="hidden" id="pf_'+b.key+'" value="'+attr(cur.v||'')+'">'+boxes+'</span></div>'+
       field('Fault code notes','<textarea id="pf_'+b.key+'_note" rows="3" placeholder="Describe the fault code(s) read during the test drive" onfocus="this.select()">'+esc(cur.n||'')+'</textarea>')+
-      '<div class="pms-fault-photos"><div class="pms-fault-head"><span class="lbl">Fault code photo</span>'+
-        '<label class="btn sm"><input type="file" accept="image/*" capture="environment" multiple style="display:none" onchange="pmsAddFaultPhoto(\''+b.key+'\',this.files)">📷 Take / add photo</label></div>'+
-        '<div class="thumbs">'+(thumbs||emptyState('No photo yet — tap “Take / add photo”.'))+'</div></div>'+
+      pmsPhotoBlock(b.key, cur.photos)+
+    '</div>';
+  }
+  if(b.kind==='condphoto'){
+    var cc=vals[b.key]||{};
+    return '<div class="pms-fault">'+
+      '<div class="pms-row"><span class="pms-lbl">'+esc(b.label)+'</span>'+pmsRatingSwitch('pf_'+b.key, cc.s)+'</div>'+
+      field(b.label+' notes','<textarea id="pf_'+b.key+'_note" rows="3" placeholder="Notes on the general condition of the vehicle" onfocus="this.select()">'+esc(cc.n||'')+'</textarea>')+
+      pmsPhotoBlock(b.key, cc.photos)+
     '</div>';
   }
   if(b.kind==='condition'){
@@ -6144,14 +6171,15 @@ function pmsSetYN(key, v, el){
   var wrap=el.parentNode; var bx=wrap.querySelectorAll('.pms-ynbox');
   for(var i=0;i<bx.length;i++) bx[i].classList.remove('on');
   if(toggled) el.classList.add('on');
-  var row=(el.closest)?el.closest('.pms-row'):null; if(row) row.classList.remove('needpick');
+  var row=(el.closest)?(el.closest('.pms-row')||el.closest('.fld')):null; if(row) row.classList.remove('needpick');   // row (Fault Code) OR fld (Test driven header)
 }
 
-/* ---- Fault-code row photos (Pre-PMS test drive) --------------------------- */
+/* ---- Row photos (fault code, general condition) --------------------------- */
 /* Photos attach to the report value (values[key].photos), not the job's photo
    grid, so they travel with the checklist into the report + portal. Capture the
-   current Yes/No + note first (pmsCurrentSave) so a re-render doesn't lose them. */
-function pmsAddFaultPhoto(key, files){
+   current fields first (pmsCurrentSave) so a re-render doesn't lose them. Shared
+   by any composite row that offers "Take / add photo" (keyed by the row's key). */
+function pmsAddRowPhoto(key, files){
   var j=_pmsCtx&&jobById(_pmsCtx.jobId); if(!j) return;
   pmsCurrentSave();
   handlePhotoFiles(files, function(datas){
@@ -6161,16 +6189,60 @@ function pmsAddFaultPhoto(key, files){
     j.pms.report.values[key]=cur; persist(); toast('Photo added'); render();
   });
 }
-function pmsDelFaultPhoto(key, i){
+function pmsDelRowPhoto(key, i){
   var j=_pmsCtx&&jobById(_pmsCtx.jobId); if(!j) return;
   pmsCurrentSave();
   var cur=(j.pms.report.values||{})[key];
   if(cur&&cur.photos){ cur.photos.splice(i,1); persist(); render(); }
 }
-function pmsFaultPhotoOpen(key, i){
+function pmsRowPhotoOpen(key, i){
   var j=_pmsCtx&&jobById(_pmsCtx.jobId);
   var cur=j&&j.pms&&j.pms.report&&j.pms.report.values&&j.pms.report.values[key];
   if(cur&&cur.photos&&cur.photos[i]) openLightbox(cur.photos[i]);
+}
+
+/* ---- Photo retention: auto-delete PMS photos N days after the PMS was created.
+   PMS photos are heavy base64 stored inside the job doc (fault code, general
+   condition, and per-section photos). This client-side sweep strips expired ones
+   and persists, syncing the deletion to the server to save space. Runs shortly
+   after boot and hourly while the app is open. Only removes photos — ratings,
+   notes, and everything else in the report stay. */
+var PMS_PHOTO_TTL_DAYS = 10;
+/* When the PMS was created (ticket raised); falls back to completion time. */
+function pmsCreatedAt(j){ return (j&&j.pms&&(j.pms.requestedAt||(j.pms.report&&j.pms.report.completedAt)))||null; }
+function pmsPurgeExpiredPhotos(){
+  if(typeof S==='undefined' || !S || !S.jobs) return;
+  var now=Date.now(), ttl=PMS_PHOTO_TTL_DAYS*86400000, changed=false;
+  S.jobs.forEach(function(j){
+    var vals=j&&j.pms&&j.pms.report&&j.pms.report.values; if(!vals) return;
+    var created=pmsCreatedAt(j); if(!created) return;
+    if(now - new Date(created).getTime() < ttl) return;          // not yet expired
+    var hit=false;
+    Object.keys(vals).forEach(function(k){ var v=vals[k];
+      if(v && typeof v==='object' && v.photos && v.photos.length){ v.photos=[]; hit=true; } });
+    if(hit){ j.pms.photosPurgedAt=new Date().toISOString(); changed=true; }
+  });
+  if(changed && typeof persist==='function') persist();
+}
+if(typeof window!=='undefined'){
+  setTimeout(function(){ try{ pmsPurgeExpiredPhotos(); }catch(e){} }, 15000);      // once data has loaded
+  setInterval(function(){ try{ pmsPurgeExpiredPhotos(); }catch(e){} }, 3600000);   // hourly for long sessions
+}
+/* Per-section photo key (the section-level "Take / add photo" at each section end). */
+function pmsSecPhotoKey(sec){ return pmsKey('section photos '+sec.title); }
+/* Photo thumbnails for the printable report / portal (read-only <img> row). */
+function pmsPhotoImgs(photos){ return (photos||[]).map(function(s){ return '<img src="'+s+'" style="max-width:130px;max-height:100px;margin:4px 6px 0 0;border-radius:6px;vertical-align:top"/>'; }).join(''); }
+/* Shared "Take / add photo" block — one renderer so every composite row (Fault
+   Code, General Condition, …) and every section end looks identical. Keyed by key. */
+function pmsPhotoBlock(key, photos){
+  var thumbs=(photos||[]).map(function(src,i){
+    return '<div class="thumb"><img src="'+src+'" onclick="pmsRowPhotoOpen(\''+key+'\','+i+')"/>'+
+      '<button class="thumb-x" onclick="pmsDelRowPhoto(\''+key+'\','+i+')">✕</button></div>'; }).join('');
+  return '<div class="pms-fault-photos"><div class="pms-fault-head"><span class="lbl">Photo</span>'+
+    '<label class="btn sm"><input type="file" accept="image/*" capture="environment" multiple style="display:none" onchange="pmsAddRowPhoto(\''+key+'\',this.files)">📷 Take / add photo</label></div>'+
+    (thumbs ? '<div class="thumbs">'+thumbs+'</div>' : '<div class="pms-photo-empty">No photo yet — tap “Take / add photo”.</div>')+
+    '<div class="pms-photo-note">⚠ All photos will be deleted from the server '+PMS_PHOTO_TTL_DAYS+' days after this PMS was created. Please take a screenshot for your personal record.</div>'+
+  '</div>';
 }
 
 /* ---- Signature pad -------------------------------------------------------- */
@@ -6207,9 +6279,12 @@ function pmsReadSig(id){ var c=document.getElementById(id); if(!c) return '';
 function readPmsValues(into){
   var vals=into||{};
   PMS_TEMPLATE.forEach(function(sec){ pmsLeafBlocks(sec).forEach(function(b){
-    if(b.kind==='text'){ var te=document.getElementById('pf_'+b.key); if(te) vals[b.key]=te.value; return; }
+    if(b.kind==='text'){ var te=document.getElementById('pf_'+b.key); if(te) vals[b.key]=te.value;
+      if(b.yn){ var ty=document.getElementById('pf_'+b.yn.key); if(ty) vals[b.yn.key]={ v:ty.value }; } return; }
     if(b.kind==='faultcode'){ var fv=document.getElementById('pf_'+b.key), fn=document.getElementById('pf_'+b.key+'_note');
       if(fv||fn){ var prev=vals[b.key]||{}; vals[b.key]={ v: fv?fv.value:(prev.v||''), n: fn?fn.value:(prev.n||''), photos: prev.photos||[] }; } return; }
+    if(b.kind==='condphoto'){ var cs=document.getElementById('pf_'+b.key), cn=document.getElementById('pf_'+b.key+'_note');
+      if(cs||cn){ var cprev=vals[b.key]||{}; vals[b.key]={ s: cs?cs.value:(cprev.s||''), n: cn?cn.value:(cprev.n||''), photos: cprev.photos||[] }; } return; }
     (b.items||[]).forEach(function(it){
       if(b.kind==='measure'){ var em=document.getElementById('pf_'+it.key); if(em) vals[it.key]=em.value; }
       else if(b.kind==='rating'){ var er=document.getElementById('pf_'+it.key); if(er) vals[it.key]={ s:er.value }; }
@@ -6261,6 +6336,7 @@ function pmsReportPanel(j){
 function pmsFlagged(r){
   var out=[]; var vals=(r&&r.values)||{};
   PMS_TEMPLATE.forEach(function(sec){ pmsLeafBlocks(sec).forEach(function(b){
+    if(b.kind==='condphoto'){ var cv=vals[b.key]; if(cv&&(cv.s==='attention'||cv.s==='replace')) out.push({label:b.label,s:cv.s,n:cv.n}); return; }
     (b.items||[]).forEach(function(it){
       var v=vals[it.key]; if(!v) return;
       if(b.kind==='rating' && (v.s==='attention'||v.s==='replace')) out.push({label:it.label,s:v.s,n:v.n});
@@ -6311,10 +6387,14 @@ function docPMS(j){
       '<br>Performed by: '+esc(staffName(r.mechanicId))+'</td></tr></table>';
   var body=PMS_TEMPLATE.map(function(sec){
     var rows=pmsLeafBlocks(sec).map(function(b){
-      if(b.kind==='text'){ var t=vals[b.key]; return t?'<tr><td colspan="2">'+esc(t)+'</td></tr>':''; }
+      if(b.kind==='text'){ var out=''; if(b.yn){ var yv=vals[b.yn.key]; if(yv&&yv.v) out+='<tr><td>'+esc(b.yn.label)+'</td><td><b>'+esc(yv.v)+'</b></td></tr>'; }
+        var t=vals[b.key]; if(t) out+='<tr><td colspan="2">'+esc(t)+'</td></tr>'; return out; }
       if(b.kind==='faultcode'){ var fv=vals[b.key]; if(!fv||(!fv.v&&!fv.n&&!(fv.photos&&fv.photos.length))) return '';
         var ph=(fv.photos||[]).map(function(s){ return '<img src="'+s+'" style="max-width:130px;max-height:100px;margin:4px 6px 0 0;border-radius:6px;vertical-align:top"/>'; }).join('');
         return '<tr><td>'+esc(b.label)+'</td><td>'+(fv.v?'<b>'+esc(fv.v)+'</b>':'—')+(fv.n?' · '+esc(fv.n):'')+(ph?'<div style="margin-top:4px">'+ph+'</div>':'')+'</td></tr>'; }
+      if(b.kind==='condphoto'){ var cv=vals[b.key]; if(!cv||(!cv.s&&!cv.n&&!(cv.photos&&cv.photos.length))) return '';
+        var cph=(cv.photos||[]).map(function(s){ return '<img src="'+s+'" style="max-width:130px;max-height:100px;margin:4px 6px 0 0;border-radius:6px;vertical-align:top"/>'; }).join('');
+        return '<tr><td>'+esc(b.label)+'</td><td>'+(cv.s?pmsDot(cv.s)+' '+pmsStateLabel(cv.s):'—')+(cv.n?' · '+esc(cv.n):'')+(cph?'<div style="margin-top:4px">'+cph+'</div>':'')+'</td></tr>'; }
       return (b.items||[]).map(function(it){
         var v=vals[it.key];
         if(b.kind==='measure'){ if(v==null||v==='') return ''; return '<tr><td>'+esc(it.label)+'</td><td class="r">'+esc(v)+(it.unit?' '+esc(it.unit):'')+'</td></tr>'; }
@@ -6327,9 +6407,11 @@ function docPMS(j){
         return '';
       }).join('');
     }).join('');
-    if(!rows) return '';
+    var sph=pmsPhotoImgs((vals[pmsSecPhotoKey(sec)]&&vals[pmsSecPhotoKey(sec)].photos)||[]);
+    if(!rows && !sph) return '';
     return '<div class="dtitle" style="font-size:13px;margin-top:10px">'+esc(sec.title)+'</div>'+
-      '<table><tbody>'+rows+'</tbody></table>';
+      (rows?'<table><tbody>'+rows+'</tbody></table>':'')+
+      (sph?'<div style="margin-top:4px">'+sph+'</div>':'');
   }).join('');
   var sigs='<div class="sig-grid">'+
     '<div class="sigline">'+(r.sigTech?'<img class="sigimg" src="'+r.sigTech+'"/>':'')+'Technician'+(r.mechanicId?' · '+esc(staffName(r.mechanicId)):'')+'</div>'+
@@ -6344,10 +6426,14 @@ function portalPmsHTML(pms){
   var vals=pms.values||{};
   var secs=PMS_TEMPLATE.map(function(sec){
     var rows=pmsLeafBlocks(sec).map(function(b){
-      if(b.kind==='text'){ var t=vals[b.key]; return t?'<tr><td colspan="2">'+esc(t)+'</td></tr>':''; }
+      if(b.kind==='text'){ var out=''; if(b.yn){ var yv=vals[b.yn.key]; if(yv&&yv.v) out+='<tr><td>'+esc(b.yn.label)+'</td><td>'+esc(yv.v)+'</td></tr>'; }
+        var t=vals[b.key]; if(t) out+='<tr><td colspan="2">'+esc(t)+'</td></tr>'; return out; }
       if(b.kind==='faultcode'){ var fv=vals[b.key]; if(!fv||(!fv.v&&!fv.n&&!(fv.photos&&fv.photos.length))) return '';
         var ph=(fv.photos||[]).map(function(s){ return '<img src="'+s+'" style="max-width:130px;max-height:100px;margin:4px 6px 0 0;border-radius:6px;vertical-align:top"/>'; }).join('');
         return '<tr><td>'+esc(b.label)+'</td><td>'+(fv.v?esc(fv.v):'—')+(fv.n?' · '+esc(fv.n):'')+(ph?'<div style="margin-top:4px">'+ph+'</div>':'')+'</td></tr>'; }
+      if(b.kind==='condphoto'){ var cv=vals[b.key]; if(!cv||(!cv.s&&!cv.n&&!(cv.photos&&cv.photos.length))) return '';
+        var cph=(cv.photos||[]).map(function(s){ return '<img src="'+s+'" style="max-width:130px;max-height:100px;margin:4px 6px 0 0;border-radius:6px;vertical-align:top"/>'; }).join('');
+        return '<tr><td>'+esc(b.label)+'</td><td>'+(cv.s?pmsDot(cv.s)+' '+pmsStateLabel(cv.s):'—')+(cv.n?' · '+esc(cv.n):'')+(cph?'<div style="margin-top:4px">'+cph+'</div>':'')+'</td></tr>'; }
       return (b.items||[]).map(function(it){
         var v=vals[it.key];
         if(b.kind==='measure'){ if(v==null||v==='') return ''; return '<tr><td>'+esc(it.label)+'</td><td class="r">'+esc(v)+(it.unit?' '+esc(it.unit):'')+'</td></tr>'; }
@@ -6360,7 +6446,11 @@ function portalPmsHTML(pms){
         return '';
       }).join('');
     }).join('');
-    return rows? '<div class="p-pms-sec">'+esc(sec.title)+'</div><table class="p-tbl"><tbody>'+rows+'</tbody></table>' : '';
+    var sph=pmsPhotoImgs((vals[pmsSecPhotoKey(sec)]&&vals[pmsSecPhotoKey(sec)].photos)||[]);
+    if(!rows && !sph) return '';
+    return '<div class="p-pms-sec">'+esc(sec.title)+'</div>'+
+      (rows?'<table class="p-tbl"><tbody>'+rows+'</tbody></table>':'')+
+      (sph?'<div style="margin-top:4px">'+sph+'</div>':'');
   }).join('');
   return '<div class="p-card"><div class="p-card-t">Multipoint Inspection'+(pms.completedAt?' · '+fmtDate(pms.completedAt):'')+'</div>'+
     (pms.mechanic?'<div class="p-kv"><span>Performed by</span><span>'+esc(pms.mechanic)+'</span></div>':'')+

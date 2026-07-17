@@ -253,6 +253,16 @@ textarea{resize:vertical} .chk{display:flex;align-items:center;gap:8px;font-size
 .pms-form .pms-fault-photos{margin-top:12px}
 .pms-form .pms-fault-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
 .pms-form .pms-fault-head .lbl{font-weight:700;color:var(--ink2)}
+.pms-form .pms-photo-empty{color:#8e8e93;font-size:13.5px;padding:16px;border:1px dashed var(--hair);border-radius:10px;text-align:center;background:rgba(0,0,0,.02)}
+.pms-form .pms-secphoto{margin-top:16px;padding-top:14px;border-top:1px solid var(--hair)}
+.pms-form .pms-photo-note{margin-top:8px;font-size:12px;line-height:1.45;color:#8a6600;background:#fff4d6;border:1px solid #ffdf8a;border-radius:8px;padding:7px 10px}
+[data-theme="dark"] .pms-form .pms-photo-note{color:#ffd766;background:#3a3115;border-color:#5c4d1f}
+[data-theme="dark"] .pms-form .pms-photo-empty{background:rgba(255,255,255,.03)}
+/* Text field with an inline Yes/No header (Pre-PMS notes → "Test Driven?") */
+.pms-form .pms-texthead{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+.pms-form .pms-texthead .fld-l{margin:0}
+.pms-form .pms-textyn{display:inline-flex;align-items:center;gap:10px}
+.pms-form .pms-textyn-lbl{font-weight:700;color:var(--ink2)}
 .pms-secnote{background:#fff4d6;color:#8a6600;border:1px solid #ffdf8a;border-radius:8px;padding:6px 11px;font-size:13.5px;font-weight:700}
 [data-theme="dark"] .pms-secnote{background:#3a3115;color:#ffd766;border-color:#5c4d1f}
 .pms-form .fld.needpick{background:rgba(242,23,23,.09);border-radius:8px;padding:4px 6px;margin:-4px -6px}
