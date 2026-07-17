@@ -84,16 +84,18 @@ var PMS_TEMPLATE = [
     { kind:'text', key:pmsKey('Load test'), label:'Load test (engine on, heavy load, ref: 13.0V)', labeled:true },
     pmsText('Battery notes') ] },
 
-  { title:'Engine Bay — Fluids', blocks:[ pmsRate([
-    'Engine oil','Coolant','Brake fluid (engine)','Clutch fluid','PS fluid','Trans fluid','Diff oil','Washer fluid' ]) ] },
-
   { title:'Engine Bay — Systems', blocks:[
     pmsRate(['Air filter','Fuel filter','Cabin filter',
       'Radiator cap','Radiator hoses','Bypass hoses','Reservoir','Clutch fan/motor',
       'Ignition coil','Spark plugs','Distributor','Spark plug cable',
       'Engine mount','Trans mount','Torque mount',
       'Alternator','Water pump','Power steering pump','Vacuum pump','Aircon compressor']),
-    pmsRate(['Main belt','Auxiliary belts']) ] },
+    pmsRate(['Main belt','Auxiliary belts']),
+    pmsYesNo(['Performed cooling system pressure test','Performed spark plug cleaning','Performed hose retightening']) ] },
+
+  { title:'Engine Bay — Fluids', blocks:[
+    pmsRate(['Engine oil','Coolant','Brake fluid (engine)','Clutch fluid','PS fluid','Trans fluid','Washer fluid']),
+    pmsYesNo(['Performed top-up of all fluids']) ] },
 
   { title:'Oil / Fluid Leaks', blocks:[ pmsRate([
     'Valve cover gasket','Intake hose','Turbo hose','Intercooler','Spool valve','Oil pan gasket','Axle oil seals',
@@ -101,8 +103,8 @@ var PMS_TEMPLATE = [
 
   { title:'Drivetrain', blocks:[ pmsRate([
     'Clutch pedal','Shifter linkage/cable','Inner CV joint front','Inner CV joint rear','Outer CV joint front',
-    'Outer CV joint rear','CV boots & straps','Clutch master','Clutch slave','Wheel bearing RR','Wheel bearing RL',
-    'Wheel bearing FR','Wheel bearing FL','Cross joint','Differential','Center bearing' ]) ] },
+    'Outer CV joint rear','CV boots & straps','Clutch master','Clutch slave','Wheel bearing FL','Wheel bearing FR',
+    'Wheel bearing RL','Wheel bearing RR','Cross joint','Differential','Center bearing' ]) ] },
 
   { title:'Steering & Suspension', blocks:[
     pmsLR(['Stabilizer link front','Stabilizer link rear','Stabilizer bar bushing front','Stabilizer bar bushing rear',
@@ -113,7 +115,8 @@ var PMS_TEMPLATE = [
     pmsRate(['Rear suspension bushings','Torsion bar front','Torsion beam','Trailing arms','Panhard rod','Leaf springs',
       'Leaf spring bushings','Coil springs','Coil spring pads','Lateral links','Rear ball joints']),
     pmsLR(['Outer tie rod','Inner tie rod/rack end','Steering boots']),
-    pmsRate(['Steering rack assembly','Steering gear box','Center link','Idler arm','Center post','Pitman arm','Power steering hoses']) ] },
+    pmsRate(['Steering rack assembly','Steering gear box','Center link','Idler arm','Center post','Pitman arm','Power steering hoses']),
+    pmsYesNo(['Performed steering and suspension retightening']) ] },
 
   { title:'Tires', note:'Do tire pressure reading AFTER rotation and balancing!', blocks:[
     { kind:'cols',
@@ -122,7 +125,8 @@ var PMS_TEMPLATE = [
       right:[ pmsDepth(['Front Left','Front Right','Rear Left','Rear Right','Spare']) ] },
     pmsCondition(['Front Left','Front Right','Rear Left','Rear Right','Spare']),
     pmsYesNo(['Tires rotated','Tires balanced']),
-    pmsRate(['Hub bolts','Lug nuts']) ] },
+    pmsRate(['Hub bolts','Lug nuts']),
+    pmsYesNo(['Performed wheel tightening to torque specs']) ] },
 
   { title:'Notes', blocks:[ pmsText('Notes') ] }
 ];
