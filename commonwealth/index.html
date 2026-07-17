@@ -565,7 +565,7 @@ var BRANCH = {"id":"commonwealth","slug":"commonwealth","name":"Basic by JMSI �
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.2.0 · 2026-07-17 · 1a2be84';
+var APP_VERSION = 'v1.2.0 · 2026-07-17 · d326c81';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -3893,6 +3893,15 @@ function printCSS(){
     '.totbox{margin-left:auto;width:300px;font-size:13px}.totbox .l2{display:flex;justify-content:space-between;padding:3px 0}'+
     '.totbox .grand{border-top:2px solid #1D1D1F;font-weight:800;font-size:15px;padding-top:6px;margin-top:4px}'+
     '@media print{body{padding:0}.doc{max-width:100%}}'+
+    /* ---- PMS report: single-column meta, one section per page, page footers ---- */
+    '.pms-meta{font-size:12.5px;margin-bottom:14px}'+
+    '.pms-meta>div{display:flex;gap:10px;padding:3px 0;border-bottom:1px solid #F0F0F2}'+
+    '.pms-meta>div span{min-width:120px;color:#6E6E73}.pms-meta>div b{color:#1D1D1F}'+
+    '.pms-rpt{table-layout:fixed}.pms-rpt td:first-child{width:56%}.pms-rpt td:last-child{width:44%}'+
+    '.pms-page{display:flex;flex-direction:column}.pms-brk{page-break-after:always}'+
+    '.pms-pgfoot{margin-top:auto;padding-top:10px;border-top:1px solid #E5E5EA;text-align:center;font-size:10.5px;color:#6E6E73}'+
+    '.pms-empty{color:#8E8E93;font-size:12px;margin:6px 0}'+
+    '@media print{.pms-page{min-height:100vh}}'+
   '</style>';
 }
 function docHeader(title){
@@ -5845,6 +5854,7 @@ var PMS_TEMPLATE = [
     { kind:'text', key:pmsKey('Resting battery voltage'), label:'Resting batt voltage (engine off, ref: 12.4V & up)', labeled:true, required:true },
     { kind:'text', key:pmsKey('Alternator output'), label:'Alternator output (engine on, ref: 13.5–14.5V)', labeled:true, required:true },
     { kind:'text', key:pmsKey('Load test'), label:'Load test (engine on, heavy load, ref: 13.0V)', labeled:true, required:true },
+    pmsRate(['General charging condition']),
     pmsText('Battery notes') ] },
 
   { title:'Engine Bay — Systems', blocks:[
@@ -6131,8 +6141,11 @@ function pmsThumbsHTML(j){
 function pmsSectionHTML(sec, vals){
   var body=sec.blocks.map(function(b){ return pmsBlockHTML(b, vals); }).join('');
   var note=sec.note?'<span class="pms-secnote">⚠ '+esc(sec.note)+'</span>':'';
-  var pk=pmsSecPhotoKey(sec);
-  var photoBlk='<div class="pms-secphoto">'+pmsPhotoBlock(pk, (vals[pk]&&vals[pk].photos)||[])+'</div>';
+  // Skip the section-level photo when the section already has its own photo
+  // blocks (Fault Code / General Condition) — otherwise it's a redundant row.
+  var hasOwnPhotos=(sec.blocks||[]).some(function(b){ return b.kind==='faultcode'||b.kind==='condphoto'; });
+  var photoBlk='';
+  if(!hasOwnPhotos){ var pk=pmsSecPhotoKey(sec); photoBlk='<div class="pms-secphoto">'+pmsPhotoBlock(pk, (vals[pk]&&vals[pk].photos)||[])+'</div>'; }
   return '<div class="card pms-sec"><div class="pms-sec-head"><h2>'+esc(sec.title)+'</h2>'+note+'</div>'+body+photoBlk+'</div>';
 }
 function pmsBlockHTML(b, vals){
@@ -6465,9 +6478,27 @@ function pmsSummaryHTML(j){
     ? '<div class="pms-sum-head">Items needing attention or replacement</div><ul class="pms-flags">'+
         flagged.map(function(f){ return '<li><span class="r-swatch '+(f.s==='replace'?'r-rep':'r-att')+'"></span>'+esc(f.label)+(f.n?' — '+esc(f.n):'')+'</li>'; }).join('')+'</ul>'
     : '<div class="muted small" style="margin-top:10px">✓ All inspected items are OK — nothing flagged for attention or replacement.</div>';
-  return '<div class="card"><div class="card-head"><h2>PMS Summary</h2>'+
-    '<button class="btn sm ghost" onclick="printPMS(\''+j.id+'\')">⎙ Print full report</button></div>'+chips+body+'</div>';
+  return '<div class="card"><div class="card-head"><h2>PMS Summary</h2><div class="row gap">'+
+    '<button class="btn sm ghost" onclick="printPMSSummary(\''+j.id+'\')">⎙ Print summary</button>'+
+    '<button class="btn sm ghost" onclick="printPMS(\''+j.id+'\')">⎙ Print full report</button></div></div>'+chips+body+'</div>';
 }
+/* Printable one-page PMS Summary — header + rating tally + flagged items. */
+function docPMSSummary(j){
+  var r=pmsReport(j)||{values:{}}; var vals=r.values||{};
+  var c=pmsSummaryCounts(vals); var flagged=pmsFlagged(r);
+  var tally='<table class="pms-rpt" style="margin-top:10px"><tbody>'+
+    '<tr><td>'+pmsDot('ok')+' OK</td><td><b>'+c.ok+'</b></td></tr>'+
+    '<tr><td>'+pmsDot('attention')+' Requires attention</td><td><b>'+c.attention+'</b></td></tr>'+
+    '<tr><td>'+pmsDot('replace')+' Needs replacement</td><td><b>'+c.replace+'</b></td></tr>'+
+    '<tr><td>'+pmsDot('na')+' Not applicable</td><td><b>'+c.na+'</b></td></tr></tbody></table>';
+  var flags=flagged.length
+    ? '<div class="dtitle" style="font-size:13px;margin-top:12px">Items needing attention or replacement</div><table class="pms-rpt"><tbody>'+
+        flagged.map(function(f){ return '<tr><td>'+esc(f.label)+'</td><td>'+pmsDot(f.s)+' '+pmsStateLabel(f.s)+(f.n?' · '+esc(f.n):'')+'</td></tr>'; }).join('')+'</tbody></table>'
+    : '<p style="margin-top:12px">All inspected items are OK — nothing flagged for attention or replacement.</p>';
+  return docShell('PMS Summary · '+j.plate,
+    docHeader('PMS Summary · '+j.plate)+pmsDocMeta(j, r)+tally+flags+'<div class="pms-pgfoot" style="margin-top:24px">1 / 1</div>');
+}
+function printPMSSummary(id){ var j=jobById(id); if(j) printDoc(docPMSSummary(j)); }
 
 /* ---- Add-labor dialog: the "Perform PMS" button --------------------------- */
 /* _pmsLineJob is set to the job id when a JOB (not estimate) add-labor dialog is
@@ -6502,14 +6533,25 @@ afterRender = function(){
 function pmsStateLabel(s){ return s==='ok'?'OK':s==='attention'?'Requires attention':s==='replace'?'Needs replacement':s==='na'?'Not applicable':'—'; }
 function pmsDot(s){ var c=s==='ok'?'#34C759':s==='attention'?'#FFC000':s==='replace'?'#F21717':s==='na'?'#8E8E93':'#ccc';
   return '<span style="display:inline-block;width:11px;height:11px;border-radius:3px;background:'+c+';vertical-align:middle"></span>'; }
+/* Single-column vehicle / service meta for the PMS printouts. */
+function pmsDocMeta(j, r){
+  var veh=(j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:'');
+  return '<div class="pms-meta">'+
+    '<div><span>Plate</span><b>'+esc(j.plate)+'</b></div>'+
+    '<div><span>Vehicle</span><b>'+esc(veh)+'</b></div>'+
+    '<div><span>JO #</span><b>'+esc(j.no)+'</b></div>'+
+    '<div><span>Odometer</span><b>'+odo(j.odometer)+'</b></div>'+
+    '<div><span>Completed</span><b>'+esc(fmtDateTime(r.completedAt))+'</b></div>'+
+    '<div><span>Performed by</span><b>'+esc(staffName(r.mechanicId))+'</b></div></div>';
+}
 function docPMS(j){
   var r=pmsReport(j)||{values:{}}; var vals=r.values||{};
-  var veh=(j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:'');
-  var head='<table style="width:100%;font-size:12px"><tr>'+
-    '<td>Plate: <b>'+esc(j.plate)+'</b><br>Vehicle: '+esc(veh)+'<br>JO #: '+esc(j.no)+'</td>'+
-    '<td style="text-align:right">Odometer: '+odo(j.odometer)+'<br>Completed: '+esc(fmtDateTime(r.completedAt))+
-      '<br>Performed by: '+esc(staffName(r.mechanicId))+'</td></tr></table>';
-  var body=PMS_TEMPLATE.map(function(sec){
+  var N=PMS_TEMPLATE.length;
+  var sigs='<div class="sig-grid">'+
+    '<div class="sigline">'+(r.sigTech?'<img class="sigimg" src="'+r.sigTech+'"/>':'')+'Technician'+(r.mechanicId?' · '+esc(staffName(r.mechanicId)):'')+'</div>'+
+    '<div class="sigline">'+(r.sigClient?'<img class="sigimg" src="'+r.sigClient+'"/>':'')+'Client</div>'+
+    '<div class="sigline">Service Adviser'+(r.saId?' · '+esc(staffName(r.saId)):'')+'</div></div>';
+  var pages=PMS_TEMPLATE.map(function(sec, si){
     var rows=pmsLeafBlocks(sec).map(function(b){
       if(b.kind==='text'){ var out=''; if(b.yn){ var yv=vals[b.yn.key]; if(yv&&yv.v) out+='<tr><td>'+esc(b.yn.label)+'</td><td><b>'+esc(yv.v)+'</b></td></tr>'; }
         var t=vals[b.key]; if(t) out+= b.labeled ? '<tr><td>'+esc(b.label)+'</td><td>'+esc(t)+'</td></tr>' : '<tr><td colspan="2">'+esc(t)+'</td></tr>'; return out; }
@@ -6521,8 +6563,8 @@ function docPMS(j){
         return '<tr><td>'+esc(b.label)+'</td><td>'+(cv.s?pmsDot(cv.s)+' '+pmsStateLabel(cv.s):'—')+(cv.n?' · '+esc(cv.n):'')+(cph?'<div style="margin-top:4px">'+cph+'</div>':'')+'</td></tr>'; }
       return (b.items||[]).map(function(it){
         var v=vals[it.key];
-        if(b.kind==='measure'){ if(v==null||v==='') return ''; return '<tr><td>'+esc(it.label)+'</td><td class="r">'+esc(v)+(it.unit?' '+esc(it.unit):'')+'</td></tr>'; }
-        if(b.kind==='depth'){ if(!v||!v.d) return ''; return '<tr><td>'+esc(it.label)+' tread</td><td class="r">'+esc(v.d)+'%</td></tr>'; }
+        if(b.kind==='measure'){ if(v==null||v==='') return ''; return '<tr><td>'+esc(it.label)+'</td><td>'+esc(v)+(it.unit?' '+esc(it.unit):'')+'</td></tr>'; }
+        if(b.kind==='depth'){ if(!v||!v.d) return ''; return '<tr><td>'+esc(it.label)+' tread</td><td>'+esc(v.d)+'%</td></tr>'; }
         if(b.kind==='condition'){ var dt=vals[it.dotKey]; if((!v||!v.s)&&!dt) return ''; return '<tr><td>'+esc(it.label)+' tire</td><td>'+((v&&v.s)?pmsDot(v.s)+' '+pmsStateLabel(v.s):'—')+(dt?' · DOT '+esc(dt):'')+'</td></tr>'; }
         if(b.kind==='yesno'){ if(!v||!v.v) return ''; return '<tr><td>'+esc(it.label)+'</td><td>'+esc(v.v)+'</td></tr>'; }
         if(b.kind==='check'){ if(!v) return ''; return '<tr><td>'+esc(it.label)+'</td><td>'+(v.c?'✓ done':'—')+(v.n?' · '+esc(v.n):'')+'</td></tr>'; }
@@ -6532,16 +6574,17 @@ function docPMS(j){
       }).join('');
     }).join('');
     var sph=pmsPhotoImgs((vals[pmsSecPhotoKey(sec)]&&vals[pmsSecPhotoKey(sec)].photos)||[]);
-    if(!rows && !sph) return '';
-    return '<div class="dtitle" style="font-size:13px;margin-top:10px">'+esc(sec.title)+'</div>'+
-      (rows?'<table><tbody>'+rows+'</tbody></table>':'')+
-      (sph?'<div style="margin-top:4px">'+sph+'</div>':'');
+    var content=(rows?'<table class="pms-rpt"><tbody>'+rows+'</tbody></table>':'')+(sph?'<div style="margin-top:4px">'+sph+'</div>':'');
+    var last=(si===N-1);
+    return '<section class="pms-page'+(last?'':' pms-brk')+'">'+
+      (si===0 ? docHeader('Multipoint Inspection Report · '+j.plate)+pmsDocMeta(j, r) : '')+
+      '<div class="dtitle" style="font-size:13px">'+esc(sec.title)+'</div>'+
+      (content || '<p class="pms-empty">No items recorded for this section.</p>')+
+      (last ? sigs : '')+
+      '<div class="pms-pgfoot">'+(si+1)+' / '+N+'</div>'+
+    '</section>';
   }).join('');
-  var sigs='<div class="sig-grid">'+
-    '<div class="sigline">'+(r.sigTech?'<img class="sigimg" src="'+r.sigTech+'"/>':'')+'Technician'+(r.mechanicId?' · '+esc(staffName(r.mechanicId)):'')+'</div>'+
-    '<div class="sigline">'+(r.sigClient?'<img class="sigimg" src="'+r.sigClient+'"/>':'')+'Client</div>'+
-    '<div class="sigline">Service Adviser'+(r.saId?' · '+esc(staffName(r.saId)):'')+'</div></div>';
-  return docShell('PMS · '+j.plate, '<h2 style="margin:0 0 6px">Multipoint Inspection Report</h2>'+head+body+sigs);
+  return docShell('PMS · '+j.plate, pages);
 }
 function printPMS(id){ var j=jobById(id); if(j) printDoc(docPMS(j)); }
 

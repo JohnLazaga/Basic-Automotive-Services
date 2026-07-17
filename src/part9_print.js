@@ -33,6 +33,15 @@ function printCSS(){
     '.totbox{margin-left:auto;width:300px;font-size:13px}.totbox .l2{display:flex;justify-content:space-between;padding:3px 0}'+
     '.totbox .grand{border-top:2px solid #1D1D1F;font-weight:800;font-size:15px;padding-top:6px;margin-top:4px}'+
     '@media print{body{padding:0}.doc{max-width:100%}}'+
+    /* ---- PMS report: single-column meta, one section per page, page footers ---- */
+    '.pms-meta{font-size:12.5px;margin-bottom:14px}'+
+    '.pms-meta>div{display:flex;gap:10px;padding:3px 0;border-bottom:1px solid #F0F0F2}'+
+    '.pms-meta>div span{min-width:120px;color:#6E6E73}.pms-meta>div b{color:#1D1D1F}'+
+    '.pms-rpt{table-layout:fixed}.pms-rpt td:first-child{width:56%}.pms-rpt td:last-child{width:44%}'+
+    '.pms-page{display:flex;flex-direction:column}.pms-brk{page-break-after:always}'+
+    '.pms-pgfoot{margin-top:auto;padding-top:10px;border-top:1px solid #E5E5EA;text-align:center;font-size:10.5px;color:#6E6E73}'+
+    '.pms-empty{color:#8E8E93;font-size:12px;margin:6px 0}'+
+    '@media print{.pms-page{min-height:100vh}}'+
   '</style>';
 }
 function docHeader(title){
