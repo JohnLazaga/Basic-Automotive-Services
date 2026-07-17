@@ -282,10 +282,13 @@ async function cloudFetchState(){
     var snap = await bcol(c).get();
     st[c] = snap.docs.map(function(d){ return d.data(); });
   }
-  // photos live in their own collection (one doc each) — load + attach to jobs
+  // photos live in their own collections (one doc each) — load + attach to jobs
   var psnap = await bcol('jobphotos').get();
   indexJobPhotos(psnap.docs);
   attachJobPhotos(st.jobs, st.jobs);   // st.jobs may also carry legacy embedded photos; attachJobPhotos keeps those not yet in the collection (they auto-migrate on next save)
+  var ppsnap = await bcol('pmsphotos').get();
+  indexPmsPhotos(ppsnap.docs);
+  attachPmsPhotos(st.jobs, st.jobs);   // same for PMS inspection photos (legacy embedded ones auto-migrate on next save)
   return st;
 }
 
@@ -300,6 +303,9 @@ async function cloudMigrate(base){
         // photos → their own docs; job doc goes in without photo bytes
         var phs = Array.isArray(rec.photos)? rec.photos : [];
         for (var pi=0; pi<phs.length; pi++){ var p=phs[pi]; if(p&&p.id&&p.data){ try{ await bcol('jobphotos').doc(p.id).set(plain(photoDocForm(rec.id, p))); }catch(e){ console.error('migrate jobphoto', e); } } }
+        var pmv = _jobPmsVals(rec);   // PMS inspection photos → pmsphotos docs
+        if (pmv){ for (var mk in pmv){ if(!_own(pmv,mk)) continue; var mvv=pmv[mk]; if(!mvv||!Array.isArray(mvv.photos)) continue;
+          for (var mj=0; mj<mvv.photos.length; mj++){ var md=mvv.photos[mj]; if(md){ try{ await bcol('pmsphotos').doc(pmsPhotoDocId(rec.id,mk,md)).set(plain({jobId:rec.id,key:mk,ord:mj,data:md})); }catch(e){ console.error('migrate pmsphoto', e); } } } } }
         await bcol(c).doc(rec.id).set(plain(jobDocForCloud(rec)));
       } else {
         await bcol(c).doc(rec.id).set(plain(rec));
@@ -348,7 +354,8 @@ async function cloudPersist(){
       if(!cur[did]){ try { await bcol(c).doc(did).delete(); delete prev[did]; } catch(e){ console.error('del '+c+'/'+did, e); } }
     }
   }
-  await cloudPersistPhotos();     // photos sync as their own docs in `jobphotos`
+  await cloudPersistPhotos();     // job photos sync as their own docs in `jobphotos`
+  await cloudPersistPmsPhotos();  // PMS inspection photos sync as their own docs in `pmsphotos`
 }
 
 function rememberSnap(){
@@ -371,13 +378,94 @@ var _photoSnap = {};       /* photoId -> jsonString, for the write-diff */
 
 function photoDocForm(jobId, p){ return { id:p.id, jobId:jobId, data:p.data||'', caption:p.caption||'', ts:p.ts||'' }; }
 
-/* Job document written to Firestore carries NO photo bytes — photos are their
-   own docs. Keeps the job record tiny and immune to the 1 MB limit. */
+/* ---- PMS inspection photos: offloaded to their own `pmsphotos` collection, the
+   same way job photos live in `jobphotos`. They're stored in-memory as base-64
+   strings under j.pms.report.values[key].photos; each becomes its own doc keyed
+   by a content hash (jobId__key__hash) so the job document stays tiny. This is
+   what keeps logins fast and the database under quota. ------------------------ */
+var _pmsByJob = {};        /* jobId -> { valueKey -> [{ord,data}] } */
+var _pmsPhotoSnap = {};    /* pmsphoto docId -> String(ord), the write-diff */
+function _pmsHash(s){ var h=5381,i=(s||'').length; while(i){ h=(h*33)^s.charCodeAt(--i); } return (h>>>0).toString(36); }
+function pmsPhotoDocId(jobId,key,data){ return jobId+'__'+key+'__'+_pmsHash(data); }
+function _jobPmsVals(j){ return (j&&j.pms&&j.pms.report&&j.pms.report.values)||null; }
+function _jobHasPmsPhotos(j){ var v=_jobPmsVals(j); if(!v) return false;
+  for(var k in v){ if(Object.prototype.hasOwnProperty.call(v,k)){ var x=v[k]; if(x&&Array.isArray(x.photos)&&x.photos.length) return true; } } return false; }
+function _own(o,k){ return Object.prototype.hasOwnProperty.call(o,k); }
+
+/* Job document written to Firestore carries NO photo bytes — job photos AND PMS
+   inspection photos are their own docs. Keeps the job record tiny (< 1 MB). The
+   live in-memory job is never mutated (a copy is stripped). */
 function jobDocForCloud(job){
-  if (!job || !Array.isArray(job.photos) || !job.photos.length) return job;
-  var copy = {}; for (var k in job){ if(Object.prototype.hasOwnProperty.call(job,k)) copy[k]=job[k]; }
-  copy.photos = [];
+  var hasJobPh = job && Array.isArray(job.photos) && job.photos.length;
+  var hasPmsPh = _jobHasPmsPhotos(job);
+  if (!hasJobPh && !hasPmsPh) return job;
+  var copy = {}; for (var k in job){ if(_own(job,k)) copy[k]=job[k]; }
+  if (hasJobPh) copy.photos = [];
+  if (hasPmsPh){                                        // deep-copy only pms→report→values, null out photos
+    copy.pms = {}; for (var pk in job.pms){ if(_own(job.pms,pk)) copy.pms[pk]=job.pms[pk]; }
+    copy.pms.report = {}; for (var rk in job.pms.report){ if(_own(job.pms.report,rk)) copy.pms.report[rk]=job.pms.report[rk]; }
+    var src = job.pms.report.values, nv = {};
+    for (var vk in src){ if(!_own(src,vk)) continue; var v = src[vk];
+      if (v && typeof v==='object' && Array.isArray(v.photos) && v.photos.length){
+        var vc = {}; for (var p in v){ if(_own(v,p)) vc[p]=v[p]; } vc.photos = []; nv[vk] = vc;
+      } else nv[vk] = v;
+    }
+    copy.pms.report.values = nv;
+  }
   return copy;
+}
+/* Rebuild the PMS-photo index from a `pmsphotos` snapshot. */
+function indexPmsPhotos(docs){
+  _pmsByJob = {}; _pmsPhotoSnap = {};
+  docs.forEach(function(d){ var p = d.data(); if(!p || !p.jobId || !p.key) return;
+    var ord = (typeof p.ord==='number') ? p.ord : 0;
+    var byKey = (_pmsByJob[p.jobId] = _pmsByJob[p.jobId] || {});
+    (byKey[p.key] = byKey[p.key] || []).push({ ord:ord, data:p.data||'' });
+    _pmsPhotoSnap[d.id] = String(ord);
+  });
+}
+/* Re-attach PMS photos onto each job's report values from the collection,
+   keeping any just-added / legacy-embedded photo not yet echoed by the server
+   (so nothing flickers out and old embedded photos auto-migrate on next save). */
+function attachPmsPhotos(jobs, oldJobs){
+  var oldById = {}; (oldJobs||[]).forEach(function(j){ if(j&&j.id) oldById[j.id]=j; });
+  (jobs||[]).forEach(function(j){
+    var vals = _jobPmsVals(j); if(!vals) return;
+    var byKey = _pmsByJob[j.id] || {};
+    var oldVals = _jobPmsVals(oldById[j.id]);
+    for (var key in vals){ if(!_own(vals,key)) continue;
+      var v = vals[key]; if(!v || typeof v!=='object' || !('photos' in v)) continue;
+      var coll = (byKey[key]||[]).slice();
+      var have = {}; coll.forEach(function(p){ have[_pmsHash(p.data)]=1; });
+      var oldArr = (oldVals && oldVals[key] && Array.isArray(oldVals[key].photos)) ? oldVals[key].photos.slice() : [];
+      oldArr.forEach(function(data,ord){ if(data && !have[_pmsHash(data)]){ coll.push({ord:1000+ord, data:data}); have[_pmsHash(data)]=1; } });
+      coll.sort(function(a,b){ return a.ord-b.ord; });
+      v.photos = coll.map(function(p){ return p.data; });
+    }
+  });
+  return jobs;
+}
+/* Diff every job's PMS photos against the last sync; write new docs, delete
+   removed ones. Called at the end of cloudPersist(). */
+async function cloudPersistPmsPhotos(){
+  if (!FB.ready || !FB.user || _applyingRemote) return;
+  var cur = {};
+  (S.jobs||[]).forEach(function(j){
+    var vals = _jobPmsVals(j); if(!vals) return;
+    for (var key in vals){ if(!_own(vals,key)) continue; var v=vals[key]; if(!v || !Array.isArray(v.photos)) continue;
+      v.photos.forEach(function(data,ord){ if(!data) return; cur[pmsPhotoDocId(j.id,key,data)] = { jobId:j.id, key:key, ord:ord, data:data }; });
+    }
+  });
+  var ids = Object.keys(cur);
+  for (var k=0;k<ids.length;k++){ var id=ids[k], rec=cur[id], mark=String(rec.ord);
+    if (_pmsPhotoSnap[id] === mark) continue;
+    try { await bcol('pmsphotos').doc(id).set(plain(rec)); _pmsPhotoSnap[id]=mark; }
+    catch(e){ console.error('save pmsphoto '+id, e); }
+  }
+  var prevIds = Object.keys(_pmsPhotoSnap);
+  for (var d=0; d<prevIds.length; d++){ var did=prevIds[d];
+    if(!cur[did]){ try{ await bcol('pmsphotos').doc(did).delete(); delete _pmsPhotoSnap[did]; }catch(e){ console.error('del pmsphoto '+did, e); } }
+  }
 }
 /* Attach photos to each job from the collection, preserving any just-added local
    photo not yet echoed back by the server (so it never flickers out). */
@@ -431,7 +519,7 @@ function cloudSubscribe(){
       if (snap.metadata.hasPendingWrites) return;             // ignore our own local writes
       _applyingRemote = true;
       var incoming = snap.docs.map(function(d){ return d.data(); });
-      if (c==='jobs'){ attachJobPhotos(incoming, S.jobs); _cloudSnap[c]={}; incoming.forEach(function(j){ if(j&&j.id) _cloudSnap[c][j.id]=JSON.stringify(jobDocForCloud(j)); }); }
+      if (c==='jobs'){ attachJobPhotos(incoming, S.jobs); attachPmsPhotos(incoming, S.jobs); _cloudSnap[c]={}; incoming.forEach(function(j){ if(j&&j.id) _cloudSnap[c][j.id]=JSON.stringify(jobDocForCloud(j)); }); }
       S[c] = incoming;
       if (c!=='jobs') _cloudSnap[c] = snapMap(S[c]);
       _applyingRemote = false;
@@ -449,6 +537,16 @@ function cloudSubscribe(){
     if (!modalOpen()) render();
   }, function(err){ console.error('listener jobphotos', err); });
   _cloudSubs.push(up);
+  // PMS inspection photos: their own collection, one doc per photo
+  var upp = bcol('pmsphotos').onSnapshot(function(snap){
+    if (snap.metadata.hasPendingWrites) return;                 // ignore our own local writes
+    _applyingRemote = true;
+    indexPmsPhotos(snap.docs);
+    attachPmsPhotos(S.jobs, S.jobs);   // re-attach, keeping any just-added local photo not yet echoed
+    _applyingRemote = false;
+    if (!modalOpen()) render();
+  }, function(err){ console.error('listener pmsphotos', err); });
+  _cloudSubs.push(upp);
   var um = bcol('meta').onSnapshot(function(snap){
     if (snap.metadata.hasPendingWrites) return;
     snap.docs.forEach(function(d){

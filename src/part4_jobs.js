@@ -185,6 +185,7 @@ function jobMatch(j){
 function jobsBodyHTML(){
   var jobs=S.jobs.filter(jobMatch);
   if(!jobs.length) return emptyState(JOB_Q? 'No job orders match “'+esc(JOB_Q)+'”.' : 'No job orders yet. Click New Ingress.');
+  var showPrice = canSeeJobPrices();
   var rows = jobs.map(function(j){
     var veh=(j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:'');
     return '<tr onclick="go(\'job\',\''+j.id+'\')">'+
@@ -193,11 +194,13 @@ function jobsBodyHTML(){
       '<td>'+chip(j.stage, j.stage==='Released'?'ok':j.stage==='Job Order'?'':'gold')+'</td>'+
       '<td>'+statusBadge(j.status)+'</td>'+
       '<td>'+esc(fmtDate(j.dateIn))+'</td>'+
-      '<td class="r">'+peso(jobGross(j))+'</td>'+
-      '<td class="r">'+(jobBalance(j)>0?'<span class="amber">'+peso(jobBalance(j))+'</span>':'—')+'</td></tr>';
+      (showPrice?'<td class="r">'+peso(jobGross(j))+'</td>'+
+        '<td class="r">'+(jobBalance(j)>0?'<span class="amber">'+peso(jobBalance(j))+'</span>':'—')+'</td>':'')+
+      '</tr>';
   }).join('');
   return '<div class="card pad0"><table class="tbl click"><thead><tr>'+
-    '<th>JO #</th><th>Plate / Vehicle</th><th>Stage</th><th>Status</th><th>Date in</th><th class="r">Bill</th><th class="r">Balance</th>'+
+    '<th>JO #</th><th>Plate / Vehicle</th><th>Stage</th><th>Status</th><th>Date in</th>'+
+    (showPrice?'<th class="r">Bill</th><th class="r">Balance</th>':'')+
     '</tr></thead><tbody>'+rows+'</tbody></table></div>';
 }
 function jobsSearch(v){ JOB_Q=v; var el=document.getElementById('jobsBody'); if(el) el.innerHTML=jobsBodyHTML(); }
@@ -239,7 +242,7 @@ VIEWS.job = function(id){
         jobPhotosPanel(j)+
       '</div>'+
       '<div class="colside">'+
-        jobBillPanel(j,bill)+
+        (canSeeJobPrices()?jobBillPanel(j,bill):'')+
         jobAssignPanel(j)+
         jobDetailsPanel(j)+
         jobStagePanel(j,bill)+
@@ -319,18 +322,20 @@ function jobLinesPanel(j){
   // 'billing_edit' permission can still edit them even after billing is done.
   var billed = (j.stage==='Final Billing' || j.stage==='Released');
   var locked = billed && !can('billing_edit');
+  var showPrice = canSeeJobPrices();
   function tbl(type, title){
     var list=(j.lines||[]).filter(function(l){return l.type===type;});
     var rows = list.map(function(l){
       return '<tr>'+
         '<td>'+(type==='part'&&l.sku?'<span class="muted small">'+esc(l.sku)+'</span> ':'')+esc(l.desc)+'</td><td class="r">'+num(l.qty)+'</td>'+
-        '<td class="r">'+peso(l.price)+'</td><td class="r">'+peso(lineTotal(l))+'</td>'+
+        (showPrice?'<td class="r">'+peso(l.price)+'</td><td class="r">'+peso(lineTotal(l))+'</td>':'')+
         '<td class="r">'+(locked?'':'<button class="ic" onclick="editLine(\''+j.id+'\',\''+l.id+'\')">✎</button>'+
           '<button class="ic" onclick="delLine(\''+j.id+'\',\''+l.id+'\')">✕</button>')+'</td></tr>';
-    }).join('') || '<tr><td colspan="5" class="muted center">No '+(type==='part'?'parts':'labor')+' yet.</td></tr>';
+    }).join('') || '<tr><td colspan="'+(showPrice?5:3)+'" class="muted center">No '+(type==='part'?'parts':'labor')+' yet.</td></tr>';
     return '<div class="card"><div class="card-head"><h2>'+title+'</h2>'+
       (locked?'':'<button class="btn sm primary" onclick="addLine(\''+j.id+'\',\''+type+'\')">＋ Add '+(type==='part'?'part':'labor')+'</button>')+'</div>'+
-      '<table class="tbl"><thead><tr><th>'+(type==='part'?'Part':'Description')+'</th><th class="r">Qty</th><th class="r">Price</th><th class="r">Total</th><th></th></tr></thead>'+
+      '<table class="tbl"><thead><tr><th>'+(type==='part'?'Part':'Description')+'</th><th class="r">Qty</th>'+
+        (showPrice?'<th class="r">Price</th><th class="r">Total</th>':'')+'<th></th></tr></thead>'+
       '<tbody>'+rows+'</tbody></table></div>';
   }
   return tbl('part','Parts') + tbl('labor','Labor');

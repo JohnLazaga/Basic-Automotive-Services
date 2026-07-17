@@ -302,7 +302,10 @@ VIEWS.pmsform = function(id){
   }
 
   // sign-off page (step === N)
-  var staffOpts=optionList(S.staff, r.mechanicId||'', false);
+  var picked=pmsMechIds(r);
+  var mechBoxes=mechanicStaff().map(function(m){
+    return '<label class="chk small"><input type="checkbox" class="pmsMechChk" value="'+m.id+'"'+(picked.indexOf(m.id)>=0?' checked':'')+'> '+esc(m.name)+'</label>';
+  }).join('')||'<span class="muted small">No mechanics on staff</span>';
   var saOpts=optionList(S.staff, r.saId||j.saId||'', false);
   var doneCount=PMS_TEMPLATE.filter(function(sec){ return pmsSectionDone(sec, vals); }).length;
   return '<div class="page pms-form">'+head+
@@ -310,7 +313,7 @@ VIEWS.pmsform = function(id){
     '<div class="muted small" style="margin:-4px 0 10px">'+doneCount+' / '+N+' sections complete</div>'+
     pmsSummaryHTML(j)+
     '<div class="card"><h2>Sign-off</h2><div class="grid2">'+
-      field('Performed by (Mechanic)','<select id="pmsMech">'+staffOpts+'</select>')+
+      '<div class="fld"><span class="fld-l">Performed by (Mechanic/s)</span><div class="mechbox" id="pmsMechBox">'+mechBoxes+'</div></div>'+
       field('Service Adviser','<select id="pmsSA">'+saOpts+'</select>')+'</div>'+
       '<div class="grid2">'+
         pmsSigField('Technician signature','pmsSigTech', r.sigTech)+
@@ -326,8 +329,9 @@ function pmsCurrentSave(){
   j.pms=j.pms||{status:'in_progress'};
   j.pms.report=j.pms.report||{values:{}};
   j.pms.report.values=readPmsValues(j.pms.report.values||{});
-  if(document.getElementById('pmsMech')){
-    j.pms.report.mechanicId=val('pmsMech')||j.pms.report.mechanicId||'';
+  if(document.getElementById('pmsSA')){
+    var picked=pmsReadMechChecks();
+    j.pms.report.mechanicIds=picked; j.pms.report.mechanicId=picked[0]||'';
     j.pms.report.saId=val('pmsSA')||j.pms.report.saId||'';
     var st=pmsReadSig('pmsSigTech'); if(st) j.pms.report.sigTech=st;
     var sc=pmsReadSig('pmsSigClient'); if(sc) j.pms.report.sigClient=sc;
@@ -630,10 +634,20 @@ function readPmsValues(into){
   }); });
   return vals;
 }
+/* PMS mechanics — more than one mechanic can perform a PMS. Read the sign-off
+   checkboxes, format the names, and tolerate old single-`mechanicId` reports. */
+function pmsMechIds(r){
+  if(r && Array.isArray(r.mechanicIds)) return r.mechanicIds.filter(Boolean);
+  if(r && r.mechanicId) return [r.mechanicId];
+  return [];
+}
+function pmsMechNames(r){ return pmsMechIds(r).map(function(id){ return staffName(id); }).filter(function(x){ return x && x!=='—' && x!=='TBA'; }).join(', '); }
+function pmsReadMechChecks(){ return Array.prototype.map.call(document.querySelectorAll('.pmsMechChk:checked'), function(c){ return c.value; }); }
 function submitPMS(id){
   var j=jobById(id); if(!j) return;
   pmsCurrentSave();                                  // capture the sign-off fields + persist
-  var mech=val('pmsMech'); if(!mech || !staffById(mech)){ toast('Select who performed the PMS','err'); var e=document.getElementById('pmsMech'); if(e) e.focus(); return; }
+  var mechs=pmsReadMechChecks();
+  if(!mechs.length){ toast('Select who performed the PMS','err'); var mb=document.getElementById('pmsMechBox'); if(mb){ mb.classList.add('needfill'); if(mb.scrollIntoView) mb.scrollIntoView({block:'center'}); } return; }
   var vals=(j.pms&&j.pms.report&&j.pms.report.values)||{};
   for(var i=0;i<PMS_TEMPLATE.length;i++){                // every section must be complete
     if(!pmsSectionDone(PMS_TEMPLATE[i], vals)){
@@ -642,7 +656,7 @@ function submitPMS(id){
     }
   }
   j.pms.report=Object.assign(j.pms.report||{}, {
-    values:vals, mechanicId:mech, saId:val('pmsSA')||j.saId||'',
+    values:vals, mechanicIds:mechs, mechanicId:mechs[0], saId:val('pmsSA')||j.saId||'',
     sigTech:pmsReadSig('pmsSigTech')||j.pms.report.sigTech||'', sigClient:pmsReadSig('pmsSigClient')||j.pms.report.sigClient||'',
     completedAt:new Date().toISOString()
   });
@@ -664,7 +678,7 @@ function pmsReportPanel(j){
     : '<li class="muted">All inspected items OK.</li>';
   return '<div class="card"><div class="card-head"><h2>PMS Inspection</h2>'+
     '<button class="btn sm ghost" onclick="printPMS(\''+j.id+'\')">⎙ Report</button></div>'+
-    '<div class="muted small">Completed '+esc(fmtDateTime(r.completedAt))+' · by '+esc(staffName(r.mechanicId))+'</div>'+
+    '<div class="muted small">Completed '+esc(fmtDateTime(r.completedAt))+' · by '+esc(pmsMechNames(r)||'—')+'</div>'+
     '<ul class="pms-flags">'+rows+'</ul></div>';
 }
 /* Items needing attention or replacement (for the summary + portal highlights). */
@@ -771,16 +785,16 @@ function pmsDocMeta(j, r){
     '<div><span>JO #</span><b>'+esc(j.no)+'</b></div>'+
     '<div><span>Odometer</span><b>'+odo(j.odometer)+'</b></div>'+
     '<div><span>Completed</span><b>'+esc(fmtDateTime(r.completedAt))+'</b></div>'+
-    '<div><span>Performed by</span><b>'+esc(staffName(r.mechanicId))+'</b></div></div>';
+    '<div><span>Performed by</span><b>'+esc(pmsMechNames(r)||'—')+'</b></div></div>';
 }
 function docPMS(j){
   var r=pmsReport(j)||{values:{}}; var vals=r.values||{};
-  var N=PMS_TEMPLATE.length;
+  var mechs=pmsMechNames(r);
   var sigs='<div class="sig-grid">'+
-    '<div class="sigline">'+(r.sigTech?'<img class="sigimg" src="'+r.sigTech+'"/>':'')+'Technician'+(r.mechanicId?' · '+esc(staffName(r.mechanicId)):'')+'</div>'+
+    '<div class="sigline">'+(r.sigTech?'<img class="sigimg" src="'+r.sigTech+'"/>':'')+'Technician'+(mechs?' · '+esc(mechs):'')+'</div>'+
     '<div class="sigline">'+(r.sigClient?'<img class="sigimg" src="'+r.sigClient+'"/>':'')+'Client</div>'+
     '<div class="sigline">Service Adviser'+(r.saId?' · '+esc(staffName(r.saId)):'')+'</div></div>';
-  var pages=PMS_TEMPLATE.map(function(sec, si){
+  var body=PMS_TEMPLATE.map(function(sec, si){
     var rows=pmsLeafBlocks(sec).map(function(b){
       if(b.kind==='text'){ var out=''; if(b.yn){ var yv=vals[b.yn.key]; if(yv&&yv.v) out+='<tr><td>'+esc(b.yn.label)+'</td><td><b>'+esc(yv.v)+'</b></td></tr>'; }
         var t=vals[b.key]; if(t) out+= b.labeled ? '<tr><td>'+esc(b.label)+'</td><td>'+esc(t)+'</td></tr>' : '<tr><td colspan="2">'+esc(t)+'</td></tr>'; return out; }
@@ -803,17 +817,14 @@ function docPMS(j){
       }).join('');
     }).join('');
     var sph=pmsPhotoImgs((vals[pmsSecPhotoKey(sec)]&&vals[pmsSecPhotoKey(sec)].photos)||[]);
-    var content=(rows?'<table class="pms-rpt"><tbody>'+rows+'</tbody></table>':'')+(sph?'<div style="margin-top:4px">'+sph+'</div>':'');
-    var last=(si===N-1);
-    return '<section class="pms-page'+(last?'':' pms-brk')+'">'+
-      (si===0 ? docHeader('Multipoint Inspection Report · '+j.plate)+pmsDocMeta(j, r) : '')+
-      '<div class="dtitle" style="font-size:13px">'+esc(sec.title)+'</div>'+
-      (content || '<p class="pms-empty">No items recorded for this section.</p>')+
-      (last ? sigs : '')+
-      '<div class="pms-pgfoot">'+(si+1)+' / '+N+'</div>'+
-    '</section>';
+    if(!rows && !sph) return '';   // skip empty sections — no wasted paper
+    // Flow sections continuously (rows packed) to conserve paper. Keep each
+    // section's title with its first rows so a heading never orphans at a break.
+    return '<div class="pms-sec-blk"><div class="dtitle" style="font-size:12.5px;margin-top:12px">'+esc(sec.title)+'</div>'+
+      (rows?'<table class="pms-rpt"><tbody>'+rows+'</tbody></table>':'')+
+      (sph?'<div style="margin-top:4px">'+sph+'</div>':'')+'</div>';
   }).join('');
-  return docShell('PMS · '+j.plate, pages);
+  return docShell('PMS · '+j.plate, docHeader('Multipoint Inspection Report · '+j.plate)+pmsDocMeta(j, r)+body+sigs);
 }
 function printPMS(id){ var j=jobById(id); if(j) printDoc(docPMS(j)); }
 

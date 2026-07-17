@@ -53,6 +53,13 @@ function isAdminOrSV(){
   if (typeof CURRENT_USER==='undefined' || !CURRENT_USER) return true;
   return !!CURRENT_USER.isAdmin || CURRENT_USER.role==='SV';
 }
+/* Prices on the Job Order (running bill + line prices, list totals) are visible
+   only to Admin, Supervisor, Secretary and Parts Salesman. Local / pre-auth true. */
+function canSeeJobPrices(){
+  if (typeof CURRENT_USER==='undefined' || !CURRENT_USER) return true;
+  var role=CURRENT_USER.role;
+  return !!CURRENT_USER.isAdmin || role==='SV' || role==='Secretary' || role==='Parts Salesman';
+}
 
 /* The single access check used everywhere. */
 function can(cap){

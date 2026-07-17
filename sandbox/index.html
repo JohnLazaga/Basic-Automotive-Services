@@ -565,7 +565,7 @@ var BRANCH = {"id":"sandbox","slug":"sandbox","name":"Basic by JMSI — Sandbox 
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.2.0 · 2026-07-17 · d326c81';
+var APP_VERSION = 'v1.2.0 · 2026-07-17 · 17836e4';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -2017,6 +2017,7 @@ function jobMatch(j){
 function jobsBodyHTML(){
   var jobs=S.jobs.filter(jobMatch);
   if(!jobs.length) return emptyState(JOB_Q? 'No job orders match “'+esc(JOB_Q)+'”.' : 'No job orders yet. Click New Ingress.');
+  var showPrice = canSeeJobPrices();
   var rows = jobs.map(function(j){
     var veh=(j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:'');
     return '<tr onclick="go(\'job\',\''+j.id+'\')">'+
@@ -2025,11 +2026,13 @@ function jobsBodyHTML(){
       '<td>'+chip(j.stage, j.stage==='Released'?'ok':j.stage==='Job Order'?'':'gold')+'</td>'+
       '<td>'+statusBadge(j.status)+'</td>'+
       '<td>'+esc(fmtDate(j.dateIn))+'</td>'+
-      '<td class="r">'+peso(jobGross(j))+'</td>'+
-      '<td class="r">'+(jobBalance(j)>0?'<span class="amber">'+peso(jobBalance(j))+'</span>':'—')+'</td></tr>';
+      (showPrice?'<td class="r">'+peso(jobGross(j))+'</td>'+
+        '<td class="r">'+(jobBalance(j)>0?'<span class="amber">'+peso(jobBalance(j))+'</span>':'—')+'</td>':'')+
+      '</tr>';
   }).join('');
   return '<div class="card pad0"><table class="tbl click"><thead><tr>'+
-    '<th>JO #</th><th>Plate / Vehicle</th><th>Stage</th><th>Status</th><th>Date in</th><th class="r">Bill</th><th class="r">Balance</th>'+
+    '<th>JO #</th><th>Plate / Vehicle</th><th>Stage</th><th>Status</th><th>Date in</th>'+
+    (showPrice?'<th class="r">Bill</th><th class="r">Balance</th>':'')+
     '</tr></thead><tbody>'+rows+'</tbody></table></div>';
 }
 function jobsSearch(v){ JOB_Q=v; var el=document.getElementById('jobsBody'); if(el) el.innerHTML=jobsBodyHTML(); }
@@ -2071,7 +2074,7 @@ VIEWS.job = function(id){
         jobPhotosPanel(j)+
       '</div>'+
       '<div class="colside">'+
-        jobBillPanel(j,bill)+
+        (canSeeJobPrices()?jobBillPanel(j,bill):'')+
         jobAssignPanel(j)+
         jobDetailsPanel(j)+
         jobStagePanel(j,bill)+
@@ -2151,18 +2154,20 @@ function jobLinesPanel(j){
   // 'billing_edit' permission can still edit them even after billing is done.
   var billed = (j.stage==='Final Billing' || j.stage==='Released');
   var locked = billed && !can('billing_edit');
+  var showPrice = canSeeJobPrices();
   function tbl(type, title){
     var list=(j.lines||[]).filter(function(l){return l.type===type;});
     var rows = list.map(function(l){
       return '<tr>'+
         '<td>'+(type==='part'&&l.sku?'<span class="muted small">'+esc(l.sku)+'</span> ':'')+esc(l.desc)+'</td><td class="r">'+num(l.qty)+'</td>'+
-        '<td class="r">'+peso(l.price)+'</td><td class="r">'+peso(lineTotal(l))+'</td>'+
+        (showPrice?'<td class="r">'+peso(l.price)+'</td><td class="r">'+peso(lineTotal(l))+'</td>':'')+
         '<td class="r">'+(locked?'':'<button class="ic" onclick="editLine(\''+j.id+'\',\''+l.id+'\')">✎</button>'+
           '<button class="ic" onclick="delLine(\''+j.id+'\',\''+l.id+'\')">✕</button>')+'</td></tr>';
-    }).join('') || '<tr><td colspan="5" class="muted center">No '+(type==='part'?'parts':'labor')+' yet.</td></tr>';
+    }).join('') || '<tr><td colspan="'+(showPrice?5:3)+'" class="muted center">No '+(type==='part'?'parts':'labor')+' yet.</td></tr>';
     return '<div class="card"><div class="card-head"><h2>'+title+'</h2>'+
       (locked?'':'<button class="btn sm primary" onclick="addLine(\''+j.id+'\',\''+type+'\')">＋ Add '+(type==='part'?'part':'labor')+'</button>')+'</div>'+
-      '<table class="tbl"><thead><tr><th>'+(type==='part'?'Part':'Description')+'</th><th class="r">Qty</th><th class="r">Price</th><th class="r">Total</th><th></th></tr></thead>'+
+      '<table class="tbl"><thead><tr><th>'+(type==='part'?'Part':'Description')+'</th><th class="r">Qty</th>'+
+        (showPrice?'<th class="r">Price</th><th class="r">Total</th>':'')+'<th></th></tr></thead>'+
       '<tbody>'+rows+'</tbody></table></div>';
   }
   return tbl('part','Parts') + tbl('labor','Labor');
@@ -3893,15 +3898,13 @@ function printCSS(){
     '.totbox{margin-left:auto;width:300px;font-size:13px}.totbox .l2{display:flex;justify-content:space-between;padding:3px 0}'+
     '.totbox .grand{border-top:2px solid #1D1D1F;font-weight:800;font-size:15px;padding-top:6px;margin-top:4px}'+
     '@media print{body{padding:0}.doc{max-width:100%}}'+
-    /* ---- PMS report: single-column meta, one section per page, page footers ---- */
+    /* ---- PMS report: single-column meta, neat fixed value column, rows packed to save paper ---- */
     '.pms-meta{font-size:12.5px;margin-bottom:14px}'+
     '.pms-meta>div{display:flex;gap:10px;padding:3px 0;border-bottom:1px solid #F0F0F2}'+
     '.pms-meta>div span{min-width:120px;color:#6E6E73}.pms-meta>div b{color:#1D1D1F}'+
-    '.pms-rpt{table-layout:fixed}.pms-rpt td:first-child{width:56%}.pms-rpt td:last-child{width:44%}'+
-    '.pms-page{display:flex;flex-direction:column}.pms-brk{page-break-after:always}'+
-    '.pms-pgfoot{margin-top:auto;padding-top:10px;border-top:1px solid #E5E5EA;text-align:center;font-size:10.5px;color:#6E6E73}'+
-    '.pms-empty{color:#8E8E93;font-size:12px;margin:6px 0}'+
-    '@media print{.pms-page{min-height:100vh}}'+
+    '.pms-rpt{table-layout:fixed;margin:4px 0}.pms-rpt td:first-child{width:56%}.pms-rpt td:last-child{width:44%}.pms-rpt td{padding:3px 8px}'+
+    '.pms-sec-blk .dtitle{page-break-after:avoid;margin-bottom:2px}'+       /* keep a heading with its rows, but let sections flow */
+    '.pms-pgfoot{margin-top:16px;padding-top:8px;border-top:1px solid #E5E5EA;text-align:center;font-size:10.5px;color:#6E6E73}'+
   '</style>';
 }
 function docHeader(title){
@@ -4266,7 +4269,7 @@ function portalDataForVehicle(v){
           addl:(j.addlWork||[]).filter(function(a){return a.approved;}).map(function(a){ return { desc:a.desc, amount:Number(a.amount)||0 }; }),
           vatable:b.vatable, vat:b.vat, exempt:!!b.exempt, disc:b.disc, gross:b.gross, vatRate:Number((S.shop||{}).vatRate)||12,
           supervisor:staffNameIfRole(j.approvedReleaseBy,'SV'), secretary:staffNameIfRole(j.paymentReceivedBy,'Secretary'),
-        pms:(j.pms&&j.pms.report)? { values:j.pms.report.values||{}, completedAt:j.pms.report.completedAt||'', mechanic:staffName(j.pms.report.mechanicId), sigTech:j.pms.report.sigTech||'', sigClient:j.pms.report.sigClient||'' } : null
+        pms:(j.pms&&j.pms.report)? { values:j.pms.report.values||{}, completedAt:j.pms.report.completedAt||'', mechanic:pmsMechNames(j.pms.report), sigTech:j.pms.report.sigTech||'', sigClient:j.pms.report.sigClient||'' } : null
         }
       };
     }),
@@ -4815,10 +4818,13 @@ async function cloudFetchState(){
     var snap = await bcol(c).get();
     st[c] = snap.docs.map(function(d){ return d.data(); });
   }
-  // photos live in their own collection (one doc each) — load + attach to jobs
+  // photos live in their own collections (one doc each) — load + attach to jobs
   var psnap = await bcol('jobphotos').get();
   indexJobPhotos(psnap.docs);
   attachJobPhotos(st.jobs, st.jobs);   // st.jobs may also carry legacy embedded photos; attachJobPhotos keeps those not yet in the collection (they auto-migrate on next save)
+  var ppsnap = await bcol('pmsphotos').get();
+  indexPmsPhotos(ppsnap.docs);
+  attachPmsPhotos(st.jobs, st.jobs);   // same for PMS inspection photos (legacy embedded ones auto-migrate on next save)
   return st;
 }
 
@@ -4833,6 +4839,9 @@ async function cloudMigrate(base){
         // photos → their own docs; job doc goes in without photo bytes
         var phs = Array.isArray(rec.photos)? rec.photos : [];
         for (var pi=0; pi<phs.length; pi++){ var p=phs[pi]; if(p&&p.id&&p.data){ try{ await bcol('jobphotos').doc(p.id).set(plain(photoDocForm(rec.id, p))); }catch(e){ console.error('migrate jobphoto', e); } } }
+        var pmv = _jobPmsVals(rec);   // PMS inspection photos → pmsphotos docs
+        if (pmv){ for (var mk in pmv){ if(!_own(pmv,mk)) continue; var mvv=pmv[mk]; if(!mvv||!Array.isArray(mvv.photos)) continue;
+          for (var mj=0; mj<mvv.photos.length; mj++){ var md=mvv.photos[mj]; if(md){ try{ await bcol('pmsphotos').doc(pmsPhotoDocId(rec.id,mk,md)).set(plain({jobId:rec.id,key:mk,ord:mj,data:md})); }catch(e){ console.error('migrate pmsphoto', e); } } } } }
         await bcol(c).doc(rec.id).set(plain(jobDocForCloud(rec)));
       } else {
         await bcol(c).doc(rec.id).set(plain(rec));
@@ -4881,7 +4890,8 @@ async function cloudPersist(){
       if(!cur[did]){ try { await bcol(c).doc(did).delete(); delete prev[did]; } catch(e){ console.error('del '+c+'/'+did, e); } }
     }
   }
-  await cloudPersistPhotos();     // photos sync as their own docs in `jobphotos`
+  await cloudPersistPhotos();     // job photos sync as their own docs in `jobphotos`
+  await cloudPersistPmsPhotos();  // PMS inspection photos sync as their own docs in `pmsphotos`
 }
 
 function rememberSnap(){
@@ -4904,13 +4914,94 @@ var _photoSnap = {};       /* photoId -> jsonString, for the write-diff */
 
 function photoDocForm(jobId, p){ return { id:p.id, jobId:jobId, data:p.data||'', caption:p.caption||'', ts:p.ts||'' }; }
 
-/* Job document written to Firestore carries NO photo bytes — photos are their
-   own docs. Keeps the job record tiny and immune to the 1 MB limit. */
+/* ---- PMS inspection photos: offloaded to their own `pmsphotos` collection, the
+   same way job photos live in `jobphotos`. They're stored in-memory as base-64
+   strings under j.pms.report.values[key].photos; each becomes its own doc keyed
+   by a content hash (jobId__key__hash) so the job document stays tiny. This is
+   what keeps logins fast and the database under quota. ------------------------ */
+var _pmsByJob = {};        /* jobId -> { valueKey -> [{ord,data}] } */
+var _pmsPhotoSnap = {};    /* pmsphoto docId -> String(ord), the write-diff */
+function _pmsHash(s){ var h=5381,i=(s||'').length; while(i){ h=(h*33)^s.charCodeAt(--i); } return (h>>>0).toString(36); }
+function pmsPhotoDocId(jobId,key,data){ return jobId+'__'+key+'__'+_pmsHash(data); }
+function _jobPmsVals(j){ return (j&&j.pms&&j.pms.report&&j.pms.report.values)||null; }
+function _jobHasPmsPhotos(j){ var v=_jobPmsVals(j); if(!v) return false;
+  for(var k in v){ if(Object.prototype.hasOwnProperty.call(v,k)){ var x=v[k]; if(x&&Array.isArray(x.photos)&&x.photos.length) return true; } } return false; }
+function _own(o,k){ return Object.prototype.hasOwnProperty.call(o,k); }
+
+/* Job document written to Firestore carries NO photo bytes — job photos AND PMS
+   inspection photos are their own docs. Keeps the job record tiny (< 1 MB). The
+   live in-memory job is never mutated (a copy is stripped). */
 function jobDocForCloud(job){
-  if (!job || !Array.isArray(job.photos) || !job.photos.length) return job;
-  var copy = {}; for (var k in job){ if(Object.prototype.hasOwnProperty.call(job,k)) copy[k]=job[k]; }
-  copy.photos = [];
+  var hasJobPh = job && Array.isArray(job.photos) && job.photos.length;
+  var hasPmsPh = _jobHasPmsPhotos(job);
+  if (!hasJobPh && !hasPmsPh) return job;
+  var copy = {}; for (var k in job){ if(_own(job,k)) copy[k]=job[k]; }
+  if (hasJobPh) copy.photos = [];
+  if (hasPmsPh){                                        // deep-copy only pms→report→values, null out photos
+    copy.pms = {}; for (var pk in job.pms){ if(_own(job.pms,pk)) copy.pms[pk]=job.pms[pk]; }
+    copy.pms.report = {}; for (var rk in job.pms.report){ if(_own(job.pms.report,rk)) copy.pms.report[rk]=job.pms.report[rk]; }
+    var src = job.pms.report.values, nv = {};
+    for (var vk in src){ if(!_own(src,vk)) continue; var v = src[vk];
+      if (v && typeof v==='object' && Array.isArray(v.photos) && v.photos.length){
+        var vc = {}; for (var p in v){ if(_own(v,p)) vc[p]=v[p]; } vc.photos = []; nv[vk] = vc;
+      } else nv[vk] = v;
+    }
+    copy.pms.report.values = nv;
+  }
   return copy;
+}
+/* Rebuild the PMS-photo index from a `pmsphotos` snapshot. */
+function indexPmsPhotos(docs){
+  _pmsByJob = {}; _pmsPhotoSnap = {};
+  docs.forEach(function(d){ var p = d.data(); if(!p || !p.jobId || !p.key) return;
+    var ord = (typeof p.ord==='number') ? p.ord : 0;
+    var byKey = (_pmsByJob[p.jobId] = _pmsByJob[p.jobId] || {});
+    (byKey[p.key] = byKey[p.key] || []).push({ ord:ord, data:p.data||'' });
+    _pmsPhotoSnap[d.id] = String(ord);
+  });
+}
+/* Re-attach PMS photos onto each job's report values from the collection,
+   keeping any just-added / legacy-embedded photo not yet echoed by the server
+   (so nothing flickers out and old embedded photos auto-migrate on next save). */
+function attachPmsPhotos(jobs, oldJobs){
+  var oldById = {}; (oldJobs||[]).forEach(function(j){ if(j&&j.id) oldById[j.id]=j; });
+  (jobs||[]).forEach(function(j){
+    var vals = _jobPmsVals(j); if(!vals) return;
+    var byKey = _pmsByJob[j.id] || {};
+    var oldVals = _jobPmsVals(oldById[j.id]);
+    for (var key in vals){ if(!_own(vals,key)) continue;
+      var v = vals[key]; if(!v || typeof v!=='object' || !('photos' in v)) continue;
+      var coll = (byKey[key]||[]).slice();
+      var have = {}; coll.forEach(function(p){ have[_pmsHash(p.data)]=1; });
+      var oldArr = (oldVals && oldVals[key] && Array.isArray(oldVals[key].photos)) ? oldVals[key].photos.slice() : [];
+      oldArr.forEach(function(data,ord){ if(data && !have[_pmsHash(data)]){ coll.push({ord:1000+ord, data:data}); have[_pmsHash(data)]=1; } });
+      coll.sort(function(a,b){ return a.ord-b.ord; });
+      v.photos = coll.map(function(p){ return p.data; });
+    }
+  });
+  return jobs;
+}
+/* Diff every job's PMS photos against the last sync; write new docs, delete
+   removed ones. Called at the end of cloudPersist(). */
+async function cloudPersistPmsPhotos(){
+  if (!FB.ready || !FB.user || _applyingRemote) return;
+  var cur = {};
+  (S.jobs||[]).forEach(function(j){
+    var vals = _jobPmsVals(j); if(!vals) return;
+    for (var key in vals){ if(!_own(vals,key)) continue; var v=vals[key]; if(!v || !Array.isArray(v.photos)) continue;
+      v.photos.forEach(function(data,ord){ if(!data) return; cur[pmsPhotoDocId(j.id,key,data)] = { jobId:j.id, key:key, ord:ord, data:data }; });
+    }
+  });
+  var ids = Object.keys(cur);
+  for (var k=0;k<ids.length;k++){ var id=ids[k], rec=cur[id], mark=String(rec.ord);
+    if (_pmsPhotoSnap[id] === mark) continue;
+    try { await bcol('pmsphotos').doc(id).set(plain(rec)); _pmsPhotoSnap[id]=mark; }
+    catch(e){ console.error('save pmsphoto '+id, e); }
+  }
+  var prevIds = Object.keys(_pmsPhotoSnap);
+  for (var d=0; d<prevIds.length; d++){ var did=prevIds[d];
+    if(!cur[did]){ try{ await bcol('pmsphotos').doc(did).delete(); delete _pmsPhotoSnap[did]; }catch(e){ console.error('del pmsphoto '+did, e); } }
+  }
 }
 /* Attach photos to each job from the collection, preserving any just-added local
    photo not yet echoed back by the server (so it never flickers out). */
@@ -4964,7 +5055,7 @@ function cloudSubscribe(){
       if (snap.metadata.hasPendingWrites) return;             // ignore our own local writes
       _applyingRemote = true;
       var incoming = snap.docs.map(function(d){ return d.data(); });
-      if (c==='jobs'){ attachJobPhotos(incoming, S.jobs); _cloudSnap[c]={}; incoming.forEach(function(j){ if(j&&j.id) _cloudSnap[c][j.id]=JSON.stringify(jobDocForCloud(j)); }); }
+      if (c==='jobs'){ attachJobPhotos(incoming, S.jobs); attachPmsPhotos(incoming, S.jobs); _cloudSnap[c]={}; incoming.forEach(function(j){ if(j&&j.id) _cloudSnap[c][j.id]=JSON.stringify(jobDocForCloud(j)); }); }
       S[c] = incoming;
       if (c!=='jobs') _cloudSnap[c] = snapMap(S[c]);
       _applyingRemote = false;
@@ -4982,6 +5073,16 @@ function cloudSubscribe(){
     if (!modalOpen()) render();
   }, function(err){ console.error('listener jobphotos', err); });
   _cloudSubs.push(up);
+  // PMS inspection photos: their own collection, one doc per photo
+  var upp = bcol('pmsphotos').onSnapshot(function(snap){
+    if (snap.metadata.hasPendingWrites) return;                 // ignore our own local writes
+    _applyingRemote = true;
+    indexPmsPhotos(snap.docs);
+    attachPmsPhotos(S.jobs, S.jobs);   // re-attach, keeping any just-added local photo not yet echoed
+    _applyingRemote = false;
+    if (!modalOpen()) render();
+  }, function(err){ console.error('listener pmsphotos', err); });
+  _cloudSubs.push(upp);
   var um = bcol('meta').onSnapshot(function(snap){
     if (snap.metadata.hasPendingWrites) return;
     snap.docs.forEach(function(d){
@@ -5374,6 +5475,13 @@ function isAdminUser(){ return !!(CURRENT_USER && CURRENT_USER.isAdmin); }
 function isAdminOrSV(){
   if (typeof CURRENT_USER==='undefined' || !CURRENT_USER) return true;
   return !!CURRENT_USER.isAdmin || CURRENT_USER.role==='SV';
+}
+/* Prices on the Job Order (running bill + line prices, list totals) are visible
+   only to Admin, Supervisor, Secretary and Parts Salesman. Local / pre-auth true. */
+function canSeeJobPrices(){
+  if (typeof CURRENT_USER==='undefined' || !CURRENT_USER) return true;
+  var role=CURRENT_USER.role;
+  return !!CURRENT_USER.isAdmin || role==='SV' || role==='Secretary' || role==='Parts Salesman';
 }
 
 /* The single access check used everywhere. */
@@ -6073,7 +6181,10 @@ VIEWS.pmsform = function(id){
   }
 
   // sign-off page (step === N)
-  var staffOpts=optionList(S.staff, r.mechanicId||'', false);
+  var picked=pmsMechIds(r);
+  var mechBoxes=mechanicStaff().map(function(m){
+    return '<label class="chk small"><input type="checkbox" class="pmsMechChk" value="'+m.id+'"'+(picked.indexOf(m.id)>=0?' checked':'')+'> '+esc(m.name)+'</label>';
+  }).join('')||'<span class="muted small">No mechanics on staff</span>';
   var saOpts=optionList(S.staff, r.saId||j.saId||'', false);
   var doneCount=PMS_TEMPLATE.filter(function(sec){ return pmsSectionDone(sec, vals); }).length;
   return '<div class="page pms-form">'+head+
@@ -6081,7 +6192,7 @@ VIEWS.pmsform = function(id){
     '<div class="muted small" style="margin:-4px 0 10px">'+doneCount+' / '+N+' sections complete</div>'+
     pmsSummaryHTML(j)+
     '<div class="card"><h2>Sign-off</h2><div class="grid2">'+
-      field('Performed by (Mechanic)','<select id="pmsMech">'+staffOpts+'</select>')+
+      '<div class="fld"><span class="fld-l">Performed by (Mechanic/s)</span><div class="mechbox" id="pmsMechBox">'+mechBoxes+'</div></div>'+
       field('Service Adviser','<select id="pmsSA">'+saOpts+'</select>')+'</div>'+
       '<div class="grid2">'+
         pmsSigField('Technician signature','pmsSigTech', r.sigTech)+
@@ -6097,8 +6208,9 @@ function pmsCurrentSave(){
   j.pms=j.pms||{status:'in_progress'};
   j.pms.report=j.pms.report||{values:{}};
   j.pms.report.values=readPmsValues(j.pms.report.values||{});
-  if(document.getElementById('pmsMech')){
-    j.pms.report.mechanicId=val('pmsMech')||j.pms.report.mechanicId||'';
+  if(document.getElementById('pmsSA')){
+    var picked=pmsReadMechChecks();
+    j.pms.report.mechanicIds=picked; j.pms.report.mechanicId=picked[0]||'';
     j.pms.report.saId=val('pmsSA')||j.pms.report.saId||'';
     var st=pmsReadSig('pmsSigTech'); if(st) j.pms.report.sigTech=st;
     var sc=pmsReadSig('pmsSigClient'); if(sc) j.pms.report.sigClient=sc;
@@ -6401,10 +6513,20 @@ function readPmsValues(into){
   }); });
   return vals;
 }
+/* PMS mechanics — more than one mechanic can perform a PMS. Read the sign-off
+   checkboxes, format the names, and tolerate old single-`mechanicId` reports. */
+function pmsMechIds(r){
+  if(r && Array.isArray(r.mechanicIds)) return r.mechanicIds.filter(Boolean);
+  if(r && r.mechanicId) return [r.mechanicId];
+  return [];
+}
+function pmsMechNames(r){ return pmsMechIds(r).map(function(id){ return staffName(id); }).filter(function(x){ return x && x!=='—' && x!=='TBA'; }).join(', '); }
+function pmsReadMechChecks(){ return Array.prototype.map.call(document.querySelectorAll('.pmsMechChk:checked'), function(c){ return c.value; }); }
 function submitPMS(id){
   var j=jobById(id); if(!j) return;
   pmsCurrentSave();                                  // capture the sign-off fields + persist
-  var mech=val('pmsMech'); if(!mech || !staffById(mech)){ toast('Select who performed the PMS','err'); var e=document.getElementById('pmsMech'); if(e) e.focus(); return; }
+  var mechs=pmsReadMechChecks();
+  if(!mechs.length){ toast('Select who performed the PMS','err'); var mb=document.getElementById('pmsMechBox'); if(mb){ mb.classList.add('needfill'); if(mb.scrollIntoView) mb.scrollIntoView({block:'center'}); } return; }
   var vals=(j.pms&&j.pms.report&&j.pms.report.values)||{};
   for(var i=0;i<PMS_TEMPLATE.length;i++){                // every section must be complete
     if(!pmsSectionDone(PMS_TEMPLATE[i], vals)){
@@ -6413,7 +6535,7 @@ function submitPMS(id){
     }
   }
   j.pms.report=Object.assign(j.pms.report||{}, {
-    values:vals, mechanicId:mech, saId:val('pmsSA')||j.saId||'',
+    values:vals, mechanicIds:mechs, mechanicId:mechs[0], saId:val('pmsSA')||j.saId||'',
     sigTech:pmsReadSig('pmsSigTech')||j.pms.report.sigTech||'', sigClient:pmsReadSig('pmsSigClient')||j.pms.report.sigClient||'',
     completedAt:new Date().toISOString()
   });
@@ -6435,7 +6557,7 @@ function pmsReportPanel(j){
     : '<li class="muted">All inspected items OK.</li>';
   return '<div class="card"><div class="card-head"><h2>PMS Inspection</h2>'+
     '<button class="btn sm ghost" onclick="printPMS(\''+j.id+'\')">⎙ Report</button></div>'+
-    '<div class="muted small">Completed '+esc(fmtDateTime(r.completedAt))+' · by '+esc(staffName(r.mechanicId))+'</div>'+
+    '<div class="muted small">Completed '+esc(fmtDateTime(r.completedAt))+' · by '+esc(pmsMechNames(r)||'—')+'</div>'+
     '<ul class="pms-flags">'+rows+'</ul></div>';
 }
 /* Items needing attention or replacement (for the summary + portal highlights). */
@@ -6542,16 +6664,16 @@ function pmsDocMeta(j, r){
     '<div><span>JO #</span><b>'+esc(j.no)+'</b></div>'+
     '<div><span>Odometer</span><b>'+odo(j.odometer)+'</b></div>'+
     '<div><span>Completed</span><b>'+esc(fmtDateTime(r.completedAt))+'</b></div>'+
-    '<div><span>Performed by</span><b>'+esc(staffName(r.mechanicId))+'</b></div></div>';
+    '<div><span>Performed by</span><b>'+esc(pmsMechNames(r)||'—')+'</b></div></div>';
 }
 function docPMS(j){
   var r=pmsReport(j)||{values:{}}; var vals=r.values||{};
-  var N=PMS_TEMPLATE.length;
+  var mechs=pmsMechNames(r);
   var sigs='<div class="sig-grid">'+
-    '<div class="sigline">'+(r.sigTech?'<img class="sigimg" src="'+r.sigTech+'"/>':'')+'Technician'+(r.mechanicId?' · '+esc(staffName(r.mechanicId)):'')+'</div>'+
+    '<div class="sigline">'+(r.sigTech?'<img class="sigimg" src="'+r.sigTech+'"/>':'')+'Technician'+(mechs?' · '+esc(mechs):'')+'</div>'+
     '<div class="sigline">'+(r.sigClient?'<img class="sigimg" src="'+r.sigClient+'"/>':'')+'Client</div>'+
     '<div class="sigline">Service Adviser'+(r.saId?' · '+esc(staffName(r.saId)):'')+'</div></div>';
-  var pages=PMS_TEMPLATE.map(function(sec, si){
+  var body=PMS_TEMPLATE.map(function(sec, si){
     var rows=pmsLeafBlocks(sec).map(function(b){
       if(b.kind==='text'){ var out=''; if(b.yn){ var yv=vals[b.yn.key]; if(yv&&yv.v) out+='<tr><td>'+esc(b.yn.label)+'</td><td><b>'+esc(yv.v)+'</b></td></tr>'; }
         var t=vals[b.key]; if(t) out+= b.labeled ? '<tr><td>'+esc(b.label)+'</td><td>'+esc(t)+'</td></tr>' : '<tr><td colspan="2">'+esc(t)+'</td></tr>'; return out; }
@@ -6574,17 +6696,14 @@ function docPMS(j){
       }).join('');
     }).join('');
     var sph=pmsPhotoImgs((vals[pmsSecPhotoKey(sec)]&&vals[pmsSecPhotoKey(sec)].photos)||[]);
-    var content=(rows?'<table class="pms-rpt"><tbody>'+rows+'</tbody></table>':'')+(sph?'<div style="margin-top:4px">'+sph+'</div>':'');
-    var last=(si===N-1);
-    return '<section class="pms-page'+(last?'':' pms-brk')+'">'+
-      (si===0 ? docHeader('Multipoint Inspection Report · '+j.plate)+pmsDocMeta(j, r) : '')+
-      '<div class="dtitle" style="font-size:13px">'+esc(sec.title)+'</div>'+
-      (content || '<p class="pms-empty">No items recorded for this section.</p>')+
-      (last ? sigs : '')+
-      '<div class="pms-pgfoot">'+(si+1)+' / '+N+'</div>'+
-    '</section>';
+    if(!rows && !sph) return '';   // skip empty sections — no wasted paper
+    // Flow sections continuously (rows packed) to conserve paper. Keep each
+    // section's title with its first rows so a heading never orphans at a break.
+    return '<div class="pms-sec-blk"><div class="dtitle" style="font-size:12.5px;margin-top:12px">'+esc(sec.title)+'</div>'+
+      (rows?'<table class="pms-rpt"><tbody>'+rows+'</tbody></table>':'')+
+      (sph?'<div style="margin-top:4px">'+sph+'</div>':'')+'</div>';
   }).join('');
-  return docShell('PMS · '+j.plate, pages);
+  return docShell('PMS · '+j.plate, docHeader('Multipoint Inspection Report · '+j.plate)+pmsDocMeta(j, r)+body+sigs);
 }
 function printPMS(id){ var j=jobById(id); if(j) printDoc(docPMS(j)); }
 

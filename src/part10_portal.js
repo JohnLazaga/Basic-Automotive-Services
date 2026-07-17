@@ -47,7 +47,7 @@ function portalDataForVehicle(v){
           addl:(j.addlWork||[]).filter(function(a){return a.approved;}).map(function(a){ return { desc:a.desc, amount:Number(a.amount)||0 }; }),
           vatable:b.vatable, vat:b.vat, exempt:!!b.exempt, disc:b.disc, gross:b.gross, vatRate:Number((S.shop||{}).vatRate)||12,
           supervisor:staffNameIfRole(j.approvedReleaseBy,'SV'), secretary:staffNameIfRole(j.paymentReceivedBy,'Secretary'),
-        pms:(j.pms&&j.pms.report)? { values:j.pms.report.values||{}, completedAt:j.pms.report.completedAt||'', mechanic:staffName(j.pms.report.mechanicId), sigTech:j.pms.report.sigTech||'', sigClient:j.pms.report.sigClient||'' } : null
+        pms:(j.pms&&j.pms.report)? { values:j.pms.report.values||{}, completedAt:j.pms.report.completedAt||'', mechanic:pmsMechNames(j.pms.report), sigTech:j.pms.report.sigTech||'', sigClient:j.pms.report.sigClient||'' } : null
         }
       };
     }),
