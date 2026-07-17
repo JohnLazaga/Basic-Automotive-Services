@@ -78,8 +78,11 @@ var PMS_TEMPLATE = [
     pmsRate(['Brake fluid condition']),
     pmsRate(['Brakes cleaned','Parking brake adjusted']) ] },
 
-  { title:'Battery', blocks:[ pmsMeasure([
-    ['Battery voltage','V'],['Stock battery CCA','CCA'],['Actual battery CCA','CCA'],['Charging voltage','V'],['Battery health','%'] ]) ] },
+  { title:'Battery/Alternator', blocks:[
+    { kind:'text', key:pmsKey('Resting battery voltage'), label:'Resting batt voltage (engine off, ref: 12.4V & up)', labeled:true },
+    { kind:'text', key:pmsKey('Alternator output'), label:'Alternator output (engine on, ref: 13.5–14.5V)', labeled:true },
+    { kind:'text', key:pmsKey('Load test'), label:'Load test (engine on, heavy load, ref: 13.0V)', labeled:true },
+    pmsText('Battery notes') ] },
 
   { title:'Engine Bay — Fluids', blocks:[ pmsRate([
     'Engine oil','Coolant','Brake fluid (engine)','Clutch fluid','PS fluid','Trans fluid','Diff oil','Washer fluid' ]) ] },
@@ -648,7 +651,7 @@ function docPMS(j){
   var body=PMS_TEMPLATE.map(function(sec){
     var rows=pmsLeafBlocks(sec).map(function(b){
       if(b.kind==='text'){ var out=''; if(b.yn){ var yv=vals[b.yn.key]; if(yv&&yv.v) out+='<tr><td>'+esc(b.yn.label)+'</td><td><b>'+esc(yv.v)+'</b></td></tr>'; }
-        var t=vals[b.key]; if(t) out+='<tr><td colspan="2">'+esc(t)+'</td></tr>'; return out; }
+        var t=vals[b.key]; if(t) out+= b.labeled ? '<tr><td>'+esc(b.label)+'</td><td>'+esc(t)+'</td></tr>' : '<tr><td colspan="2">'+esc(t)+'</td></tr>'; return out; }
       if(b.kind==='faultcode'){ var fv=vals[b.key]; if(!fv||(!fv.v&&!fv.n&&!(fv.photos&&fv.photos.length))) return '';
         var ph=(fv.photos||[]).map(function(s){ return '<img src="'+s+'" style="max-width:130px;max-height:100px;margin:4px 6px 0 0;border-radius:6px;vertical-align:top"/>'; }).join('');
         return '<tr><td>'+esc(b.label)+'</td><td>'+(fv.v?'<b>'+esc(fv.v)+'</b>':'—')+(fv.n?' · '+esc(fv.n):'')+(ph?'<div style="margin-top:4px">'+ph+'</div>':'')+'</td></tr>'; }
@@ -687,7 +690,7 @@ function portalPmsHTML(pms){
   var secs=PMS_TEMPLATE.map(function(sec){
     var rows=pmsLeafBlocks(sec).map(function(b){
       if(b.kind==='text'){ var out=''; if(b.yn){ var yv=vals[b.yn.key]; if(yv&&yv.v) out+='<tr><td>'+esc(b.yn.label)+'</td><td>'+esc(yv.v)+'</td></tr>'; }
-        var t=vals[b.key]; if(t) out+='<tr><td colspan="2">'+esc(t)+'</td></tr>'; return out; }
+        var t=vals[b.key]; if(t) out+= b.labeled ? '<tr><td>'+esc(b.label)+'</td><td>'+esc(t)+'</td></tr>' : '<tr><td colspan="2">'+esc(t)+'</td></tr>'; return out; }
       if(b.kind==='faultcode'){ var fv=vals[b.key]; if(!fv||(!fv.v&&!fv.n&&!(fv.photos&&fv.photos.length))) return '';
         var ph=(fv.photos||[]).map(function(s){ return '<img src="'+s+'" style="max-width:130px;max-height:100px;margin:4px 6px 0 0;border-radius:6px;vertical-align:top"/>'; }).join('');
         return '<tr><td>'+esc(b.label)+'</td><td>'+(fv.v?esc(fv.v):'—')+(fv.n?' · '+esc(fv.n):'')+(ph?'<div style="margin-top:4px">'+ph+'</div>':'')+'</td></tr>'; }
