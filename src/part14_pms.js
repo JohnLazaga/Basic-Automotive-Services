@@ -145,15 +145,27 @@ PMS_TEMPLATE.forEach(function(sec){
 function jobHasOpenPMS(j){ return !!(j && j.pms && j.pms.status && j.pms.status!=='done'); }
 function pmsReport(j){ return (j && j.pms && j.pms.report) || null; }
 
-/* "Perform PMS" — open a ticket for this job (from the add-labor dialog). */
-function requestPMS(id){
+/* "Perform PMS" — open a ticket for this job (from the add-labor dialog). An
+   optional scheduledAt (datetime-local string) is shown on the queue card. */
+function requestPMS(id, scheduledAt){
   var j=jobById(id); if(!j){ toast('Job not found','err'); return; }
   if(!j.pms) j.pms={};
   if(j.pms.status && j.pms.status!=='done'){ toast('A PMS is already queued for this vehicle','err'); return; }
-  j.pms={ status:'open', requestedAt:new Date().toISOString(), requestedBy:(typeof CURRENT_USER!=='undefined'&&CURRENT_USER?CURRENT_USER.name:null), report:(j.pms&&j.pms.report)||null };
+  j.pms={ status:'open', requestedAt:new Date().toISOString(), scheduledAt:scheduledAt||null, requestedBy:(typeof CURRENT_USER!=='undefined'&&CURRENT_USER?CURRENT_USER.name:null), report:(j.pms&&j.pms.report)||null };
   persist(); closeModal();
   toast('PMS ticket sent to the tablet queue');
   render();
+}
+/* Who may remove a PMS queue ticket: Admin or Supervisor (SV). Local / pre-auth
+   (dev build, mini-PC) allows it too, matching the app's can() convention. */
+function canDeletePMS(){ return (typeof isAdminOrSV==='function') ? isAdminOrSV() : true; }
+function deletePMSQueueItem(id){
+  if(!canDeletePMS()){ toast('Only a supervisor or admin can remove PMS tickets','err'); return; }
+  var j=jobById(id); if(!j) return;
+  confirmModal('Remove PMS ticket',
+    'Remove the PMS ticket for '+j.plate+' (JO '+j.no+') from the queue? Any in-progress inspection on it will be discarded.',
+    function(){ pmsLog(j, 'PMS ticket removed from the queue.'); j.pms=null; persist(); toast('PMS ticket removed'); render(); },
+    'Remove', true);
 }
 
 /* Jobs with a live PMS ticket, newest first (the kiosk queue). */
@@ -168,9 +180,12 @@ VIEWS.pms = function(){
   var cards=q.length? q.map(function(j){
     var veh=(j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:'');
     var st=j.pms.status==='in_progress'?'<span class="chip gold">In progress</span>':'<span class="chip due">Waiting</span>';
+    var del=canDeletePMS()?'<button class="pms-q-del" title="Remove from queue" onclick="event.stopPropagation();deletePMSQueueItem(\''+j.id+'\')">✕</button>':'';
+    var sched=j.pms.scheduledAt?'<div class="pms-q-sched">🕑 Scheduled '+esc(fmtDateTime(j.pms.scheduledAt))+'</div>':'';
     return '<div class="pms-q" onclick="startPMS(\''+j.id+'\')">'+
-      '<div class="pms-q-top"><b>'+esc(j.plate)+'</b> '+st+'</div>'+
+      '<div class="pms-q-top"><b>'+esc(j.plate)+'</b> '+st+del+'</div>'+
       '<div class="muted small">'+esc(veh||'—')+' · JO '+esc(j.no)+'</div>'+
+      sched+
       '<div class="muted small">Requested '+esc(fmtDateTime(j.pms.requestedAt))+'</div>'+
       '<button class="btn primary full mt8">Perform inspection →</button></div>';
   }).join('') : emptyState('No PMS in the queue. Tickets appear here when a Job Order sends a "Perform PMS".');
@@ -699,16 +714,19 @@ function pmsLaborBtnHTML(ref){
   if(ref!==PMS_LABOR_ID || typeof _pmsLineJob==='undefined' || !_pmsLineJob) return '';
   var j=jobById(_pmsLineJob); if(!j) return '';
   if(jobHasOpenPMS(j)) return '<div class="pms-cta"><span class="muted small">A PMS is already queued for this vehicle.</span></div>';
-  return '<div class="pms-cta"><button type="button" class="btn primary full" onclick="performPMSFromLabor()">🔧 Perform PMS → send to tablet</button>'+
+  return '<div class="pms-cta">'+
+    field('Schedule PMS (optional)','<input type="datetime-local" id="pmsSchedAt">')+
+    '<button type="button" class="btn primary full" onclick="performPMSFromLabor()">🔧 Perform PMS → send to tablet</button>'+
     '<div class="muted small">Adds the PMS labor line and sends an inspection ticket to the PMS Queue.</div></div>';
 }
-/* Add the PMS labor line to the job, then open the ticket. */
+/* Add the PMS labor line to the job, then open the ticket (with any schedule). */
 function performPMSFromLabor(){
   if(typeof _pmsLineJob==='undefined' || !_pmsLineJob){ toast('Open this from a Job Order','err'); return; }
   var j=jobById(_pmsLineJob); if(!j){ toast('Job not found','err'); return; }
+  var sched=(typeof val==='function')?val('pmsSchedAt'):'';
   var data=(typeof readLine==='function')?readLine():null;
   if(data && data.type==='labor' && data.desc){ data.id=uid('ln'); j.lines=j.lines||[]; j.lines.push(data); }
-  requestPMS(j.id);   // persists, closes the dialog, toasts, renders
+  requestPMS(j.id, sched||null);   // persists, closes the dialog, toasts, renders
 }
 
 /* ---- After-render hook: wire the signature pads on the PMS form ----------- */

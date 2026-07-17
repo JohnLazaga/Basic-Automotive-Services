@@ -47,6 +47,12 @@ function permsMatrix(){
   return (S && S.shop && S.shop.permissions) ? S.shop.permissions : DEFAULT_PERMS;
 }
 function isAdminUser(){ return !!(CURRENT_USER && CURRENT_USER.isAdmin); }
+/* Admin or Supervisor (SV). Local / pre-auth (dev build, mini-PC) returns true,
+   matching the can() convention. Used to gate money figures on the board etc. */
+function isAdminOrSV(){
+  if (typeof CURRENT_USER==='undefined' || !CURRENT_USER) return true;
+  return !!CURRENT_USER.isAdmin || CURRENT_USER.role==='SV';
+}
 
 /* The single access check used everywhere. */
 function can(cap){

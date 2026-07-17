@@ -52,11 +52,12 @@ function boardKPIs(){
   var released = S.jobs.filter(function(j){return j.stage==='Released';});
   var todayRev = round2(released.filter(function(j){return j.payments&&j.payments.some(function(p){return (p.date||'').slice(0,10)===todayISO();});})
     .reduce(function(s,j){return s+jobPaid(j);},0));
+  var money = (typeof isAdminOrSV==='function') ? isAdminOrSV() : true;   // WIP value + collections: Admin / Supervisor only
   return '<div class="kpis">'+
     kpi('Active units', active.length, dueCount?dueCount+' need update':'all current') +
-    kpi('Open WIP value', peso(wip)) +
+    (money ? kpi('Open WIP value', peso(wip)) : '') +
     kpi('Updates due', dueCount, dueCount?'<span class="amber">needs clipboard</span>':'all current') +
-    kpi("Today's collections", peso(todayRev)) +
+    (money ? kpi("Today's collections", peso(todayRev)) : '') +
   '</div>';
 }
 
