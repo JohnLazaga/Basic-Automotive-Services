@@ -76,12 +76,13 @@ var PMS_TEMPLATE = [
     pmsRate(['Brake caliper/cylinder FR','Brake caliper/cylinder FL','Brake caliper/cylinder RR','Brake caliper/cylinder RL']),
     pmsRate(['Brake hose FR','Brake hose FL','Brake hose RR','Brake hose RL']),
     pmsRate(['Brake fluid condition']),
-    pmsRate(['Brakes cleaned','Parking brake adjusted']) ] },
+    pmsRate(['Brakes cleaned']),
+    pmsYesNo(['Parking brake adjusted']) ] },
 
   { title:'Battery/Alternator', blocks:[
-    { kind:'text', key:pmsKey('Resting battery voltage'), label:'Resting batt voltage (engine off, ref: 12.4V & up)', labeled:true },
-    { kind:'text', key:pmsKey('Alternator output'), label:'Alternator output (engine on, ref: 13.5–14.5V)', labeled:true },
-    { kind:'text', key:pmsKey('Load test'), label:'Load test (engine on, heavy load, ref: 13.0V)', labeled:true },
+    { kind:'text', key:pmsKey('Resting battery voltage'), label:'Resting batt voltage (engine off, ref: 12.4V & up)', labeled:true, required:true },
+    { kind:'text', key:pmsKey('Alternator output'), label:'Alternator output (engine on, ref: 13.5–14.5V)', labeled:true, required:true },
+    { kind:'text', key:pmsKey('Load test'), label:'Load test (engine on, heavy load, ref: 13.0V)', labeled:true, required:true },
     pmsText('Battery notes') ] },
 
   { title:'Engine Bay — Systems', blocks:[
@@ -128,7 +129,9 @@ var PMS_TEMPLATE = [
     pmsRate(['Hub bolts','Lug nuts']),
     pmsYesNo(['Performed wheel tightening to torque specs']) ] },
 
-  { title:'Notes', blocks:[ pmsText('Notes') ] }
+  { title:'Post PMS Notes', blocks:[
+    { kind:'text', key:pmsKey('Post-PMS Drive Test Notes'), label:'Post-PMS Drive Test Notes', yn:{ key:pmsKey('Post-PMS test driven'), label:'Test Driven?' } },
+    pmsText('Notes') ] }
 ];
 
 /* Give every section a free-text notes field at its end — skip sections whose
@@ -192,7 +195,8 @@ function startPMS(id){
 function pmsSectionMissing(sec, vals){
   var miss=[];
   pmsLeafBlocks(sec).forEach(function(b){
-    if(b.kind==='text'){ if(b.yn){ var tyv=vals[b.yn.key]; if(!tyv||!tyv.v) miss.push(b.yn.key); } return; }   // Test driven? Yes/No required when present
+    if(b.kind==='text'){ if(b.yn){ var tyv=vals[b.yn.key]; if(!tyv||!tyv.v) miss.push(b.yn.key); }   // Test driven? Yes/No required when present
+      if(b.required){ var trv=vals[b.key]; if(!trv||!String(trv).trim()) miss.push(b.key); } return; }    // required note box must have text
     if(b.kind==='faultcode'){ var fv=vals[b.key]; if(!fv||!fv.v) miss.push(b.key); return; }   // Yes/No required; note + photo optional
     if(b.kind==='condphoto'){ var cv=vals[b.key]; if(!cv||!cv.s) miss.push(b.key); return; }   // rating required; note + photo optional
     (b.items||[]).forEach(function(it){
@@ -319,9 +323,9 @@ function pmsBlockHTML(b, vals){
       return '<div class="fld pms-textfld"><div class="pms-texthead"><span class="fld-l">'+esc(b.label)+'</span>'+
         '<span class="pms-textyn"><span class="pms-textyn-lbl">'+esc(b.yn.label)+'</span>'+
         '<span class="pms-ynset"><input type="hidden" id="pf_'+b.yn.key+'" value="'+attr(yc)+'">'+ynb+'</span></span></div>'+
-        '<textarea id="pf_'+b.key+'" rows="3">'+esc(tv)+'</textarea></div>';
+        '<textarea id="pf_'+b.key+'" rows="3" oninput="pmsClearFld(this)">'+esc(tv)+'</textarea></div>';
     }
-    return field(b.label,'<textarea id="pf_'+b.key+'" rows="3">'+esc(tv)+'</textarea>'); }
+    return field(b.label,'<textarea id="pf_'+b.key+'" rows="3" oninput="pmsClearFld(this)">'+esc(tv)+'</textarea>'); }
   if(b.kind==='measure'){
     return '<div class="pms-grid">'+b.items.map(function(it){
       var v=vals[it.key]; v=(v==null?'':v);
