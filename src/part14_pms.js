@@ -786,11 +786,7 @@ function pmsDocMeta(j, r){
 }
 function docPMS(j){
   var r=pmsReport(j)||{values:{}}; var vals=r.values||{};
-  var mechs=pmsMechNames(r);
-  var sigs='<div class="sig-grid">'+
-    '<div class="sigline">'+(r.sigTech?'<img class="sigimg" src="'+r.sigTech+'"/>':'')+'Technician'+(mechs?' · '+esc(mechs):'')+'</div>'+
-    '<div class="sigline">'+(r.sigClient?'<img class="sigimg" src="'+r.sigClient+'"/>':'')+'Client</div>'+
-    '<div class="sigline">Service Adviser'+(r.saId?' · '+esc(staffName(r.saId)):'')+'</div></div>';
+  var sigs='<div class="sig-grid"><div class="sigline">Service Adviser'+(r.saId?' · '+esc(staffName(r.saId)):'')+'</div></div>';
   var body=PMS_TEMPLATE.map(function(sec, si){
     var rows=pmsLeafBlocks(sec).map(function(b){
       if(b.kind==='text'){ var out=''; if(b.yn){ var yv=vals[b.yn.key]; if(yv&&yv.v) out+='<tr><td>'+esc(b.yn.label)+'</td><td><b>'+esc(yv.v)+'</b></td></tr>'; }
