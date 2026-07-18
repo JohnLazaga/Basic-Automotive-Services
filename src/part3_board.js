@@ -101,7 +101,7 @@ function jobCardMini(j){
     '<div class="jcard-veh">'+esc(j.year+' '+j.make+' '+j.model)+'</div>'+
     '<div class="jcard-meta"><span>'+esc(bayName(j.bayId))+'</span><span>'+esc(mechName(j.mechanicIds))+'</span></div>'+
     '<div class="jcard-meta"><span class="muted small">⏱ last log '+esc(lastLogTimeLabel(j))+'</span></div>'+
-    '<div class="jcard-foot"><span class="muted">'+esc(j.no)+'</span><span class="bill">'+peso(jobGross(j))+'</span></div>'+
+    '<div class="jcard-foot"><span class="muted">'+esc(j.no)+'</span>'+(canSeeJobPrices()?'<span class="bill">'+peso(jobGross(j))+'</span>':'')+'</div>'+
   '</div>';
 }
 function boardKanban(active){
@@ -115,6 +115,7 @@ function boardKanban(active){
 }
 function boardList(active){
   if(!active.length) return emptyState('No active units. Create a Job Order from Appointments or Ingress.');
+  var showPrice = canSeeJobPrices();
   var rows = active.map(function(j){
     var due=isUpdateDue(j);
     return '<tr onclick="go(\'job\',\''+j.id+'\')">'+
@@ -125,10 +126,11 @@ function boardList(active){
       '<td>'+esc(mechName(j.mechanicIds))+'</td>'+
       '<td>'+esc(lastLogTimeLabel(j))+'</td>'+
       '<td>'+esc(fmtDate(j.etd))+'</td>'+
-      '<td class="r">'+peso(jobGross(j))+'</td></tr>';
+      (showPrice?'<td class="r">'+peso(jobGross(j))+'</td>':'')+'</tr>';
   }).join('');
   return '<div class="card pad0"><table class="tbl click">'+
-    '<thead><tr><th>JO #</th><th>Plate</th><th>Vehicle</th><th>Status</th><th>Bay</th><th>Mechanic(s)</th><th>Last log</th><th>ETD</th><th class="r">Running bill</th></tr></thead>'+
+    '<thead><tr><th>JO #</th><th>Plate</th><th>Vehicle</th><th>Status</th><th>Bay</th><th>Mechanic(s)</th><th>Last log</th><th>ETD</th>'+
+    (showPrice?'<th class="r">Running bill</th>':'')+'</tr></thead>'+
     '<tbody>'+rows+'</tbody></table></div>';
 }
 function boardBays(active){

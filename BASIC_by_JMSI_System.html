@@ -565,7 +565,7 @@ var BRANCH = {"id":"main","slug":"main","name":"Basic by JMSI — Fairview (Main
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.2.0 · 2026-07-17 · aea352a';
+var APP_VERSION = 'v1.2.0 · 2026-07-18 · fd11dd4';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -1653,7 +1653,7 @@ function jobCardMini(j){
     '<div class="jcard-veh">'+esc(j.year+' '+j.make+' '+j.model)+'</div>'+
     '<div class="jcard-meta"><span>'+esc(bayName(j.bayId))+'</span><span>'+esc(mechName(j.mechanicIds))+'</span></div>'+
     '<div class="jcard-meta"><span class="muted small">⏱ last log '+esc(lastLogTimeLabel(j))+'</span></div>'+
-    '<div class="jcard-foot"><span class="muted">'+esc(j.no)+'</span><span class="bill">'+peso(jobGross(j))+'</span></div>'+
+    '<div class="jcard-foot"><span class="muted">'+esc(j.no)+'</span>'+(canSeeJobPrices()?'<span class="bill">'+peso(jobGross(j))+'</span>':'')+'</div>'+
   '</div>';
 }
 function boardKanban(active){
@@ -1667,6 +1667,7 @@ function boardKanban(active){
 }
 function boardList(active){
   if(!active.length) return emptyState('No active units. Create a Job Order from Appointments or Ingress.');
+  var showPrice = canSeeJobPrices();
   var rows = active.map(function(j){
     var due=isUpdateDue(j);
     return '<tr onclick="go(\'job\',\''+j.id+'\')">'+
@@ -1677,10 +1678,11 @@ function boardList(active){
       '<td>'+esc(mechName(j.mechanicIds))+'</td>'+
       '<td>'+esc(lastLogTimeLabel(j))+'</td>'+
       '<td>'+esc(fmtDate(j.etd))+'</td>'+
-      '<td class="r">'+peso(jobGross(j))+'</td></tr>';
+      (showPrice?'<td class="r">'+peso(jobGross(j))+'</td>':'')+'</tr>';
   }).join('');
   return '<div class="card pad0"><table class="tbl click">'+
-    '<thead><tr><th>JO #</th><th>Plate</th><th>Vehicle</th><th>Status</th><th>Bay</th><th>Mechanic(s)</th><th>Last log</th><th>ETD</th><th class="r">Running bill</th></tr></thead>'+
+    '<thead><tr><th>JO #</th><th>Plate</th><th>Vehicle</th><th>Status</th><th>Bay</th><th>Mechanic(s)</th><th>Last log</th><th>ETD</th>'+
+    (showPrice?'<th class="r">Running bill</th>':'')+'</tr></thead>'+
     '<tbody>'+rows+'</tbody></table></div>';
 }
 function boardBays(active){
@@ -2710,15 +2712,16 @@ function advanceBilling(id){
 }
 
 function jobPaymentBlock(j,b){
-  var pays=(j.payments||[]).map(function(p){return '<div class="l2"><span>'+esc(fmtDate(p.date))+' · '+esc(p.method)+'</span><span>'+peso(p.amount)+'</span></div>';}).join('');
+  var showPrice = canSeeJobPrices();
+  var pays=showPrice?(j.payments||[]).map(function(p){return '<div class="l2"><span>'+esc(fmtDate(p.date))+' · '+esc(p.method)+'</span><span>'+peso(p.amount)+'</span></div>';}).join(''):'';
   var paid = b.balance<=0;
-  return '<div class="bill-mini">'+line2('Total due', peso(b.gross),'tot')+line2('Paid', peso(b.paid))+line2('<b>Balance</b>','<b>'+peso(b.balance)+'</b>','tot')+'</div>'+
+  return (showPrice?'<div class="bill-mini">'+line2('Total due', peso(b.gross),'tot')+line2('Paid', peso(b.paid))+line2('<b>Balance</b>','<b>'+peso(b.balance)+'</b>','tot')+'</div>':'')+
     '<div class="grid2 mt8">'+
       field('Approved for release by (Supervisor)','<select onchange="setJobField(\''+j.id+'\',\'approvedReleaseBy\',this.value)">'+optionList(staffByRole('SV'),j.approvedReleaseBy,true)+'</select>')+
       field('Payment received by (Secretary)','<select onchange="setJobField(\''+j.id+'\',\'paymentReceivedBy\',this.value)">'+optionList(staffByRole('Secretary'),j.paymentReceivedBy,true)+'</select>')+
     '</div>'+
     pays+
-    (paid? '' : '<div class="grid2 mt8">'+field('Amount','<input id="pyAmt" type="number" step="0.01" value="'+attr(b.balance)+'">')+
+    ((paid||!showPrice)? '' : '<div class="grid2 mt8">'+field('Amount','<input id="pyAmt" type="number" step="0.01" value="'+attr(b.balance)+'">')+
       field('Method','<select id="pyMethod"><option>Cash</option><option>GCash</option><option>Card</option><option>Bank transfer</option><option>Charge account</option></select>')+'</div>'+
       '<button class="btn sm" onclick="recordPayment(\''+j.id+'\')">Record payment</button>')+
     field('Last service odometer','<input id="relOdo" type="number" value="'+attr(j.lastServiceOdo||j.odometer||'')+'" placeholder="reading at release">','Recorded on release; updates the vehicle’s last service odometer.')+
@@ -6193,10 +6196,7 @@ VIEWS.pmsform = function(id){
     pmsSummaryHTML(j)+
     '<div class="card"><h2>Sign-off</h2><div class="grid2">'+
       '<div class="fld"><span class="fld-l">Performed by (Mechanic/s)</span><div class="mechbox" id="pmsMechBox">'+mechBoxes+'</div></div>'+
-      field('Service Adviser','<select id="pmsSA">'+saOpts+'</select>')+'</div>'+
-      '<div class="grid2">'+
-        pmsSigField('Technician signature','pmsSigTech', r.sigTech)+
-        pmsSigField('Client signature','pmsSigClient', r.sigClient)+'</div></div>'+
+      field('Service Adviser','<select id="pmsSA">'+saOpts+'</select>')+'</div></div>'+
     '<div class="pms-nav"><button class="btn ghost" onclick="pmsPrev()">‹ Back</button>'+
       '<button class="btn primary" onclick="submitPMS(\''+j.id+'\')">✓ Complete PMS</button></div>'+
   '</div>';

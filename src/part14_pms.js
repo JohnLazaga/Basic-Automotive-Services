@@ -314,10 +314,7 @@ VIEWS.pmsform = function(id){
     pmsSummaryHTML(j)+
     '<div class="card"><h2>Sign-off</h2><div class="grid2">'+
       '<div class="fld"><span class="fld-l">Performed by (Mechanic/s)</span><div class="mechbox" id="pmsMechBox">'+mechBoxes+'</div></div>'+
-      field('Service Adviser','<select id="pmsSA">'+saOpts+'</select>')+'</div>'+
-      '<div class="grid2">'+
-        pmsSigField('Technician signature','pmsSigTech', r.sigTech)+
-        pmsSigField('Client signature','pmsSigClient', r.sigClient)+'</div></div>'+
+      field('Service Adviser','<select id="pmsSA">'+saOpts+'</select>')+'</div></div>'+
     '<div class="pms-nav"><button class="btn ghost" onclick="pmsPrev()">‹ Back</button>'+
       '<button class="btn primary" onclick="submitPMS(\''+j.id+'\')">✓ Complete PMS</button></div>'+
   '</div>';
