@@ -95,8 +95,8 @@ var PMS_TEMPLATE = [
     pmsRate(['Main belt','Auxiliary belts']),
     pmsYesNo(['Performed cooling system pressure test','Performed spark plug cleaning','Performed hose retightening']) ] },
 
-  { title:'Engine Bay — Fluids', blocks:[
-    pmsRate(['Engine oil','Coolant','Brake fluid (engine)','Clutch fluid','PS fluid','Trans fluid','Washer fluid']),
+  { title:'Engine Bay and Underchassis Fluids', blocks:[
+    pmsRate(['Engine oil','Coolant','Brake fluid (engine)','Clutch fluid','PS fluid','Transmission oil','Differential oil','Transfer case oil','Washer fluid']),
     pmsYesNo(['Performed top-up of all fluids']) ] },
 
   { title:'Oil / Fluid Leaks', blocks:[ pmsRate([
@@ -680,8 +680,9 @@ function pmsReportPanel(j){
   var flagged=pmsFlagged(r);
   var rows=flagged.length? flagged.map(function(f){ return '<li><span class="r-swatch '+(f.s==='replace'?'r-rep':'r-att')+'"></span>'+esc(f.label)+(f.n?' — '+esc(f.n):'')+'</li>'; }).join('')
     : '<li class="muted">All inspected items OK.</li>';
-  return '<div class="card"><div class="card-head"><h2>PMS Inspection</h2>'+
-    '<button class="btn sm ghost" onclick="printPMS(\''+j.id+'\')">⎙ Report</button></div>'+
+  return '<div class="card"><div class="card-head"><h2>PMS Inspection</h2><div class="row gap">'+
+    '<button class="btn sm ghost" onclick="printPMSSummary(\''+j.id+'\')">⎙ Summary</button>'+
+    '<button class="btn sm ghost" onclick="printPMS(\''+j.id+'\')">⎙ Report</button></div></div>'+
     '<div class="muted small">Completed '+esc(fmtDateTime(r.completedAt))+' · by '+esc(pmsMechNames(r)||'—')+'</div>'+
     '<ul class="pms-flags">'+rows+'</ul></div>';
 }
