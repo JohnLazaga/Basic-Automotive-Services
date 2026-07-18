@@ -566,9 +566,13 @@ function pmsPurgeExpiredPhotos(){
   });
   if(changed && typeof persist==='function') persist();
 }
+function pmsRunPhotoPurges(){
+  try{ pmsPurgeExpiredPhotos(); }catch(e){}
+  try{ if(typeof purgeExpiredJobPhotos==='function') purgeExpiredJobPhotos(); }catch(e){}   // job photos: same 10-day policy
+}
 if(typeof window!=='undefined'){
-  setTimeout(function(){ try{ pmsPurgeExpiredPhotos(); }catch(e){} }, 15000);      // once data has loaded
-  setInterval(function(){ try{ pmsPurgeExpiredPhotos(); }catch(e){} }, 3600000);   // hourly for long sessions
+  setTimeout(pmsRunPhotoPurges, 15000);      // once data has loaded
+  setInterval(pmsRunPhotoPurges, 3600000);   // hourly for long sessions
 }
 /* Per-section photo key (the section-level "Take / add photo" at each section end). */
 function pmsSecPhotoKey(sec){ return pmsKey('section photos '+sec.title); }

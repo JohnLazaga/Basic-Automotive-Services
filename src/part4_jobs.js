@@ -540,7 +540,8 @@ function jobPhotosPanel(j){
       '<button class="btn sm ghost" onclick="showPhotoQR(\''+j.id+'\')">📱 Add by phone</button>'+
       '<label class="btn sm"><input type="file" accept="image/*" multiple style="display:none" onchange="addPhotos(\''+j.id+'\',this.files)">＋ Add photos</label>'+
     '</div></div>'+
-    '<div class="thumbs">'+(grid||emptyState('No photos attached.'))+'</div></div>';
+    '<div class="thumbs">'+(grid||emptyState('No photos attached.'))+'</div>'+
+    '<div class="photo-warn">⚠ All photos will be deleted from the server '+JOB_PHOTO_TTL_DAYS+' days after they are added. Please take a screenshot for your personal record.</div></div>';
 }
 function _photoSrc(jid,pid){ var j=jobById(jid); var p=(j.photos||[]).find(function(x){return x.id===pid;}); return p?(p.url||p.data):''; }
 /* Save every photo on this job to the computer (one file each). Staff-only — the
@@ -613,6 +614,7 @@ VIEWS.photoup = function(jobId){
     '<label class="btn ghost pu-pick"><input type="file" accept="image/*" multiple style="display:none" onchange="addPhotos(\''+j.id+'\',this.files)">🖼 Choose from gallery</label>'+
     '<div class="pu-count muted small">'+n+'/12 attached</div>'+
     '<div class="thumbs pu-thumbs">'+(grid||emptyState('No photos yet — tap “Take photo” above.'))+'</div>'+
+    '<div class="photo-warn">⚠ All photos will be deleted from the server '+JOB_PHOTO_TTL_DAYS+' days after they are added. Please take a screenshot for your personal record.</div>'+
     '<button class="btn ghost full" onclick="go(\'job\',\''+j.id+'\')">Done — open job order</button>'+
   '</div></div>';
 };
@@ -624,6 +626,20 @@ function addPhotos(id,files){
   });
 }
 function delPhoto(id,pid){ var j=jobById(id); j.photos=j.photos.filter(function(x){return x.id!==pid;}); persist(); render(); }
+/* Auto-delete job photos older than the retention window (per-photo, by `ts`) —
+   same 10-day policy as PMS photos, to keep storage down. Cloud sync removes the
+   matching jobphotos docs on the next persist. Runs on the shared PMS-photo timer. */
+var JOB_PHOTO_TTL_DAYS = (typeof PMS_PHOTO_TTL_DAYS!=='undefined') ? PMS_PHOTO_TTL_DAYS : 10;
+function purgeExpiredJobPhotos(){
+  if(typeof S==='undefined' || !S || !S.jobs) return;
+  var now=Date.now(), ttl=JOB_PHOTO_TTL_DAYS*86400000, changed=false;
+  S.jobs.forEach(function(j){
+    if(!j || !Array.isArray(j.photos) || !j.photos.length) return;
+    var keep=j.photos.filter(function(p){ if(!p||!p.ts) return true; return (now-new Date(p.ts).getTime()) < ttl; });
+    if(keep.length!==j.photos.length){ j.photos=keep; changed=true; }
+  });
+  if(changed && typeof persist==='function') persist();
+}
 
 /* ---- Running bill panel --------------------------------------------------- */
 function jobBillPanel(j,b){
