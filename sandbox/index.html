@@ -567,7 +567,7 @@ var BRANCH = {"id":"sandbox","slug":"sandbox","name":"Basic by JMSI — Sandbox 
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.2.0 · 2026-07-18 · 7d8fe4f';
+var APP_VERSION = 'v1.2.0 · 2026-07-18 · 2cf239b';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -3578,11 +3578,40 @@ function prodPeriodLabel(){
    listed (e.g. Parts Salesman) sort last but are still included. */
 var KPI_ROLE_ORDER=['SV','Secretary','SA','SM','Mechanic'];
 function kpiRoleRank(role){ var i=KPI_ROLE_ORDER.indexOf(role); return i<0?KPI_ROLE_ORDER.length:i; }
+/* Actual hands-on hours for a job = time spent in status B2 (on-going, parts
+   complete), from the clipboard log. Each B2 interval is capped at 8h so a job
+   left open overnight without a stop log can't inflate the number. */
+function jobB2Hours(j){
+  var log=(j.statusLog||[]).filter(function(e){return e&&e.time;}).slice().sort(function(a,b){return a.time<b.time?-1:1;});
+  var CAP=8*3600000, total=0;
+  for(var i=0;i<log.length;i++){
+    if(log[i].code!=='B2') continue;
+    var start=new Date(log[i].time).getTime();
+    var end=(i+1<log.length)? new Date(log[i+1].time).getTime() : Date.now();
+    var dur=end-start; if(!(dur>0)) continue; if(dur>CAP) dur=CAP;
+    total+=dur;
+  }
+  return total/3600000;
+}
+/* When the mechanic finished (first Release-group log, i.e. job done). */
+function jobDoneTime(j){
+  var log=(j.statusLog||[]).filter(function(e){return e&&e.time;}).slice().sort(function(a,b){return a.time<b.time?-1:1;});
+  for(var i=0;i<log.length;i++){ if(String(log[i].code||'').charAt(0)==='C') return log[i].time; }
+  return j.billedAt||null;
+}
+/* On-time = finished on or before the job's ETD. null when there's no ETD. */
+function jobOnTime(j){
+  if(!j.etd) return null;
+  var done=jobDoneTime(j); if(!done) return null;
+  return String(done).slice(0,10) <= String(j.etd).slice(0,10);
+}
+/* Efficiency % cell = standard (job) hrs ÷ actual B2 hrs, coloured. */
+function effCell(std, act){ var e=Math.round((std/act)*100); return '<b style="color:'+(e>=100?'#1a7f37':'#b26b00')+'">'+e+'%</b>'; }
 VIEWS.productivity = function(){
   var jobs=jobsInProdPeriod(billedJobs());
   var staff=(S.staff||[]).slice().sort(function(a,b){ return kpiRoleRank(a.role)-kpiRoleRank(b.role) || String(a.name||'').localeCompare(String(b.name||'')); });
   var byId={};
-  var list=staff.map(function(s){ var r={ id:s.id, name:s.name, role:s.role, on:(s.commission!==false), jobs:0, hours:0, labor:0, commission:0 }; byId[s.id]=r; return r; });
+  var list=staff.map(function(s){ var r={ id:s.id, name:s.name, role:s.role, on:(s.commission!==false), jobs:0, hours:0, actual:0, otHit:0, otTotal:0, labor:0, commission:0 }; byId[s.id]=r; return r; });
   jobs.forEach(function(j){
     // Evaluation figure: pool split among EVERYONE assigned, ignoring the payout toggle.
     var cm=jobLaborCommissionMapAll(j,S); var lab=laborTotal(j.lines);
@@ -3591,7 +3620,13 @@ VIEWS.productivity = function(){
     var assigned=[]; mechs.concat([j.saId,j.assessedBy,j.partsSalesman]).forEach(function(x){ if(x&&x!=='TBA'&&assigned.indexOf(x)<0) assigned.push(x); });
     assigned.forEach(function(id){ var r=byId[id]; if(r) r.jobs++; });
     // job hours & labor billed are mechanic productivity metrics — split among mechanics
-    mechs.forEach(function(mid){ var r=byId[mid]; if(!r) return; r.hours=round2(r.hours+(Number(j.jobHours)||0)/mechs.length); r.labor=round2(r.labor+lab/mechs.length); });
+    var actualH=jobB2Hours(j); var onTime=jobOnTime(j);
+    mechs.forEach(function(mid){ var r=byId[mid]; if(!r) return;
+      r.hours=round2(r.hours+(Number(j.jobHours)||0)/mechs.length);
+      r.labor=round2(r.labor+lab/mechs.length);
+      r.actual=round2(r.actual+actualH/mechs.length);
+      if(onTime!==null){ r.otTotal++; if(onTime) r.otHit++; }
+    });
     Object.keys(cm).forEach(function(id){ var r=byId[id]; if(r) r.commission=round2(r.commission+cm[id]); });
   });
   var rows=list.map(function(m){
@@ -3600,6 +3635,9 @@ VIEWS.productivity = function(){
     var commCell = m.on ? '<b>'+peso(m.commission)+'</b>'
       : '<span class="muted" title="Evaluation only — excluded from payout">'+peso(m.commission)+'</span>';
     return '<tr><td><b>'+esc(m.name)+'</b> <span class="muted small">'+esc(roleLabel(m.role))+'</span></td><td class="r">'+m.jobs+'</td><td class="r">'+num(m.hours)+'</td>'+
+      '<td class="r">'+num(m.actual)+'</td>'+
+      '<td class="r">'+(m.actual>0? effCell(m.hours,m.actual) : '<span class="muted">—</span>')+'</td>'+
+      '<td class="r">'+(m.otTotal>0? Math.round(m.otHit/m.otTotal*100)+'% <span class="muted small">('+m.otHit+'/'+m.otTotal+')</span>' : '<span class="muted">—</span>')+'</td>'+
       '<td class="r">'+peso(m.labor)+'</td><td class="r">'+peso(m.jobs?round2(m.labor/m.jobs):0)+'</td><td class="r">'+commCell+'</td><td class="center">'+toggle+'</td></tr>';
   }).join('');
   var commBars=list.filter(function(m){return m.commission>0;}).map(function(m){return {label:m.name,value:m.commission};});
@@ -3616,7 +3654,8 @@ VIEWS.productivity = function(){
     '<div class="row gap" style="align-items:center;flex-wrap:wrap"><div class="seg">'+seg+'</div>'+custom+
       '<span class="muted small">'+esc(prodPeriodLabel())+'</span></div>'+
     '<p class="muted small mt8">Commission is each staff member’s own admin-set rate × the job’s labor (set per person on the Staff page). The Commission column is the <b>evaluation</b> figure — shown even for staff switched off (greyed). The <b>Payout sheet</b> pays only staff with <b>Payout</b> on.</p>'+
-    '<div class="card pad0"><table class="tbl"><thead><tr><th>Staff</th><th class="r">Jobs</th><th class="r">Job hrs</th><th class="r">Labor billed</th><th class="r">Avg/job</th><th class="r">Commission</th><th class="center">Payout</th></tr></thead><tbody>'+(rows||'<tr><td colspan="7" class="muted center">No staff.</td></tr>')+'</tbody></table></div>'+
+    '<p class="muted small">Job hrs = standard hours from the Job Order. Actual hrs = time in status <b>B2</b> from the log (each interval capped at 8h). Efficiency = Job hrs ÷ Actual hrs (green ≥ 100%). On-time = finished on/before ETD (hits/total).</p>'+
+    '<div class="card pad0"><table class="tbl"><thead><tr><th>Staff</th><th class="r">Jobs</th><th class="r">Job hrs</th><th class="r">Actual hrs</th><th class="r">Efficiency</th><th class="r">On-time</th><th class="r">Labor billed</th><th class="r">Avg/job</th><th class="r">Commission</th><th class="center">Payout</th></tr></thead><tbody>'+(rows||'<tr><td colspan="10" class="muted center">No staff.</td></tr>')+'</tbody></table></div>'+
     '<div class="card"><h2>Commission by staff</h2>'+(commBars.length?bars(commBars,peso):emptyState('No commissions in this period.'))+'</div></div>';
 };
 
