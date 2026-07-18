@@ -274,6 +274,9 @@ VIEWS.pmsform = function(id){
   var j=jobById(id||(_pmsCtx&&_pmsCtx.jobId)); if(!j) return '<div class="page">'+emptyState('Job not found.')+'</div>';
   if(!_pmsCtx || _pmsCtx.jobId!==j.id) _pmsCtx={ jobId:j.id, step:0 };
   if(_pmsCtx.step==null) _pmsCtx.step=0;
+  // Preserve any unsaved on-screen picks before repainting — a background cloud
+  // snapshot can trigger render() mid-section and would otherwise reset the boxes.
+  if(_pmsCtx.jobId===j.id) pmsCaptureCurrent();
   var r=(j.pms&&j.pms.report)||{ values:{} }; var vals=r.values||{};
   var veh=(j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:'');
   var N=PMS_TEMPLATE.length;
@@ -321,7 +324,10 @@ VIEWS.pmsform = function(id){
 };
 /* Save whatever fields are in the DOM right now (current section OR sign-off page)
    into the report, without clobbering the other sections. */
-function pmsCurrentSave(){
+/* Read whatever's on screen right now (current section OR sign-off page) into the
+   report — WITHOUT persisting. Called before every pmsform repaint so a background
+   re-render (e.g. a cloud snapshot) can't wipe unsaved on-screen selections. */
+function pmsCaptureCurrent(){
   var j=_pmsCtx&&jobById(_pmsCtx.jobId); if(!j) return null;
   j.pms=j.pms||{status:'in_progress'};
   j.pms.report=j.pms.report||{values:{}};
@@ -333,8 +339,9 @@ function pmsCurrentSave(){
     var st=pmsReadSig('pmsSigTech'); if(st) j.pms.report.sigTech=st;
     var sc=pmsReadSig('pmsSigClient'); if(sc) j.pms.report.sigClient=sc;
   }
-  persist(); return j;
+  return j;
 }
+function pmsCurrentSave(){ var j=pmsCaptureCurrent(); if(j) persist(); return j; }
 function pmsGoto(i){ pmsCurrentSave(); _pmsCtx.step=i; render(); if(typeof window!=='undefined') window.scrollTo(0,0); }
 function pmsPrev(){ pmsCurrentSave(); if(_pmsCtx.step>0) _pmsCtx.step--; render(); if(typeof window!=='undefined') window.scrollTo(0,0); }
 function pmsNext(){
