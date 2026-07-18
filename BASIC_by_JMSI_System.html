@@ -345,6 +345,23 @@ textarea{resize:vertical} .chk{display:flex;align-items:center;gap:8px;font-size
 .bar-row{display:grid;grid-template-columns:130px 1fr 90px;align-items:center;gap:10px;font-size:12.5px}
 .bar-lab{color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap} .bar-track{background:var(--canvas);border-radius:20px;height:10px;overflow:hidden}
 .bar-fill{height:100%;background:linear-gradient(90deg,var(--brand),var(--gold));border-radius:20px} .bar-val{text-align:right;font-weight:600}
+/* ---- Mechanic performance review (status bars + scorecards) ---- */
+.perf-bars .bar-track{position:relative;height:14px}
+.perf-bars .bar-ref{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--ink2);opacity:.5;border-radius:2px;z-index:2}
+.bar-fill.st-good{background:#34C759} .bar-fill.st-warn{background:#FFC000} .bar-fill.st-bad{background:#F21717} .bar-fill.st-na{background:var(--hair)}
+.perf-grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px 22px;margin-top:14px}
+.perf-h{font-size:13px;color:var(--ink2);font-weight:700;margin:2px 0 9px}
+.perf-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;margin-top:8px}
+.perf-card{border:1px solid var(--hair);border-radius:12px;padding:12px 14px;background:var(--canvas)}
+[data-theme="dark"] .perf-card{background:#232329}
+.perf-card-h{margin-bottom:7px}
+.perf-badges{display:flex;align-items:center;gap:6px 8px;flex-wrap:wrap;margin-bottom:9px}
+.perf-badge{display:inline-block;font-weight:800;font-size:13px;padding:2px 9px;border-radius:8px;color:#fff}
+.perf-badge.st-good{background:#1a7f37} .perf-badge.st-warn{background:#b26b00} .perf-badge.st-bad{background:#c62828} .perf-badge.st-na{background:#8e8e93}
+.perf-kv{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;padding:3px 0;border-bottom:1px solid var(--hair)}
+.perf-kv span{color:var(--ink2)} .perf-kv b{white-space:nowrap}
+.st-good-t{color:#1a7f37;font-weight:700} .st-warn-t{color:#b26b00;font-weight:700} .st-bad-t{color:#c62828;font-weight:700}
+[data-theme="dark"] .st-good-t{color:#57d977} [data-theme="dark"] .st-warn-t{color:#ffcf4d} [data-theme="dark"] .st-bad-t{color:#ff6b6b}
 
 /* ---- Timeline ---- */
 .timeline{position:relative;padding-left:6px} .tl-item{display:flex;gap:12px;padding:6px 0}
@@ -567,7 +584,7 @@ var BRANCH = {"id":"main","slug":"main","name":"Basic by JMSI — Fairview (Main
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.2.0 · 2026-07-18 · 2cf239b';
+var APP_VERSION = 'v1.2.0 · 2026-07-18 · 8c42398';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -3607,6 +3624,83 @@ function jobOnTime(j){
 }
 /* Efficiency % cell = standard (job) hrs ÷ actual B2 hrs, coloured. */
 function effCell(std, act){ var e=Math.round((std/act)*100); return '<b style="color:'+(e>=100?'#1a7f37':'#b26b00')+'">'+e+'%</b>'; }
+/* Efficiency / on-time status band → colour class (both are "higher is better"). */
+function effBand(p){ return p==null?'st-na':(p>=100?'st-good':p>=85?'st-warn':'st-bad'); }
+function otBand(p){ return p==null?'st-na':(p>=90?'st-good':p>=75?'st-warn':'st-bad'); }
+/* Status bars (percent) with a 100% reference marker on the track. items:
+   [{label, pct, disp, band}]. Native title tooltips per row. */
+function perfStatBars(items){
+  var max=Math.max(100, Math.max.apply(null, items.map(function(i){return i.pct||0;}).concat([0])));
+  var refPos=Math.round(100/max*100);
+  return '<div class="bars perf-bars">'+items.map(function(i){
+    var w=(i.pct==null)?0:Math.round(Math.min(i.pct,max)/max*100);
+    return '<div class="bar-row" title="'+esc(i.label)+': '+esc(i.disp)+'"><div class="bar-lab">'+esc(i.label)+'</div>'+
+      '<div class="bar-track"><div class="bar-ref" style="left:'+refPos+'%"></div><div class="bar-fill '+i.band+'" style="width:'+w+'%"></div></div>'+
+      '<div class="bar-val">'+esc(i.disp)+'</div></div>';
+  }).join('')+'</div>';
+}
+/* Full mechanic-performance dashboard for the period: team tiles, comparison
+   charts, and a per-mechanic scorecard grid. Reads the same `list` the table uses. */
+function mechPerfSection(list){
+  var m=list.filter(function(r){ return isMechanicRole(r.role) && (r.jobs>0 || r.hours>0 || r.actual>0); });
+  if(!m.length) return '<div class="card"><h2>Mechanic performance review</h2>'+emptyState('No mechanic activity in this period.')+'</div>';
+  m.forEach(function(r){
+    r.eff = r.actual>0 ? Math.round(r.hours/r.actual*100) : null;
+    r.ot  = r.otTotal>0 ? Math.round(r.otHit/r.otTotal*100) : null;
+    r.revhr = r.actual>0 ? round2(r.labor/r.actual) : 0;
+    r.avgHrs = r.jobs ? round2(r.hours/r.jobs) : 0;
+    r.avgLabor = r.jobs ? round2(r.labor/r.jobs) : 0;
+  });
+  var T={jobs:0,hours:0,actual:0,otHit:0,otTotal:0,labor:0,commission:0};
+  m.forEach(function(r){ T.jobs+=r.jobs; T.hours+=r.hours; T.actual+=r.actual; T.otHit+=r.otHit; T.otTotal+=r.otTotal; T.labor+=r.labor; T.commission+=r.commission; });
+  var teamEff=T.actual>0?Math.round(T.hours/T.actual*100):null;
+  var teamOt =T.otTotal>0?Math.round(T.otHit/T.otTotal*100):null;
+  var teamRev=T.actual>0?round2(T.labor/T.actual):0;
+  var tiles='<div class="kpis">'+
+    kpi('Mechanics', m.length)+
+    kpi('Jobs done', T.jobs)+
+    kpi('Standard hrs', num(round2(T.hours)), 'from job orders')+
+    kpi('Actual hrs (B2)', num(round2(T.actual)), 'from the log')+
+    kpi('Team efficiency', teamEff!=null?teamEff+'%':'—', 'std ÷ actual')+
+    kpi('Team on-time', teamOt!=null?teamOt+'%':'—', T.otTotal?('vs ETD · '+T.otHit+'/'+T.otTotal):'no ETDs')+
+    kpi('Revenue / hr', peso(teamRev), 'labor ÷ actual hr')+
+    kpi('Labor billed', peso(round2(T.labor)))+
+  '</div>';
+  var byEff=m.slice().sort(function(a,b){return (b.eff==null?-1:b.eff)-(a.eff==null?-1:a.eff);});
+  var effBars=perfStatBars(byEff.map(function(r){return {label:r.name, pct:r.eff, band:effBand(r.eff), disp:r.eff!=null?r.eff+'%':'—'};}));
+  var otBars=perfStatBars(m.slice().sort(function(a,b){return (b.ot==null?-1:b.ot)-(a.ot==null?-1:a.ot);}).map(function(r){return {label:r.name, pct:r.ot, band:otBand(r.ot), disp:r.ot!=null?(r.ot+'% ('+r.otHit+'/'+r.otTotal+')'):'—'};}));
+  var jobBars=bars(m.slice().sort(function(a,b){return b.jobs-a.jobs;}).map(function(r){return {label:r.name, value:r.jobs};}));
+  var revBars=bars(m.slice().sort(function(a,b){return b.revhr-a.revhr;}).map(function(r){return {label:r.name, value:r.revhr};}), peso);
+  var hrsMax=Math.max(1, Math.max.apply(null, m.map(function(r){return Math.max(r.hours,r.actual);}).concat([0])));
+  var hrsBars='<div class="bars perf-bars">'+m.slice().sort(function(a,b){return b.actual-a.actual;}).map(function(r){
+    var aw=Math.round(r.actual/hrsMax*100), sp=Math.round(r.hours/hrsMax*100), over=r.actual>r.hours+0.001;
+    return '<div class="bar-row" title="'+esc(r.name)+' — actual '+num(round2(r.actual))+'h vs estimate '+num(round2(r.hours))+'h"><div class="bar-lab">'+esc(r.name)+'</div>'+
+      '<div class="bar-track"><div class="bar-ref" style="left:'+sp+'%"></div><div class="bar-fill '+(over?'st-bad':'st-good')+'" style="width:'+aw+'%"></div></div>'+
+      '<div class="bar-val">'+num(round2(r.actual))+'h</div></div>';
+  }).join('')+'</div>';
+  var cards=byEff.map(function(r){
+    function row(k,v){ return '<div class="perf-kv"><span>'+k+'</span><b>'+v+'</b></div>'; }
+    var eb=r.eff==null?'<span class="muted">—</span>':'<span class="perf-badge '+effBand(r.eff)+'">'+r.eff+'%</span>';
+    var ob=r.ot==null?'<span class="muted">—</span>':'<span class="perf-badge '+otBand(r.ot)+'">'+r.ot+'%</span>';
+    return '<div class="perf-card"><div class="perf-card-h"><b>'+esc(r.name)+'</b> <span class="muted small">'+esc(roleLabel(r.role))+'</span></div>'+
+      '<div class="perf-badges">'+eb+'<span class="muted small">efficiency</span>'+ob+'<span class="muted small">on-time</span></div>'+
+      row('Jobs done', r.jobs)+ row('Standard hrs', num(round2(r.hours)))+ row('Actual hrs (B2)', num(round2(r.actual)))+
+      row('Avg std hrs / job', num(r.avgHrs))+ row('Labor billed', peso(r.labor))+ row('Revenue / actual hr', peso(r.revhr))+
+      row('Avg labor / job', peso(r.avgLabor))+ row('Commission', peso(r.commission))+'</div>';
+  }).join('');
+  return '<div class="card"><h2>Mechanic performance review</h2>'+
+    '<p class="muted small"><b>How to read.</b> <b class="st-good-t">Efficiency</b> = standard job hrs ÷ actual worked hrs: <span class="st-good-t">green ≥ 100%</span> (beat the estimate), <span class="st-warn-t">amber 85–99%</span>, <span class="st-bad-t">red &lt; 85%</span>; the marker on each bar is the 100% break-even. <b>On-time</b> = finished on/before ETD (green ≥ 90%). <b>Actual hrs</b> is time in status B2 from the log (capped 8h/interval), so keep the log honest for these to mean anything.</p>'+
+    tiles+
+    '<div class="perf-grid2">'+
+      '<div><h3 class="perf-h">Efficiency % <span class="muted small">· marker = 100%</span></h3>'+effBars+'</div>'+
+      '<div><h3 class="perf-h">On-time % <span class="muted small">· vs ETD</span></h3>'+otBars+'</div>'+
+      '<div><h3 class="perf-h">Actual hrs vs estimate <span class="muted small">· bar = actual · marker = estimate · green ≤ estimate</span></h3>'+hrsBars+'</div>'+
+      '<div><h3 class="perf-h">Jobs completed</h3>'+jobBars+'</div>'+
+      '<div><h3 class="perf-h">Revenue per actual hr</h3>'+revBars+'</div>'+
+    '</div>'+
+    '<h3 class="perf-h" style="margin-top:16px">Per-mechanic scorecards</h3><div class="perf-cards">'+cards+'</div>'+
+  '</div>';
+}
 VIEWS.productivity = function(){
   var jobs=jobsInProdPeriod(billedJobs());
   var staff=(S.staff||[]).slice().sort(function(a,b){ return kpiRoleRank(a.role)-kpiRoleRank(b.role) || String(a.name||'').localeCompare(String(b.name||'')); });
@@ -3656,6 +3750,7 @@ VIEWS.productivity = function(){
     '<p class="muted small mt8">Commission is each staff member’s own admin-set rate × the job’s labor (set per person on the Staff page). The Commission column is the <b>evaluation</b> figure — shown even for staff switched off (greyed). The <b>Payout sheet</b> pays only staff with <b>Payout</b> on.</p>'+
     '<p class="muted small">Job hrs = standard hours from the Job Order. Actual hrs = time in status <b>B2</b> from the log (each interval capped at 8h). Efficiency = Job hrs ÷ Actual hrs (green ≥ 100%). On-time = finished on/before ETD (hits/total).</p>'+
     '<div class="card pad0"><table class="tbl"><thead><tr><th>Staff</th><th class="r">Jobs</th><th class="r">Job hrs</th><th class="r">Actual hrs</th><th class="r">Efficiency</th><th class="r">On-time</th><th class="r">Labor billed</th><th class="r">Avg/job</th><th class="r">Commission</th><th class="center">Payout</th></tr></thead><tbody>'+(rows||'<tr><td colspan="10" class="muted center">No staff.</td></tr>')+'</tbody></table></div>'+
+    mechPerfSection(list)+
     '<div class="card"><h2>Commission by staff</h2>'+(commBars.length?bars(commBars,peso):emptyState('No commissions in this period.'))+'</div></div>';
 };
 
