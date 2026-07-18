@@ -301,8 +301,21 @@ function saveUpdate(){
     return;
   }
   var code=val('luCode');
+  var note=val('luNote');
+  // B4 (Job stopped, other reasons) requires a note explaining why before it logs.
+  if(code==='B4' && !String(note).trim()){
+    toast('B4 (Job stopped, other reasons) needs a note before it can be logged','err');
+    var ne=document.getElementById('luNote');
+    var nb=(ne && ne.closest) ? ne.closest('.fld') : null;
+    if(nb){ nb.classList.add('needfill');
+      var nclr=function(){ if(String(val('luNote')).trim()){ nb.classList.remove('needfill'); ne.removeEventListener('input',nclr); } };
+      ne.addEventListener('input',nclr);
+    }
+    if(ne){ try{ ne.focus(); }catch(e){} }
+    return;
+  }
   j.status=code;
-  j.statusLog.push({ time:new Date().toISOString(), code:code, by:by, note:val('luNote') });
+  j.statusLog.push({ time:new Date().toISOString(), code:code, by:by, note:note });
   persist(); closeModal(); toast('Update logged'); render();
 }
 

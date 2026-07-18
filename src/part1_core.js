@@ -45,11 +45,12 @@ var STATUS = {
   B1:'On-going job, waiting for parts',
   B2:'On-going job, parts complete',
   B3:'Job stopped, waiting for parts',
+  B4:'Job stopped, other reasons',
   C1:'Job done, waiting for test drive & clearance',
   C2:'Release not cleared, return to mechanic',
   C3:'Release cleared, forward to billing'
 };
-var STATUS_ORDER = ['A1','A2','A3','B1','B2','B3','C1','C2','C3'];
+var STATUS_ORDER = ['A1','A2','A3','B1','B2','B3','B4','C1','C2','C3'];
 function statusGroup(code){ return code ? code.charAt(0) : 'A'; }
 var STATUS_GROUP_NAME = { A:'Diagnosis', B:'In Progress', C:'Release' };
 

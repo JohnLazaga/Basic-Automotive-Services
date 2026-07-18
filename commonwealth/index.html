@@ -567,7 +567,7 @@ var BRANCH = {"id":"commonwealth","slug":"commonwealth","name":"Basic by JMSI �
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.2.0 · 2026-07-18 · 8e2e330';
+var APP_VERSION = 'v1.2.0 · 2026-07-18 · 7d8fe4f';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -603,11 +603,12 @@ var STATUS = {
   B1:'On-going job, waiting for parts',
   B2:'On-going job, parts complete',
   B3:'Job stopped, waiting for parts',
+  B4:'Job stopped, other reasons',
   C1:'Job done, waiting for test drive & clearance',
   C2:'Release not cleared, return to mechanic',
   C3:'Release cleared, forward to billing'
 };
-var STATUS_ORDER = ['A1','A2','A3','B1','B2','B3','C1','C2','C3'];
+var STATUS_ORDER = ['A1','A2','A3','B1','B2','B3','B4','C1','C2','C3'];
 function statusGroup(code){ return code ? code.charAt(0) : 'A'; }
 var STATUS_GROUP_NAME = { A:'Diagnosis', B:'In Progress', C:'Release' };
 
@@ -2137,8 +2138,21 @@ function saveUpdate(){
     return;
   }
   var code=val('luCode');
+  var note=val('luNote');
+  // B4 (Job stopped, other reasons) requires a note explaining why before it logs.
+  if(code==='B4' && !String(note).trim()){
+    toast('B4 (Job stopped, other reasons) needs a note before it can be logged','err');
+    var ne=document.getElementById('luNote');
+    var nb=(ne && ne.closest) ? ne.closest('.fld') : null;
+    if(nb){ nb.classList.add('needfill');
+      var nclr=function(){ if(String(val('luNote')).trim()){ nb.classList.remove('needfill'); ne.removeEventListener('input',nclr); } };
+      ne.addEventListener('input',nclr);
+    }
+    if(ne){ try{ ne.focus(); }catch(e){} }
+    return;
+  }
   j.status=code;
-  j.statusLog.push({ time:new Date().toISOString(), code:code, by:by, note:val('luNote') });
+  j.statusLog.push({ time:new Date().toISOString(), code:code, by:by, note:note });
   persist(); closeModal(); toast('Update logged'); render();
 }
 
