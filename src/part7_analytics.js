@@ -231,11 +231,16 @@ function jobDoneTime(j){
   for(var i=0;i<log.length;i++){ if(String(log[i].code||'').charAt(0)==='C') return log[i].time; }
   return j.billedAt||null;
 }
-/* On-time = finished on or before the job's ETD. null when there's no ETD. */
+/* On-time = finished on or before the job's ETD. null when there's no ETD.
+   The log/billedAt stamps are UTC ISO, the ETD is a local date from <input type=date>,
+   so slicing the timestamp would read a day early here (UTC+8) — convert to the
+   local calendar day first, otherwise anything finished before 8am counts on-time. */
 function jobOnTime(j){
   if(!j.etd) return null;
   var done=jobDoneTime(j); if(!done) return null;
-  return String(done).slice(0,10) <= String(j.etd).slice(0,10);
+  var d=new Date(String(done).length<=10 ? done+'T00:00:00' : done);
+  if(isNaN(d.getTime())) return null;
+  return todayISO(d) <= String(j.etd).slice(0,10);
 }
 /* Efficiency % cell = standard (job) hrs ÷ actual B2 hrs, coloured. */
 function effCell(std, act){ var e=Math.round((std/act)*100); return '<b style="color:'+(e>=100?'#1a7f37':'#b26b00')+'">'+e+'%</b>'; }

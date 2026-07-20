@@ -1,4 +1,6 @@
 # Generates src/logo.js with: LOGO_URI (symbol on black rounded box, for light/print),
+# LOGO_URI_PRINT (same box, symbol forced WHITE — the red mark goes near-black on a
+# mono printer, so the QR sticker would print as a solid black square),
 # LOGO_LOCKUP (full primary lockup auto-trimmed, for the dark sidebar/portal), LOGO_BG.
 Add-Type -AssemblyName System.Drawing
 $root = "C:\Users\John.JASREGALADO\.claude\BASIC_by_JMSI"
@@ -31,7 +33,30 @@ $pad = 16
 $g.DrawImage($src, $pad, $pad, ($size-2*$pad), ($size-2*$pad))
 $g.Dispose()
 $markUri = To-DataUri $mark
-$src.Dispose(); $mark.Dispose()
+$mark.Dispose()
+
+# ---------- 1b) PRINT MARK: same box, symbol forced white ----------
+# Zeroing the RGB rows and translating by 1,1,1 maps every pixel to white while the
+# alpha row stays identity, so the symbol's anti-aliased edges still feather into black.
+$cm = New-Object System.Drawing.Imaging.ColorMatrix
+$cm.Matrix00 = 0; $cm.Matrix11 = 0; $cm.Matrix22 = 0
+$cm.Matrix40 = 1; $cm.Matrix41 = 1; $cm.Matrix42 = 1
+$ia = New-Object System.Drawing.Imaging.ImageAttributes
+$ia.SetColorMatrix($cm)
+
+$markP = New-Object System.Drawing.Bitmap $size, $size
+$gp = [System.Drawing.Graphics]::FromImage($markP)
+$gp.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+$gp.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+$gp.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+$gp.Clear([System.Drawing.Color]::Transparent)
+$gp.FillPath((New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255,17,17,19))), $p)
+$dstP = New-Object System.Drawing.Rectangle $pad, $pad, ($size-2*$pad), ($size-2*$pad)
+$srcP = New-Object System.Drawing.Rectangle 0, 0, $src.Width, $src.Height
+$gp.DrawImage($src, $dstP, $srcP.X, $srcP.Y, $srcP.Width, $srcP.Height, [System.Drawing.GraphicsUnit]::Pixel, $ia)
+$gp.Dispose()
+$markPrintUri = To-DataUri $markP
+$ia.Dispose(); $markP.Dispose(); $src.Dispose()
 
 # ---------- 2) LOCKUP: auto-trim the primary logo to its artwork ----------
 $full = New-Object System.Drawing.Bitmap $lockPath
@@ -91,6 +116,6 @@ $lockUri = To-DataUri $lock
 $full.Dispose(); $lock.Dispose()
 
 # ---------- write src/logo.js ----------
-$out = "var LOGO_URI = `"$markUri`";`nvar LOGO_LOCKUP = `"$lockUri`";`nvar LOGO_BG = `"$bgHex`";`n"
+$out = "var LOGO_URI = `"$markUri`";`nvar LOGO_URI_PRINT = `"$markPrintUri`";`nvar LOGO_LOCKUP = `"$lockUri`";`nvar LOGO_BG = `"$bgHex`";`n"
 Set-Content -Path (Join-Path $root "src\logo.js") -Value $out -Encoding ascii -NoNewline
-"mark b64: $($markUri.Length)  lockup b64: $($lockUri.Length)  bg: $bgHex  crop: ${cw}x${ch} -> ${tw}x${th}"
+"mark b64: $($markUri.Length)  print b64: $($markPrintUri.Length)  lockup b64: $($lockUri.Length)  bg: $bgHex  crop: ${cw}x${ch} -> ${tw}x${th}"
