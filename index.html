@@ -584,7 +584,7 @@ var BRANCH = {"id":"main","slug":"main","name":"Basic by JMSI — Fairview (Main
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.2.0 · 2026-07-18 · 8c42398';
+var APP_VERSION = 'v1.2.0 · 2026-07-20 · a41b516';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -598,6 +598,14 @@ var LOGO_SVG =
   "<text x='64' y='64' dy='.34em' text-anchor='middle' font-family=\"-apple-system,Segoe UI,Roboto,sans-serif\" " +
   "font-size='80' font-weight='800' fill='#F21717'>B</text></svg>";
 
+/* Print-safe mark: white B on black. The PNG logo's red B goes near-black on a
+   mono/greyscale printer, so the sticker just prints as a solid black square. */
+var LOGO_SVG_PRINT =
+  "<svg xmlns='http://www.w3.org/2000/svg' width='128' height='128' viewBox='0 0 128 128'>" +
+  "<rect width='128' height='128' rx='28' fill='#111111'/>" +
+  "<text x='64' y='64' dy='.34em' text-anchor='middle' font-family=\"-apple-system,Segoe UI,Roboto,sans-serif\" " +
+  "font-size='80' font-weight='800' fill='#FFFFFF'>B</text></svg>";
+
 /* btoa exists in modern browsers and Node 16+; guard anyway. */
 function _b64(s){
   try { return (typeof btoa==='function') ? btoa(s) : Buffer.from(s,'binary').toString('base64'); }
@@ -609,6 +617,7 @@ var LOGO_BG;      /* the lockup's background color, for seamless dark surfaces *
 if (typeof LOGO_URI === 'undefined' || !LOGO_URI){
   LOGO_URI = 'data:image/svg+xml;base64,' + _b64(LOGO_SVG);
 }
+var LOGO_URI_PRINT = 'data:image/svg+xml;base64,' + _b64(LOGO_SVG_PRINT);
 if (typeof LOGO_LOCKUP === 'undefined' || !LOGO_LOCKUP){ LOGO_LOCKUP = LOGO_URI; }
 if (typeof LOGO_BG === 'undefined' || !LOGO_BG){ LOGO_BG = '#181818'; }
 
@@ -4350,7 +4359,7 @@ function printDailyClose(){ printDoc(docDailyClose()); }
 function docQRSticker(v){
   var url=portalLink(v.id);
   var body='<div style="text-align:center;border:2px dashed #1D1D1F;border-radius:14px;padding:18px;max-width:320px;margin:20px auto">'+
-    '<img src="'+LOGO_URI+'" style="width:44px;height:44px;border-radius:10px"/>'+
+    '<img src="'+LOGO_URI_PRINT+'" style="width:44px;height:44px;border-radius:10px"/>'+
     '<div style="font-weight:800;margin:6px 0">'+esc(S.shop.name)+'</div>'+
     '<div style="font-size:20px;color:#6E6E73">Scan for service history</div>'+
     '<div id="stickerQR" style="display:flex;justify-content:center;margin:10px 0"></div>'+

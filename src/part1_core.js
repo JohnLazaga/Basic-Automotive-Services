@@ -23,6 +23,14 @@ var LOGO_SVG =
   "<text x='64' y='64' dy='.34em' text-anchor='middle' font-family=\"-apple-system,Segoe UI,Roboto,sans-serif\" " +
   "font-size='80' font-weight='800' fill='#F21717'>B</text></svg>";
 
+/* Print-safe mark: white B on black. The PNG logo's red B goes near-black on a
+   mono/greyscale printer, so the sticker just prints as a solid black square. */
+var LOGO_SVG_PRINT =
+  "<svg xmlns='http://www.w3.org/2000/svg' width='128' height='128' viewBox='0 0 128 128'>" +
+  "<rect width='128' height='128' rx='28' fill='#111111'/>" +
+  "<text x='64' y='64' dy='.34em' text-anchor='middle' font-family=\"-apple-system,Segoe UI,Roboto,sans-serif\" " +
+  "font-size='80' font-weight='800' fill='#FFFFFF'>B</text></svg>";
+
 /* btoa exists in modern browsers and Node 16+; guard anyway. */
 function _b64(s){
   try { return (typeof btoa==='function') ? btoa(s) : Buffer.from(s,'binary').toString('base64'); }
@@ -34,6 +42,7 @@ var LOGO_BG;      /* the lockup's background color, for seamless dark surfaces *
 if (typeof LOGO_URI === 'undefined' || !LOGO_URI){
   LOGO_URI = 'data:image/svg+xml;base64,' + _b64(LOGO_SVG);
 }
+var LOGO_URI_PRINT = 'data:image/svg+xml;base64,' + _b64(LOGO_SVG_PRINT);
 if (typeof LOGO_LOCKUP === 'undefined' || !LOGO_LOCKUP){ LOGO_LOCKUP = LOGO_URI; }
 if (typeof LOGO_BG === 'undefined' || !LOGO_BG){ LOGO_BG = '#181818'; }
 

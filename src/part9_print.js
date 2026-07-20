@@ -316,7 +316,7 @@ function printDailyClose(){ printDoc(docDailyClose()); }
 function docQRSticker(v){
   var url=portalLink(v.id);
   var body='<div style="text-align:center;border:2px dashed #1D1D1F;border-radius:14px;padding:18px;max-width:320px;margin:20px auto">'+
-    '<img src="'+LOGO_URI+'" style="width:44px;height:44px;border-radius:10px"/>'+
+    '<img src="'+LOGO_URI_PRINT+'" style="width:44px;height:44px;border-radius:10px"/>'+
     '<div style="font-weight:800;margin:6px 0">'+esc(S.shop.name)+'</div>'+
     '<div style="font-size:20px;color:#6E6E73">Scan for service history</div>'+
     '<div id="stickerQR" style="display:flex;justify-content:center;margin:10px 0"></div>'+
