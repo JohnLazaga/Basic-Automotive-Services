@@ -50,7 +50,7 @@ function boardKPIs(){
   var wip = round2(active.reduce(function(s,j){return s+jobGross(j);},0));
   var dueCount = active.filter(isUpdateDue).length;
   var released = S.jobs.filter(function(j){return j.stage==='Released';});
-  var todayRev = round2(released.filter(function(j){return j.payments&&j.payments.some(function(p){return (p.date||'').slice(0,10)===todayISO();});})
+  var todayRev = round2(released.filter(function(j){return j.payments&&j.payments.some(function(p){return localDay(p.date)===todayISO();});})
     .reduce(function(s,j){return s+jobPaid(j);},0));
   var money = (typeof isAdminOrSV==='function') ? isAdminOrSV() : true;   // WIP value + collections: Admin / Supervisor only
   return '<div class="kpis">'+

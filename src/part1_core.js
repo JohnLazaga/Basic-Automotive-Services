@@ -91,6 +91,18 @@ function uid(p){ _idc++; return (p||'id') + '_' + Date.now().toString(36) + '_' 
 
 function todayISO(d){ d = d || new Date();
   return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
+/* The calendar day a stored stamp falls on, LOCALLY ('YYYY-MM-DD', '' if unusable).
+   Timestamps (payment.date, billedAt, statusLog time) are UTC ISO from toISOString(),
+   while every date the user picks or sees — todayISO(), <input type="date"> — is local.
+   Slicing a timestamp therefore reads a day early east of UTC: at UTC+8 anything
+   before 8am local lands on the previous day. Always compare days through this. */
+function localDay(v){
+  if(!v) return '';
+  var s = String(v);
+  if(s.length <= 10) return s.slice(0,10);      // already a plain local date
+  var d = new Date(s);
+  return isNaN(d.getTime()) ? '' : todayISO(d);
+}
 function fmtDate(iso){ if(!iso) return '—';
   var d = new Date(iso + (iso.length<=10 ? 'T00:00:00' : ''));
   if (isNaN(d)) return iso;

@@ -26,7 +26,7 @@ VIEWS.reports = function(){
 
   // revenue by month
   var byMonth={};
-  rel.forEach(function(j){ var m=(j.billedAt||j.dateIn||'').slice(0,7); if(!m) return; byMonth[m]=round2((byMonth[m]||0)+jobGross(j)); });
+  rel.forEach(function(j){ var m=localDay(j.billedAt||j.dateIn).slice(0,7); if(!m) return; byMonth[m]=round2((byMonth[m]||0)+jobGross(j)); });
   var months=Object.keys(byMonth).sort().slice(-6).map(function(m){ return { label:m, value:byMonth[m] }; });
 
   // top services & parts by revenue
@@ -153,12 +153,12 @@ VIEWS.dailyclose = function(){
   var date=DC_DATE;
   // payments on that date across all jobs
   var txns=[];
-  S.jobs.forEach(function(j){ (j.payments||[]).forEach(function(p){ if((p.date||'').slice(0,10)===date) txns.push({ job:j, p:p }); }); });
+  S.jobs.forEach(function(j){ (j.payments||[]).forEach(function(p){ if(localDay(p.date)===date) txns.push({ job:j, p:p }); }); });
   var byMethod={};
   txns.forEach(function(t){ byMethod[t.p.method]=round2((byMethod[t.p.method]||0)+t.p.amount); });
   var collections=round2(txns.reduce(function(s,t){return s+t.p.amount;},0));
   // jobs billed that day -> net sales / vat / discounts
-  var billed=S.jobs.filter(function(j){return (j.billedAt||'').slice(0,10)===date;});
+  var billed=S.jobs.filter(function(j){return localDay(j.billedAt)===date;});
   var net=round2(billed.reduce(function(s,j){return s+jobNet(j);},0));   // VATable base (ex-VAT)
   var disc=round2(billed.reduce(function(s,j){return s+discountAmount(j);},0));
   var vs=vatSplit(net,S);
@@ -193,7 +193,7 @@ function prodRange(){
 }
 function jobsInProdPeriod(jobs){
   var r=prodRange();
-  return jobs.filter(function(j){ var d=(j.billedAt||'').slice(0,10); return d && d>=r.from && d<=r.to; });
+  return jobs.filter(function(j){ var d=localDay(j.billedAt); return d && d>=r.from && d<=r.to; });
 }
 function setProd(p){
   PROD_PERIOD=p;
@@ -232,15 +232,13 @@ function jobDoneTime(j){
   return j.billedAt||null;
 }
 /* On-time = finished on or before the job's ETD. null when there's no ETD.
-   The log/billedAt stamps are UTC ISO, the ETD is a local date from <input type=date>,
-   so slicing the timestamp would read a day early here (UTC+8) — convert to the
-   local calendar day first, otherwise anything finished before 8am counts on-time. */
+   localDay() because the ETD is a local date but the finish stamp is UTC ISO. */
 function jobOnTime(j){
   if(!j.etd) return null;
   var done=jobDoneTime(j); if(!done) return null;
-  var d=new Date(String(done).length<=10 ? done+'T00:00:00' : done);
-  if(isNaN(d.getTime())) return null;
-  return todayISO(d) <= String(j.etd).slice(0,10);
+  var d=localDay(done);
+  if(!d) return null;
+  return d <= String(j.etd).slice(0,10);
 }
 /* Efficiency % cell = standard (job) hrs ÷ actual B2 hrs, coloured. */
 function effCell(std, act){ var e=Math.round((std/act)*100); return '<b style="color:'+(e>=100?'#1a7f37':'#b26b00')+'">'+e+'%</b>'; }

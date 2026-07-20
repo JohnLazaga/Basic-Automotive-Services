@@ -585,7 +585,7 @@ var BRANCH = {"id":"main","slug":"main","name":"Basic by JMSI — Fairview (Main
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.2.0 · 2026-07-20 · 4556260';
+var APP_VERSION = 'v1.2.0 · 2026-07-20 · 9359342';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -667,6 +667,18 @@ function uid(p){ _idc++; return (p||'id') + '_' + Date.now().toString(36) + '_' 
 
 function todayISO(d){ d = d || new Date();
   return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
+/* The calendar day a stored stamp falls on, LOCALLY ('YYYY-MM-DD', '' if unusable).
+   Timestamps (payment.date, billedAt, statusLog time) are UTC ISO from toISOString(),
+   while every date the user picks or sees — todayISO(), <input type="date"> — is local.
+   Slicing a timestamp therefore reads a day early east of UTC: at UTC+8 anything
+   before 8am local lands on the previous day. Always compare days through this. */
+function localDay(v){
+  if(!v) return '';
+  var s = String(v);
+  if(s.length <= 10) return s.slice(0,10);      // already a plain local date
+  var d = new Date(s);
+  return isNaN(d.getTime()) ? '' : todayISO(d);
+}
 function fmtDate(iso){ if(!iso) return '—';
   var d = new Date(iso + (iso.length<=10 ? 'T00:00:00' : ''));
   if (isNaN(d)) return iso;
@@ -1637,7 +1649,7 @@ function boardKPIs(){
   var wip = round2(active.reduce(function(s,j){return s+jobGross(j);},0));
   var dueCount = active.filter(isUpdateDue).length;
   var released = S.jobs.filter(function(j){return j.stage==='Released';});
-  var todayRev = round2(released.filter(function(j){return j.payments&&j.payments.some(function(p){return (p.date||'').slice(0,10)===todayISO();});})
+  var todayRev = round2(released.filter(function(j){return j.payments&&j.payments.some(function(p){return localDay(p.date)===todayISO();});})
     .reduce(function(s,j){return s+jobPaid(j);},0));
   var money = (typeof isAdminOrSV==='function') ? isAdminOrSV() : true;   // WIP value + collections: Admin / Supervisor only
   return '<div class="kpis">'+
@@ -3426,7 +3438,7 @@ VIEWS.reports = function(){
 
   // revenue by month
   var byMonth={};
-  rel.forEach(function(j){ var m=(j.billedAt||j.dateIn||'').slice(0,7); if(!m) return; byMonth[m]=round2((byMonth[m]||0)+jobGross(j)); });
+  rel.forEach(function(j){ var m=localDay(j.billedAt||j.dateIn).slice(0,7); if(!m) return; byMonth[m]=round2((byMonth[m]||0)+jobGross(j)); });
   var months=Object.keys(byMonth).sort().slice(-6).map(function(m){ return { label:m, value:byMonth[m] }; });
 
   // top services & parts by revenue
@@ -3553,12 +3565,12 @@ VIEWS.dailyclose = function(){
   var date=DC_DATE;
   // payments on that date across all jobs
   var txns=[];
-  S.jobs.forEach(function(j){ (j.payments||[]).forEach(function(p){ if((p.date||'').slice(0,10)===date) txns.push({ job:j, p:p }); }); });
+  S.jobs.forEach(function(j){ (j.payments||[]).forEach(function(p){ if(localDay(p.date)===date) txns.push({ job:j, p:p }); }); });
   var byMethod={};
   txns.forEach(function(t){ byMethod[t.p.method]=round2((byMethod[t.p.method]||0)+t.p.amount); });
   var collections=round2(txns.reduce(function(s,t){return s+t.p.amount;},0));
   // jobs billed that day -> net sales / vat / discounts
-  var billed=S.jobs.filter(function(j){return (j.billedAt||'').slice(0,10)===date;});
+  var billed=S.jobs.filter(function(j){return localDay(j.billedAt)===date;});
   var net=round2(billed.reduce(function(s,j){return s+jobNet(j);},0));   // VATable base (ex-VAT)
   var disc=round2(billed.reduce(function(s,j){return s+discountAmount(j);},0));
   var vs=vatSplit(net,S);
@@ -3593,7 +3605,7 @@ function prodRange(){
 }
 function jobsInProdPeriod(jobs){
   var r=prodRange();
-  return jobs.filter(function(j){ var d=(j.billedAt||'').slice(0,10); return d && d>=r.from && d<=r.to; });
+  return jobs.filter(function(j){ var d=localDay(j.billedAt); return d && d>=r.from && d<=r.to; });
 }
 function setProd(p){
   PROD_PERIOD=p;
@@ -3632,15 +3644,13 @@ function jobDoneTime(j){
   return j.billedAt||null;
 }
 /* On-time = finished on or before the job's ETD. null when there's no ETD.
-   The log/billedAt stamps are UTC ISO, the ETD is a local date from <input type=date>,
-   so slicing the timestamp would read a day early here (UTC+8) — convert to the
-   local calendar day first, otherwise anything finished before 8am counts on-time. */
+   localDay() because the ETD is a local date but the finish stamp is UTC ISO. */
 function jobOnTime(j){
   if(!j.etd) return null;
   var done=jobDoneTime(j); if(!done) return null;
-  var d=new Date(String(done).length<=10 ? done+'T00:00:00' : done);
-  if(isNaN(d.getTime())) return null;
-  return todayISO(d) <= String(j.etd).slice(0,10);
+  var d=localDay(done);
+  if(!d) return null;
+  return d <= String(j.etd).slice(0,10);
 }
 /* Efficiency % cell = standard (job) hrs ÷ actual B2 hrs, coloured. */
 function effCell(std, act){ var e=Math.round((std/act)*100); return '<b style="color:'+(e>=100?'#1a7f37':'#b26b00')+'">'+e+'%</b>'; }
@@ -4347,10 +4357,10 @@ function printMechCommission(){ printDoc(docMechCommission()); }
 /* ---- Daily Close report --------------------------------------------------- */
 function docDailyClose(){
   var date=DC_DATE||todayISO();
-  var txns=[]; S.jobs.forEach(function(j){ (j.payments||[]).forEach(function(p){ if((p.date||'').slice(0,10)===date) txns.push({job:j,p:p}); }); });
+  var txns=[]; S.jobs.forEach(function(j){ (j.payments||[]).forEach(function(p){ if(localDay(p.date)===date) txns.push({job:j,p:p}); }); });
   var byMethod={}; txns.forEach(function(t){ byMethod[t.p.method]=round2((byMethod[t.p.method]||0)+t.p.amount); });
   var collections=round2(txns.reduce(function(s,t){return s+t.p.amount;},0));
-  var billed=S.jobs.filter(function(j){return (j.billedAt||'').slice(0,10)===date;});
+  var billed=S.jobs.filter(function(j){return localDay(j.billedAt)===date;});
   var net=round2(billed.reduce(function(s,j){return s+jobNet(j);},0));   // VATable base (ex-VAT)
   var vs=vatSplit(net,S);
   var body=docHeader('End-of-Day Report · '+fmtDate(date))+

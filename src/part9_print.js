@@ -293,10 +293,10 @@ function printMechCommission(){ printDoc(docMechCommission()); }
 /* ---- Daily Close report --------------------------------------------------- */
 function docDailyClose(){
   var date=DC_DATE||todayISO();
-  var txns=[]; S.jobs.forEach(function(j){ (j.payments||[]).forEach(function(p){ if((p.date||'').slice(0,10)===date) txns.push({job:j,p:p}); }); });
+  var txns=[]; S.jobs.forEach(function(j){ (j.payments||[]).forEach(function(p){ if(localDay(p.date)===date) txns.push({job:j,p:p}); }); });
   var byMethod={}; txns.forEach(function(t){ byMethod[t.p.method]=round2((byMethod[t.p.method]||0)+t.p.amount); });
   var collections=round2(txns.reduce(function(s,t){return s+t.p.amount;},0));
-  var billed=S.jobs.filter(function(j){return (j.billedAt||'').slice(0,10)===date;});
+  var billed=S.jobs.filter(function(j){return localDay(j.billedAt)===date;});
   var net=round2(billed.reduce(function(s,j){return s+jobNet(j);},0));   // VATable base (ex-VAT)
   var vs=vatSplit(net,S);
   var body=docHeader('End-of-Day Report · '+fmtDate(date))+
