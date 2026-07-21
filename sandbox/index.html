@@ -362,6 +362,18 @@ textarea{resize:vertical} .chk{display:flex;align-items:center;gap:8px;font-size
 .perf-kv span{color:var(--ink2)} .perf-kv b{white-space:nowrap}
 .st-good-t{color:#1a7f37;font-weight:700} .st-warn-t{color:#b26b00;font-weight:700} .st-bad-t{color:#c62828;font-weight:700}
 [data-theme="dark"] .st-good-t{color:#57d977} [data-theme="dark"] .st-warn-t{color:#ffcf4d} [data-theme="dark"] .st-bad-t{color:#ff6b6b}
+/* ---- Work-authorization log, labor timer, comeback ---- */
+.wa-list{display:flex;flex-direction:column;gap:7px;margin-top:6px}
+.wa-row{display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border:1px solid var(--hair);border-radius:10px;background:var(--canvas)}
+.wa-body{flex:1;min-width:0} .wa-desc{font-size:13px} .wa-meta{font-size:11.5px;color:var(--ink2);margin-top:2px}
+.tm-list{display:flex;flex-direction:column;gap:8px;margin-top:2px}
+.tm-row{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:12px;padding:7px 10px;border:1px solid var(--hair);border-radius:10px}
+.tm-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap} .tm-hrs{font-variant-numeric:tabular-nums;font-weight:600;color:var(--ink2)}
+.tm-live{color:#c62828;font-weight:700;font-size:11px;animation:tmpulse 1.4s ease-in-out infinite}
+[data-theme="dark"] .tm-live{color:#ff6b6b}
+@keyframes tmpulse{0%,100%{opacity:1}50%{opacity:.35}}
+.cb-badges{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+a.lnk{color:var(--brand);cursor:pointer;font-weight:600}
 
 /* ---- Timeline ---- */
 .timeline{position:relative;padding-left:6px} .tl-item{display:flex;gap:12px;padding:6px 0}
@@ -585,7 +597,7 @@ var BRANCH = {"id":"sandbox","slug":"sandbox","name":"Basic by JMSI — Sandbox 
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.2.0 · 2026-07-21 · 7723d02';
+var APP_VERSION = 'v1.2.0 · 2026-07-21 · 95e4d20';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -724,6 +736,8 @@ function discOther(job){ var d=(job&&job.discount)||{}; return round2(Number(d.o
 /* Sum of the value-based buckets, with backward compatibility for the old
    {type, value} shape (treated as a single consolidated amount). */
 function discountRaw(job){
+  // Warranty comeback: no charge — the whole Total Amount Due is written off.
+  if (job && job.warranty) return jobSubtotal(job);
   var d = job && job.discount; if(!d) return 0;
   if (d.parts!==undefined || d.labor!==undefined || d.other!==undefined){
     return round2((Number(d.parts)||0)+(Number(d.labor)||0)+(Number(d.other)||0));
@@ -775,6 +789,8 @@ function staffCommissionRate(idOrStaff){
    includeAll=true ignores the payout toggle (evaluation/KPI figure); default
    returns only commission-eligible (toggle-on) staff (actual payout). */
 function _laborCommissionMap(job, includeAll){
+  // Warranty comeback pays NO labor commission — the rework is on the shop.
+  if (job && job.warranty) return {};
   var labor = discountedLabor(job);
   var map = {};
   // distinct mechanics actually assigned to this job (blank / "TBA" excluded)
@@ -815,6 +831,27 @@ function commissionEligible(idOrStaff){
   var s = (idOrStaff && typeof idOrStaff==='object') ? idOrStaff : staffById(idOrStaff);
   return !!s && s.commission !== false;
 }
+
+/* ---- Per-mechanic labor timer -------------------------------------------- */
+/* job.workLog = [{id, mechId, start, end|null}]. One open (end=null) segment per
+   mechanic at a time. A single open segment is capped at 8h so a forgotten "stop"
+   can't inflate hours — same guard as the B2 status-log estimate it supersedes. */
+var TIMER_SEG_CAP = 8*3600000;
+function timerRunning(job, mid){ return (job&&job.workLog||[]).some(function(s){ return s.mechId===mid && !s.end; }); }
+function jobMechActualHours(job, mid){
+  var ms=(job&&job.workLog||[]).reduce(function(t,s){
+    if(s.mechId!==mid) return t;
+    var start=new Date(s.start).getTime(), end=s.end?new Date(s.end).getTime():Date.now();
+    var d=end-start; if(!(d>0)) return t; if(d>TIMER_SEG_CAP) d=TIMER_SEG_CAP; return t+d;
+  },0);
+  return ms/3600000;
+}
+function jobHasTimer(job){ return !!(job && Array.isArray(job.workLog) && job.workLog.length); }
+function jobActualHoursTotal(job){
+  var seen={}; (job&&job.workLog||[]).forEach(function(s){ seen[s.mechId]=1; });
+  return round2(Object.keys(seen).reduce(function(t,mid){ return t+jobMechActualHours(job,mid); },0));
+}
+function fmtHrs(h){ var m=Math.max(0,Math.round((Number(h)||0)*60)); return Math.floor(m/60)+'h '+(m%60)+'m'; }
 
 /* ---- Payment helpers ------------------------------------------------------ */
 function jobPaid(job){ return round2(((job.payments)||[]).reduce(function(s,p){return s+(Number(p.amount)||0);},0)); }
@@ -1908,13 +1945,19 @@ function blankJob(){
     lines:[], partsSalesman:'', siRef:'', pmsRef:'', notes:'',
     inspection:{ odometer:0, fuel:'', lights:'', condition:'', testDrive:'' },
     checklist:{ created:false, leaveUnit:false, items:{}, bodyNotes:'' },
+    comebackOf:null, comebackMechId:'', comebackReason:'', warranty:false,   // comeback / warranty rework
+    workAuth:[],    // customer authorizations for extra work: {id,desc,amount,approvedBy,method,note,at}
+    workLog:[],     // per-mechanic labor timer segments: {id,mechId,start,end|null}
     status:'A1', statusLog:[], addlWork:[], approvedReleaseBy:null, paymentReceivedBy:null,
     discount:{ parts:0, labor:0, other:0, otherNote:'' }, payments:[], orNumber:null, billedAt:null, releaseSignature:null,
     photos:[], inventoryDeducted:false };
 }
 
 async function createJob(base){
-  var j = Object.assign(blankJob(), base||{});
+  base = base || {};
+  var depAmt = Number(base.depositAmount)||0, depM = base.depositMethod||'Cash';
+  delete base.depositAmount; delete base.depositMethod;   // not job fields — recorded as a payment below
+  var j = Object.assign(blankJob(), base);
   j.no = await allocateSeriesNumber('jo','JO-',4);          // atomic, unique
   if (!j.statusLog.length) j.statusLog=[{ time:new Date().toISOString(), code:j.status||'A1', by:j.saId||'', note:'Job Order created.' }];
   var v = ensureVehicle(j);
@@ -1922,6 +1965,7 @@ async function createJob(base){
   ['owner','address','contactPerson','contactNumber','chassis','year','make','model','variant'].forEach(function(k){
     if(!j[k]) j[k]=v[k];
   });
+  if (depAmt>0) j.payments.push({ amount:round2(depAmt), method:depM, date:new Date().toISOString(), note:'Deposit (intake)' });
   S.jobs.unshift(j); persist();
   return j;
 }
@@ -1962,6 +2006,7 @@ function postJobMissingFields(j){
   if(!String(j.dateIn||'').trim()) missing.push('Date in');
   if(!String(j.etd||'').trim()) missing.push('ETD');
   if(!(Number(j.lastServiceOdo)>0)) missing.push('Last service odometer');
+  if(!(Number(j.jobHours)>0)) missing.push('Job hours');   // standard hrs — required so productivity/efficiency can be computed
   if(insp.fuel===''||insp.fuel===null||insp.fuel===undefined) missing.push('Fuel level');
   if(!String(insp.condition||'').trim()) missing.push('Condition');
   if(!j.saId||j.saId==='TBA') missing.push('Service Adviser');
@@ -1980,7 +2025,7 @@ var INGRESS_FIELD_INPUT = {
 var JOBDETAIL_FIELD_INPUT = {
   'Registered owner':'jdOwner','Contact person':'jdCP','Contact #':'jdContact','Address':'jdAddr',
   'Chassis #':'jdChassis','Year':'jdYear','Make':'jdMake','Model':'jdModel','Ingress odometer':'jdOdo',
-  'Date in':'jdDateIn','ETD':'jdEtd','Last service odometer':'jdLastOdo','Fuel level':'jdFuel','Condition':'jdCond' };
+  'Date in':'jdDateIn','ETD':'jdEtd','Last service odometer':'jdLastOdo','Job hours':'jdHours','Fuel level':'jdFuel','Condition':'jdCond' };
 /* A scannable checklist of the still-missing fields (replaces a comma list). */
 function missingChecklist(missing){
   return '<ul class="misslist">'+missing.map(function(m){
@@ -2026,7 +2071,11 @@ function intakeForm(d){
     field('Variant','<input id="inVariant" value="'+attr(d.variant||'')+'">')+
     field('Ingress odometer','<input id="inOdo" type="number" value="'+attr(d.odometer||'')+'">')+
     '</div>'+
-    field('Concerns / reported issues','<textarea id="inNotes" rows="3">'+esc(d.notes||'')+'</textarea>');
+    field('Concerns / reported issues','<textarea id="inNotes" rows="3">'+esc(d.notes||'')+'</textarea>')+
+    '<div class="grid2">'+
+      field('Deposit collected (optional)','<input id="inDeposit" type="number" step="0.01" min="0" value="'+attr(d.depositAmount||'')+'" placeholder="0.00">','Recorded as a payment on the job — reduces the balance from the start.')+
+      field('Deposit method','<select id="inDepositM"><option>Cash</option><option>GCash</option><option>Card</option><option>Bank transfer</option></select>')+
+    '</div>';
 }
 function intakeLookup(){ var v=vehicleByPlate(val('inPlate')); if(v){ setVal('inCP',v.contactPerson); setVal('inContact',v.contactNumber);
   setVal('inOwner',v.owner); setVal('inAddr',v.address); setVal('inChassis',v.chassis); setVal('inYear',v.year); setVal('inMake',v.make); setVal('inModel',v.model); setVal('inVariant',v.variant); setVal('inOdo',v.odometer);
@@ -2034,7 +2083,8 @@ function intakeLookup(){ var v=vehicleByPlate(val('inPlate')); if(v){ setVal('in
 function intakeSubmit(kind){
   var base={ plate:val('inPlate'), contactPerson:val('inCP'), contactNumber:val('inContact'), owner:val('inOwner'),
     address:val('inAddr'), chassis:val('inChassis'), year:val('inYear'), make:val('inMake'), model:val('inModel'), variant:val('inVariant'),
-    odometer:Number(val('inOdo'))||0, notes:val('inNotes') };
+    odometer:Number(val('inOdo'))||0, notes:val('inNotes'),
+    depositAmount:Number(val('inDeposit'))||0, depositMethod:val('inDepositM')||'Cash' };
   if (!base.plate){ toast('Plate is required','err'); return; }
   if (kind==='estimate'){ closeModal(); createEstimateFrom(base).then(function(e){ go('estimate', e.id); }); return; }
   // Job Order: if ingress is incomplete, prompt to finish now or proceed and complete later.
@@ -2117,15 +2167,19 @@ VIEWS.job = function(id){
     '<div class="cols">'+
       '<div class="colmain">'+
         jobStatusPanel(j)+
+        jobTimerPanel(j)+
         jobLinesPanel(j)+
+        jobWorkAuthPanel(j)+
         (typeof pmsReportPanel==='function'?pmsReportPanel(j):'')+
         jobInspectionPanel(j)+
         jobPhotosPanel(j)+
       '</div>'+
       '<div class="colside">'+
         (canSeeJobPrices()?jobBillPanel(j,bill):'')+
+        (canSeeJobPrices()?jobProfitPanel(j):'')+
         jobAssignPanel(j)+
         jobDetailsPanel(j)+
+        jobComebackPanel(j)+
         jobStagePanel(j,bill)+
       '</div>'+
     '</div>'+
@@ -2365,9 +2419,129 @@ function deleteJobConfirm(id){
     },'Delete job order', true);
 }
 
-/* Additional Work panel removed — extra work discovered mid-job is added
-   directly to the Parts / Labor lines of the ongoing job order. Legacy
-   addlWork entries on old jobs still render in bills and printouts. */
+/* The old auto-billing Additional Work panel was removed — extra work found mid-job
+   is added directly to the Parts / Labor lines. What follows is the CONSENT trail
+   for that extra work (does not bill), plus comeback/warranty, the labor timer, and
+   the profitability readout. Legacy addlWork entries still render in old bills. */
+
+/* ---- Additional-work customer authorization log --------------------------- */
+function jobWorkAuthPanel(j){
+  var rows=(j.workAuth||[]).map(function(a){
+    return '<div class="wa-row"><div class="wa-body"><div class="wa-desc"><b>'+esc(a.desc)+'</b>'+(Number(a.amount)>0?' <span class="muted">· '+peso(a.amount)+'</span>':'')+'</div>'+
+      '<div class="wa-meta">✓ '+esc(a.approvedBy||'—')+' · '+esc(fmtDateTime(a.at))+' · '+esc(a.method||'')+(a.note?' · '+esc(a.note):'')+'</div></div>'+
+      '<button class="btn xs ghost" title="Remove" onclick="delWorkAuth(\''+j.id+'\',\''+a.id+'\')">✕</button></div>';
+  }).join('') || emptyState('No customer authorizations recorded.');
+  return '<div class="card"><div class="card-head"><h2>Additional Work — Customer Authorization</h2>'+
+    '<button class="btn sm primary" onclick="addWorkAuth(\''+j.id+'\')">＋ Record</button></div>'+
+    '<p class="muted small">Log the customer’s consent for extra work found mid-job — who approved, when, and how. The charge itself is on the Parts/Labor lines above; this is the proof of approval that ends “I never approved that” disputes.</p>'+
+    '<div class="wa-list">'+rows+'</div></div>';
+}
+var waCtx=null;
+function addWorkAuth(id){
+  openModal('Record customer authorization',
+    field('Work authorized','<input id="waDesc" placeholder="e.g. Replace serpentine belt">')+
+    field('Amount (optional)','<input id="waAmt" type="number" step="0.01" min="0" placeholder="0.00">')+
+    field('Approved by (customer name)','<input id="waBy" placeholder="e.g. J. Dela Cruz">')+
+    field('How was it approved?','<select id="waMethod"><option>In person</option><option>By phone</option><option>SMS</option><option>Viber / Messenger</option><option>Email</option></select>')+
+    field('Note (optional)','<input id="waNote" placeholder="reference / remarks">'),
+    { onOk:'saveWorkAuth', width:'560px' });
+  setTimeout(function(){ waCtx=id; },10);
+}
+function saveWorkAuth(){
+  var j=jobById(waCtx); if(!j) return;
+  var desc=(val('waDesc')||'').trim(); if(!desc){ toast('Describe the work authorized','err'); return; }
+  var by=(val('waBy')||'').trim(); if(!by){ toast('Enter who approved it','err'); return; }
+  j.workAuth=j.workAuth||[];
+  j.workAuth.push({ id:uid('wa'), desc:desc, amount:Number(val('waAmt'))||0, approvedBy:by, method:val('waMethod'), note:val('waNote'), at:new Date().toISOString() });
+  persist(); closeModal(); toast('Authorization recorded'); render();
+}
+function delWorkAuth(id,aid){ var j=jobById(id); if(!j) return; j.workAuth=(j.workAuth||[]).filter(function(a){return a.id!==aid;}); persist(); render(); }
+
+/* ---- Comeback / warranty rework ------------------------------------------- */
+function jobComebackPanel(j){
+  if(j.comebackOf || j.warranty){
+    var orig=j.comebackOf?jobById(j.comebackOf):null;
+    return '<div class="card"><div class="card-head"><h2>Comeback / Warranty</h2><button class="btn sm ghost" onclick="editComeback(\''+j.id+'\')">Edit</button></div>'+
+      '<div class="cb-badges">'+(j.warranty?'<span class="perf-badge st-bad">Warranty · no charge</span>':'<span class="chip gold">Comeback</span>')+'</div>'+
+      '<div class="ksmall">'+
+        (orig?kv('Comeback of','<a class="lnk" onclick="go(\'job\',\''+orig.id+'\')">'+esc(orig.no)+'</a> <span class="muted small">'+esc(fmtDate(orig.dateIn))+'</span>'):(j.comebackOf?kv('Comeback of',esc(j.comebackOf)):''))+
+        (j.comebackMechId?kv('At-fault mechanic',esc(staffName(j.comebackMechId))):'')+
+        (j.comebackReason?kv('Reason',esc(j.comebackReason)):'')+
+      '</div>'+
+      (j.warranty?'<p class="muted small mt8">No charge to the customer; no commission is paid on this job. Counts against the at-fault mechanic’s comeback rate.</p>':'')+
+    '</div>';
+  }
+  return '<div class="card"><div class="card-head"><h2>Comeback / Warranty</h2></div>'+
+    '<p class="muted small">If this job is rework of a previous job, mark it as a comeback. A <b>warranty</b> comeback bills the customer nothing and pays no commission.</p>'+
+    '<button class="btn sm ghost full" onclick="editComeback(\''+j.id+'\')">Mark as comeback…</button></div>';
+}
+var cbCtx=null;
+function editComeback(id){
+  var j=jobById(id); if(!j) return;
+  var prior=(S.jobs||[]).filter(function(x){ return x.id!==j.id && (x.vehicleId===j.vehicleId || (x.plate||'').toUpperCase()===(j.plate||'').toUpperCase()); })
+    .sort(function(a,b){return (b.dateIn||'')<(a.dateIn||'')?-1:1;});
+  var jopts='<option value="">— none / clear —</option>'+prior.map(function(x){
+    var svc=(x.lines||[]).map(function(l){return l.desc;}).slice(0,2).join(', ');
+    return '<option value="'+x.id+'"'+(j.comebackOf===x.id?' selected':'')+'>'+esc(x.no)+' · '+esc(fmtDate(x.dateIn))+(svc?' · '+esc(svc):'')+'</option>';
+  }).join('');
+  var mechs=(S.staff||[]).filter(function(s){return isMechanicRole(s.role);});
+  var mopts='<option value="">— select mechanic —</option>'+mechs.map(function(s){return '<option value="'+s.id+'"'+(j.comebackMechId===s.id?' selected':'')+'>'+esc(s.name)+'</option>';}).join('');
+  openModal('Mark as comeback / warranty',
+    field('Comeback of (previous JO)','<select id="cbOf">'+jopts+'</select>','Previous job for this vehicle that this rework relates to.')+
+    field('At-fault mechanic','<select id="cbMech">'+mopts+'</select>','Counts against this mechanic’s comeback rate.')+
+    field('Reason / what failed','<textarea id="cbReason" rows="2">'+esc(j.comebackReason||'')+'</textarea>')+
+    '<label class="chk"><input type="checkbox" id="cbWarranty"'+(j.warranty?' checked':'')+'> Warranty — no charge to customer, no commission</label>',
+    { onOk:'saveComeback', width:'580px' });
+  setTimeout(function(){ cbCtx=id; },10);
+}
+function saveComeback(){
+  var j=jobById(cbCtx); if(!j) return;
+  j.comebackOf=val('cbOf')||null;
+  j.comebackMechId=val('cbMech')||'';
+  j.comebackReason=val('cbReason')||'';
+  j.warranty=checked('cbWarranty');
+  persist(); closeModal(); render();
+  toast(j.warranty?'Marked as warranty comeback — no charge, no commission':(j.comebackOf?'Marked as comeback':'Comeback cleared'));
+}
+
+/* ---- Per-mechanic labor timer --------------------------------------------- */
+function jobTimerPanel(j){
+  var mechs=(j.mechanicIds||[]).filter(function(id){return id&&id!=='TBA';});
+  if(!mechs.length) return '<div class="card"><h2>Labor Time</h2><p class="muted small">Assign mechanic(s) in the Assignment panel to track hands-on labor time.</p></div>';
+  var rows=mechs.map(function(mid){
+    var run=timerRunning(j,mid);
+    return '<div class="tm-row"><div class="tm-name"><b>'+esc(staffName(mid))+'</b>'+(run?' <span class="tm-live">● live</span>':'')+'</div>'+
+      '<div class="tm-hrs">'+fmtHrs(jobMechActualHours(j,mid))+'</div>'+
+      '<button class="btn xs '+(run?'ghost':'primary')+'" onclick="timerToggle(\''+j.id+'\',\''+mid+'\')">'+(run?'⏸ Pause':'▶ Start')+'</button></div>';
+  }).join('');
+  return '<div class="card"><div class="card-head"><h2>Labor Time <span class="muted small">· per mechanic</span></h2></div>'+
+    '<div class="tm-list">'+rows+'</div>'+
+    '<div class="muted small mt8">Total actual: <b>'+fmtHrs(jobActualHoursTotal(j))+'</b> — feeds the productivity efficiency metric (falls back to the clipboard B2 estimate when no timer is used).</div></div>';
+}
+function timerToggle(id,mid){
+  var j=jobById(id); if(!j) return; j.workLog=j.workLog||[];
+  var open=j.workLog.filter(function(s){return s.mechId===mid && !s.end;});
+  if(open.length){ open.forEach(function(s){ s.end=new Date().toISOString(); }); toast('Paused '+staffName(mid)); }
+  else { j.workLog.push({ id:uid('wl'), mechId:mid, start:new Date().toISOString(), end:null }); toast('Started '+staffName(mid)); }
+  persist(); render();
+}
+
+/* ---- Profitability (cost-gated) ------------------------------------------- */
+function jobProfitPanel(j){
+  if(typeof can==='function' && !can('part_cost')) return '';   // margin exposes part cost
+  var rev=jobRevenueExVat(j), pc=jobCostOfParts(j), gm=jobGrossMargin(j);
+  var comm=jobLaborCommission(j,S).pool, np=jobNetProfit(j);
+  var mpct=rev? Math.round(gm/rev*100):0;
+  return '<div class="card"><h2>Profitability <span class="muted small">· ex-VAT</span></h2>'+
+    line2('Revenue', peso(rev))+
+    line2('− Parts cost', peso(pc))+
+    line2('Gross margin', '<b>'+peso(gm)+'</b> <span class="muted small">· '+mpct+'%</span>')+
+    '<div class="bill-sep"></div>'+
+    line2('− Commission', peso(comm))+
+    line2('Net profit', '<b class="'+(np<0?'st-bad-t':'st-good-t')+'">'+peso(np)+'</b>')+
+    (j.warranty?'<p class="muted small mt8">Warranty comeback — ₱0 revenue; the parts cost is a loss carried by the shop.</p>':'')+
+  '</div>';
+}
 
 /* ---- Inspection / check-in panel ------------------------------------------ */
 var CHECKLIST_ITEMS=['Spare tire','Jack & wrench','Stereo / head unit','Floor mats','Valuables','OR/CR','Tools','Fire extinguisher','Early warning device'];
@@ -2380,7 +2554,7 @@ function jobInspectionPanel(j){
   return '<div class="card"><div class="card-head"><h2>Vehicle Check-in</h2>'+
     '<button class="btn sm" onclick="editInspection(\''+j.id+'\')">Edit check-in</button></div>'+
     '<div class="grid2 ksmall">'+
-      kv('Ingress odometer', odo(insp.odometer))+ kv('Fuel level', fmtFuel(insp.fuel))+
+      kv('Ingress odometer', odo(insp.odometer||j.odometer))+ kv('Fuel level', fmtFuel(insp.fuel))+
       kv('Dash lights / DTC', insp.lights||'None')+ kv('Condition', insp.condition||'—')+
     '</div>'+
     (cl.created? '<div class="checklist"><div class="cl-title">Items left in vehicle '+(cl.leaveUnit?'':'(unit not left)')+'</div>'+
@@ -2408,7 +2582,9 @@ function editInspection(id){
 var isCtx=null;
 function saveInspection(){
   var j=jobById(isCtx);
-  j.inspection={ odometer:Number(val('isOdo'))||0, fuel:(val('isFuel')===''?'':Number(val('isFuel'))||0), lights:val('isLights'), condition:val('isCond'), testDrive:j.inspection&&j.inspection.testDrive||'' };
+  var isOdo=Number(val('isOdo'))||0;
+  j.inspection={ odometer:isOdo, fuel:(val('isFuel')===''?'':Number(val('isFuel'))||0), lights:val('isLights'), condition:val('isCond'), testDrive:j.inspection&&j.inspection.testDrive||'' };
+  if(isOdo>0) j.odometer=isOdo;   // check-in "Ingress odometer" is the same reading — keep j.odometer in sync
   var leave=checked('isLeave'); var items={};
   CHECKLIST_ITEMS.forEach(function(it){ items[it]=checked('ck_'+btoa(it).replace(/=/g,'')); });
   j.checklist={ created:leave, leaveUnit:leave, items:items, bodyNotes:val('isBody') };
@@ -2989,6 +3165,21 @@ function vehMatch(v){
   if(!VEH_Q) return true; var q=VEH_Q.toLowerCase();
   return [v.plate,v.owner,v.contactPerson].some(function(x){ return String(x||'').toLowerCase().indexOf(q)>=0; });
 }
+/* The odometer at this vehicle's most recent service. v.odometer only receives a
+   job's last-service reading at RELEASE (and via Math.max, so a lower later reading
+   is dropped), which is why an entered "last service odometer" may not show yet.
+   Derive it from the newest job that carries a last-service reading; fall back to
+   the stored vehicle odometer. */
+function vehLastServiceOdo(v){
+  var best=null, bestKey='';
+  (S.jobs||[]).forEach(function(j){
+    if(!(j.vehicleId===v.id || (j.plate||'').toUpperCase()===(v.plate||'').toUpperCase())) return;
+    var reading=Number(j.lastServiceOdo)||0; if(!(reading>0)) return;
+    var key=String(j.billedAt||j.dateIn||'');
+    if(best===null || key>=bestKey){ best=reading; bestKey=key; }
+  });
+  return best!=null ? best : (Number(v.odometer)||0);
+}
 function vehBodyHTML(){
   var list=S.vehicles.filter(vehMatch);
   if(!list.length) return emptyState(VEH_Q? 'No vehicles match “'+esc(VEH_Q)+'”.' : 'No vehicles.');
@@ -2996,10 +3187,10 @@ function vehBodyHTML(){
     var due = v.nextServiceDate && v.nextServiceDate<=todayISO();
     var soon = v.nextServiceDate && v.nextServiceDate<=todayISO(new Date(Date.now()+14*86400000));
     return '<tr onclick="go(\'vehicle\',\''+v.id+'\')"><td><b>'+esc(v.plate)+'</b></td><td>'+esc(v.owner)+'</td>'+
-      '<td>'+esc((v.year+' '+v.make+' '+v.model).trim()+(v.variant?' '+v.variant:''))+'</td><td class="r">'+odo(v.odometer)+'</td>'+
+      '<td>'+esc((v.year+' '+v.make+' '+v.model).trim()+(v.variant?' '+v.variant:''))+'</td><td class="r">'+odo(vehLastServiceOdo(v))+'</td>'+
       '<td>'+(v.nextServiceDate? (due?chip('Overdue','due'):soon?chip('Due soon','gold'):fmtDate(v.nextServiceDate)) : '—')+'</td></tr>';
   }).join('');
-  return '<div class="card pad0"><table class="tbl click"><thead><tr><th>Plate</th><th>Owner</th><th>Vehicle</th><th class="r">Odometer</th><th>Next service</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+  return '<div class="card pad0"><table class="tbl click"><thead><tr><th>Plate</th><th>Owner</th><th>Vehicle</th><th class="r">Last service odo</th><th>Next service</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
 }
 function vehSearch(v){ VEH_Q=v; var el=document.getElementById('vehBody'); if(el) el.innerHTML=vehBodyHTML(); }
 VIEWS.vehicles = function(){
@@ -3033,7 +3224,7 @@ VIEWS.vehicle = function(id){
         '<div class="muted small mt8">Scans resolve once hosted at:<br><code class="qr-url">'+esc(portalLink(v.id))+'</code></div></div>'+
       '<div class="card"><h2>Owner / Vehicle</h2><div class="ksmall">'+
         kv('Owner',esc(v.owner))+kv('Address',esc(v.address||'—'))+kv('Contact',esc(v.contactPerson+' · '+v.contactNumber))+
-        kv('Chassis #',esc(v.chassis||'—'))+kv('Year/Make/Model',esc(v.year+' '+v.make+' '+v.model))+kv('Variant',esc(v.variant||'—'))+kv('Last service odo',odo(v.odometer))+
+        kv('Chassis #',esc(v.chassis||'—'))+kv('Year/Make/Model',esc(v.year+' '+v.make+' '+v.model))+kv('Variant',esc(v.variant||'—'))+kv('Last service odo',odo(vehLastServiceOdo(v)))+
         kv('Portal PIN',esc(v.portalPin||'— (customer sets on first scan)'))+'</div></div>'+
     '</div></div></div>';
 };
@@ -3425,16 +3616,36 @@ function jobCostOfParts(j){
     return s + unitCost*(Number(l.qty)||0);
   },0));
 }
+/* ---- Profitability (VAT-exclusive) ---------------------------------------- */
+/* Discounts are taken off the VAT-inclusive Total Due; convert back to ex-VAT so
+   profit is measured on the same (ex-VAT) basis as revenue and cost. */
+function discountExVat(job){
+  var d = discountAmount(job);
+  if(!S || !S.shop || !S.shop.vatReg) return d;
+  var rate=(Number(S.shop.vatRate)||12)/100;
+  return round2(d/(1+rate));
+}
+/* Ex-VAT revenue after discount (0 for a warranty comeback — full write-off). */
+function jobRevenueExVat(job){ return round2(jobNet(job) - discountExVat(job)); }
+/* Gross margin = ex-VAT revenue − parts cost. (Labor is sold time — no material
+   cost; commission is a payout captured in net profit below.) */
+function jobGrossMargin(job){ return round2(jobRevenueExVat(job) - jobCostOfParts(job)); }
+/* Net profit = gross margin − labor commission paid on this job. */
+function jobNetProfit(job){ return round2(jobGrossMargin(job) - jobLaborCommission(job,S).pool); }
 
 /* ---- Reports & Analytics -------------------------------------------------- */
 VIEWS.reports = function(){
   var rel=releasedJobs();
-  var revenue=round2(rel.reduce(function(s,j){return s+jobGross(j);},0));
-  var partsCost=round2(rel.reduce(function(s,j){return s+jobCostOfParts(j);},0));
-  var gp=round2(revenue-partsCost);
-  var margin=revenue? Math.round(gp/revenue*100):0;
+  var revenue=round2(rel.reduce(function(s,j){return s+jobGross(j);},0));   // total billed (VAT-incl) — the sales headline
   var wip=round2(S.jobs.filter(function(j){return j.stage!=='Released';}).reduce(function(s,j){return s+jobGross(j);},0));
   var avg=rel.length? round2(revenue/rel.length):0;
+  // Profitability (ex-VAT, consistent with the per-job Profitability panel)
+  var revEx=round2(rel.reduce(function(s,j){return s+jobRevenueExVat(j);},0));
+  var partsCost=round2(rel.reduce(function(s,j){return s+jobCostOfParts(j);},0));
+  var gp=round2(rel.reduce(function(s,j){return s+jobGrossMargin(j);},0));
+  var margin=revEx? Math.round(gp/revEx*100):0;
+  var totalComm=round2(rel.reduce(function(s,j){return s+jobLaborCommission(j,S).pool;},0));
+  var netProfit=round2(rel.reduce(function(s,j){return s+jobNetProfit(j);},0));
 
   // revenue by month
   var byMonth={};
@@ -3455,9 +3666,15 @@ VIEWS.reports = function(){
   var comm=commissionTable(rel);
 
   return '<div class="page"><div class="page-head"><h1>Reports & Analytics</h1></div>'+
-    '<div class="kpis">'+kpi('Revenue (released)',peso(revenue))+kpi('Gross profit',peso(gp))+kpi('Margin',margin+'%')+
+    '<div class="kpis">'+kpi('Revenue (released)',peso(revenue),'total billed, VAT-incl')+kpi('Net profit',peso(netProfit),'after parts cost & commission')+kpi('Margin',margin+'%','gross, ex-VAT')+
       kpi('Open WIP',peso(wip))+kpi('Avg ticket',peso(avg))+'</div>'+
     '<div class="cols"><div class="colmain">'+
+      '<div class="card"><h2>Profitability <span class="muted small">· released · ex-VAT</span></h2>'+
+        line2('Revenue (ex-VAT)',peso(revEx))+line2('− Parts cost',peso(partsCost))+
+        line2('Gross margin','<b>'+peso(gp)+'</b> <span class="muted small">· '+margin+'%</span>')+
+        '<div class="bill-sep"></div>'+line2('− Labor commission',peso(totalComm))+
+        line2('Net profit','<b class="'+(netProfit<0?'st-bad-t':'st-good-t')+'">'+peso(netProfit)+'</b>')+
+        '<p class="muted small mt8">Gross margin = ex-VAT revenue − parts cost (labor is sold time). Net profit also subtracts labor commission. Warranty comebacks show ₱0 revenue against real parts cost.</p></div>'+
       '<div class="card"><h2>Revenue by month</h2>'+(months.length?bars(months,peso):emptyState('No released jobs yet.'))+'</div>'+
       '<div class="grid2cards"><div class="card"><h2>Top services</h2>'+(top(svc).length?bars(top(svc),peso):emptyState('—'))+'</div>'+
         '<div class="card"><h2>Top parts</h2>'+(top(prt).length?bars(top(prt),peso):emptyState('—'))+'</div></div>'+
@@ -3681,8 +3898,8 @@ function mechPerfSection(list){
     r.avgHrs = r.jobs ? round2(r.hours/r.jobs) : 0;
     r.avgLabor = r.jobs ? round2(r.labor/r.jobs) : 0;
   });
-  var T={jobs:0,hours:0,actual:0,otHit:0,otTotal:0,labor:0,commission:0};
-  m.forEach(function(r){ T.jobs+=r.jobs; T.hours+=r.hours; T.actual+=r.actual; T.otHit+=r.otHit; T.otTotal+=r.otTotal; T.labor+=r.labor; T.commission+=r.commission; });
+  var T={jobs:0,hours:0,actual:0,otHit:0,otTotal:0,labor:0,commission:0,comebacks:0};
+  m.forEach(function(r){ T.jobs+=r.jobs; T.hours+=r.hours; T.actual+=r.actual; T.otHit+=r.otHit; T.otTotal+=r.otTotal; T.labor+=r.labor; T.commission+=r.commission; T.comebacks+=(r.comebacks||0); });
   var teamEff=T.actual>0?Math.round(T.hours/T.actual*100):null;
   var teamOt =T.otTotal>0?Math.round(T.otHit/T.otTotal*100):null;
   var teamRev=T.actual>0?round2(T.labor/T.actual):0;
@@ -3695,6 +3912,7 @@ function mechPerfSection(list){
     kpi('Team on-time', teamOt!=null?teamOt+'%':'—', T.otTotal?('vs ETD · '+T.otHit+'/'+T.otTotal):'no ETDs')+
     kpi('Revenue / hr', peso(teamRev), 'labor ÷ actual hr')+
     kpi('Labor billed', peso(round2(T.labor)))+
+    kpi('Comebacks', T.comebacks, T.jobs?('warranty rework · '+Math.round(T.comebacks/T.jobs*100)+'% of jobs'):'warranty rework')+
   '</div>';
   var byEff=m.slice().sort(function(a,b){return (b.eff==null?-1:b.eff)-(a.eff==null?-1:a.eff);});
   var effBars=perfStatBars(byEff.map(function(r){return {label:r.name, pct:r.eff, band:effBand(r.eff), disp:r.eff!=null?r.eff+'%':'—'};}));
@@ -3714,12 +3932,13 @@ function mechPerfSection(list){
     var ob=r.ot==null?'<span class="muted">—</span>':'<span class="perf-badge '+otBand(r.ot)+'">'+r.ot+'%</span>';
     return '<div class="perf-card"><div class="perf-card-h"><b>'+esc(r.name)+'</b> <span class="muted small">'+esc(roleLabel(r.role))+'</span></div>'+
       '<div class="perf-badges">'+eb+'<span class="muted small">efficiency</span>'+ob+'<span class="muted small">on-time</span></div>'+
-      row('Jobs done', r.jobs)+ row('Standard hrs', num(round2(r.hours)))+ row('Actual hrs (B2)', num(round2(r.actual)))+
+      row('Jobs done', r.jobs)+ row('Standard hrs', num(round2(r.hours)))+ row('Actual hrs', num(round2(r.actual)))+
       row('Avg std hrs / job', num(r.avgHrs))+ row('Labor billed', peso(r.labor))+ row('Revenue / actual hr', peso(r.revhr))+
+      row('Comebacks', (r.comebacks>0?('<span class="st-bad-t">'+r.comebacks+'</span>'+(r.jobs?' ('+Math.round(r.comebacks/r.jobs*100)+'%)':'')):'0'))+
       row('Avg labor / job', peso(r.avgLabor))+ row('Commission', peso(r.commission))+'</div>';
   }).join('');
   return '<div class="card"><h2>Mechanic performance review</h2>'+
-    '<p class="muted small"><b>How to read.</b> <b class="st-good-t">Efficiency</b> = standard job hrs ÷ actual worked hrs: <span class="st-good-t">green ≥ 100%</span> (beat the estimate), <span class="st-warn-t">amber 85–99%</span>, <span class="st-bad-t">red &lt; 85%</span>; the marker on each bar is the 100% break-even. <b>On-time</b> = finished on/before ETD (green ≥ 90%). <b>Actual hrs</b> is time in status B2 from the log (capped 8h/interval), so keep the log honest for these to mean anything.</p>'+
+    '<p class="muted small"><b>How to read.</b> <b class="st-good-t">Efficiency</b> = standard job hrs ÷ actual worked hrs: <span class="st-good-t">green ≥ 100%</span> (beat the estimate), <span class="st-warn-t">amber 85–99%</span>, <span class="st-bad-t">red &lt; 85%</span>; the marker on each bar is the 100% break-even. <b>On-time</b> = finished on/before ETD (green ≥ 90%). <b>Actual hrs</b> is the per-mechanic labor timer when used, else time in status B2 from the log (capped 8h/interval). <b class="st-bad-t">Comebacks</b> are warranty rework charged to the mechanic — a fast tech with high comebacks is not actually cheap.</p>'+
     tiles+
     '<div class="perf-grid2">'+
       '<div><h3 class="perf-h">Efficiency % <span class="muted small">· marker = 100%</span></h3>'+effBars+'</div>'+
@@ -3735,7 +3954,7 @@ VIEWS.productivity = function(){
   var jobs=jobsInProdPeriod(billedJobs());
   var staff=(S.staff||[]).slice().sort(function(a,b){ return kpiRoleRank(a.role)-kpiRoleRank(b.role) || String(a.name||'').localeCompare(String(b.name||'')); });
   var byId={};
-  var list=staff.map(function(s){ var r={ id:s.id, name:s.name, role:s.role, on:(s.commission!==false), jobs:0, hours:0, actual:0, otHit:0, otTotal:0, labor:0, commission:0 }; byId[s.id]=r; return r; });
+  var list=staff.map(function(s){ var r={ id:s.id, name:s.name, role:s.role, on:(s.commission!==false), jobs:0, hours:0, actual:0, otHit:0, otTotal:0, labor:0, commission:0, comebacks:0 }; byId[s.id]=r; return r; });
   jobs.forEach(function(j){
     // Evaluation figure: pool split among EVERYONE assigned, ignoring the payout toggle.
     var cm=jobLaborCommissionMapAll(j,S); var lab=laborTotal(j.lines);
@@ -3743,15 +3962,18 @@ VIEWS.productivity = function(){
     // every distinct staff assigned in ANY capacity — job count
     var assigned=[]; mechs.concat([j.saId,j.assessedBy,j.partsSalesman]).forEach(function(x){ if(x&&x!=='TBA'&&assigned.indexOf(x)<0) assigned.push(x); });
     assigned.forEach(function(id){ var r=byId[id]; if(r) r.jobs++; });
-    // job hours & labor billed are mechanic productivity metrics — split among mechanics
-    var actualH=jobB2Hours(j); var onTime=jobOnTime(j);
+    // job hours & labor billed are mechanic productivity metrics — split among mechanics.
+    // Actual hrs: prefer the per-mechanic timer; fall back to an even split of the B2 estimate.
+    var timed=jobHasTimer(j); var actualH=jobB2Hours(j); var onTime=jobOnTime(j);
     mechs.forEach(function(mid){ var r=byId[mid]; if(!r) return;
       r.hours=round2(r.hours+(Number(j.jobHours)||0)/mechs.length);
       r.labor=round2(r.labor+lab/mechs.length);
-      r.actual=round2(r.actual+actualH/mechs.length);
+      r.actual=round2(r.actual+(timed? jobMechActualHours(j,mid) : actualH/mechs.length));
       if(onTime!==null){ r.otTotal++; if(onTime) r.otHit++; }
     });
     Object.keys(cm).forEach(function(id){ var r=byId[id]; if(r) r.commission=round2(r.commission+cm[id]); });
+    // Comeback attribution: counts against the at-fault mechanic (the one who did the original job).
+    if(j.comebackMechId){ var rc=byId[j.comebackMechId]; if(rc) rc.comebacks++; }
   });
   var rows=list.map(function(m){
     var toggle='<label class="switch" title="Include in commission payout"><input type="checkbox" '+(m.on?'checked':'')+
@@ -3762,6 +3984,7 @@ VIEWS.productivity = function(){
       '<td class="r">'+num(m.actual)+'</td>'+
       '<td class="r">'+(m.actual>0? effCell(m.hours,m.actual) : '<span class="muted">—</span>')+'</td>'+
       '<td class="r">'+(m.otTotal>0? Math.round(m.otHit/m.otTotal*100)+'% <span class="muted small">('+m.otHit+'/'+m.otTotal+')</span>' : '<span class="muted">—</span>')+'</td>'+
+      '<td class="r">'+(m.comebacks>0? '<b class="st-bad-t">'+m.comebacks+'</b>'+(m.jobs?' <span class="muted small">('+Math.round(m.comebacks/m.jobs*100)+'%)</span>':'') : '<span class="muted">0</span>')+'</td>'+
       '<td class="r">'+peso(m.labor)+'</td><td class="r">'+peso(m.jobs?round2(m.labor/m.jobs):0)+'</td><td class="r">'+commCell+'</td><td class="center">'+toggle+'</td></tr>';
   }).join('');
   var commBars=list.filter(function(m){return m.commission>0;}).map(function(m){return {label:m.name,value:m.commission};});
@@ -3778,8 +4001,8 @@ VIEWS.productivity = function(){
     '<div class="row gap" style="align-items:center;flex-wrap:wrap"><div class="seg">'+seg+'</div>'+custom+
       '<span class="muted small">'+esc(prodPeriodLabel())+'</span></div>'+
     '<p class="muted small mt8">Commission is each staff member’s own admin-set rate × the job’s labor (set per person on the Staff page). The Commission column is the <b>evaluation</b> figure — shown even for staff switched off (greyed). The <b>Payout sheet</b> pays only staff with <b>Payout</b> on.</p>'+
-    '<p class="muted small">Job hrs = standard hours from the Job Order. Actual hrs = time in status <b>B2</b> from the log (each interval capped at 8h). Efficiency = Job hrs ÷ Actual hrs (green ≥ 100%). On-time = finished on/before ETD (hits/total).</p>'+
-    '<div class="card pad0"><table class="tbl"><thead><tr><th>Staff</th><th class="r">Jobs</th><th class="r">Job hrs</th><th class="r">Actual hrs</th><th class="r">Efficiency</th><th class="r">On-time</th><th class="r">Labor billed</th><th class="r">Avg/job</th><th class="r">Commission</th><th class="center">Payout</th></tr></thead><tbody>'+(rows||'<tr><td colspan="10" class="muted center">No staff.</td></tr>')+'</tbody></table></div>'+
+    '<p class="muted small">Job hrs = standard hours from the Job Order. Actual hrs = the per-mechanic labor <b>timer</b> when used, else time in status <b>B2</b> from the log (each interval capped at 8h). Efficiency = Job hrs ÷ Actual hrs (green ≥ 100%). On-time = finished on/before ETD. <b>Comebacks</b> = warranty rework charged to the mechanic (% of their jobs) — watch this next to efficiency.</p>'+
+    '<div class="card pad0"><table class="tbl"><thead><tr><th>Staff</th><th class="r">Jobs</th><th class="r">Job hrs</th><th class="r">Actual hrs</th><th class="r">Efficiency</th><th class="r">On-time</th><th class="r">Comebacks</th><th class="r">Labor billed</th><th class="r">Avg/job</th><th class="r">Commission</th><th class="center">Payout</th></tr></thead><tbody>'+(rows||'<tr><td colspan="11" class="muted center">No staff.</td></tr>')+'</tbody></table></div>'+
     mechPerfSection(list)+
     '<div class="card"><h2>Commission by staff</h2>'+(commBars.length?bars(commBars,peso):emptyState('No commissions in this period.'))+'</div></div>';
 };
@@ -4179,7 +4402,10 @@ function totalsBox(j,opts){
   if(b.exempt){ rows+='<div class="l2"><span>VAT-Exempt Sales</span><span>'+peso(b.vatable)+'</span></div>'; }
   else { rows+='<div class="l2"><span>VATable Sales</span><span>'+peso(b.vatable)+'</span></div>';
     rows+='<div class="l2"><span>VAT ('+(S.shop.vatRate||12)+'%)</span><span>'+peso(b.vat)+'</span></div>'; }
-  if(opts.discount && b.disc){
+  if(opts.discount && j.warranty){
+    // Warranty comeback: the whole amount is written off — one clear line.
+    rows+='<div class="l2"><span>Less: Warranty (no charge)</span><span>−'+peso(b.disc)+'</span></div>';
+  } else if(opts.discount && b.disc){
     // Itemise the discount into Parts / Labor / Other when the job uses the
     // per-bucket model AND the buckets sum to the applied discount (i.e. it
     // wasn't capped at the subtotal). Otherwise fall back to one Discount line.
@@ -4197,6 +4423,26 @@ function totalsBox(j,opts){
   rows+='<div class="l2 grand"><span>Total Amount Due</span><span>'+peso(total)+'</span></div>';
   return '<div class="totbox">'+rows+'</div>';
 }
+/* Warranty / comeback banner for the priced documents. */
+function comebackNote(j){
+  if(!j.comebackOf && !j.warranty) return '';
+  var orig=j.comebackOf?jobById(j.comebackOf):null;
+  var bits=[];
+  if(orig) bits.push('Comeback of '+esc(orig.no)+' ('+esc(fmtDate(orig.dateIn))+')');
+  if(j.comebackReason) bits.push(esc(j.comebackReason));
+  return '<div class="notes" style="background:#fff4d6;border:1px solid #ffdf8a">'+
+    '<b>'+(j.warranty?'⚠ Warranty — no charge to customer':'Comeback')+'.</b>'+
+    (bits.length?' '+bits.join(' · '):'')+'</div>';
+}
+/* Customer-authorization log for extra work — proof of consent on the printout. */
+function workAuthDoc(j){
+  var wa=(j.workAuth||[]); if(!wa.length) return '';
+  return '<div class="dtitle" style="font-size:12px;margin-top:14px">Additional work — customer authorization</div>'+
+    '<table><thead><tr><th>Work authorized</th><th class="r">Amount</th><th>Approved by</th><th>When</th><th>How</th></tr></thead><tbody>'+
+    wa.map(function(a){ return '<tr><td>'+esc(a.desc)+'</td><td class="r">'+(Number(a.amount)>0?peso(a.amount):'—')+'</td>'+
+      '<td>'+esc(a.approvedBy||'—')+'</td><td>'+esc(fmtDateTime(a.at))+'</td><td>'+esc(a.method||'')+'</td></tr>'; }).join('')+
+    '</tbody></table>';
+}
 
 /* ---- Post Job Report: prices + Approved for release by -------------------- */
 function docPostJob(j){
@@ -4207,7 +4453,9 @@ function docPostJob(j){
        ['Ingress Odo', num(j.odometer)+' km'],['Last Service Odo', j.lastServiceOdo?num(j.lastServiceOdo)+' km':'—']],
       [['Date in', fmtDate(j.dateIn)],['ETD', fmtDate(j.etd)],['Service Adviser', esc(staffName(j.saId))],
        ['Mechanic', esc(mechName(j.mechanicIds))],['Bay', esc(bayName(j.bayId))],['PMS ref', esc(j.pmsRef)]] )+
+    comebackNote(j)+
     pricedLinesTable(j,{sku:true})+ totalsBox(j,{discount:false})+
+    workAuthDoc(j)+
     (j.notes?'<div class="notes"><b>Service notes:</b> '+esc(j.notes)+'</div>':'')+
     '<div class="sig-grid"><div class="sigline">Checked by (Service Adviser)<br>'+esc(staffName(j.saId))+'</div>'+
       '<div class="sigline">Approved for release by (Supervisor)<br>'+esc(staffNameIfRole(j.approvedReleaseBy,'SV'))+'</div>'+
@@ -4230,7 +4478,9 @@ function billingBody(j){
        ['JO #', esc(j.no)]],
       [['Date', fmtDate(j.billedAt)],['TIN', esc(j.customerTin||'—')],['SI reference', esc(j.siRef||'—')],
        ['Ingress Odo', num(j.odometer)+' km'],['Last Service Odo', j.lastServiceOdo?num(j.lastServiceOdo)+' km':'—']] )+
+    comebackNote(j)+
     pricedLinesTable(j,{sku:true})+ totalsBox(j,{discount:true})+
+    workAuthDoc(j)+
     '<div class="sig-grid"><div class="sigline">Approved for release by (Supervisor)<br>'+esc(staffNameIfRole(j.approvedReleaseBy,'SV'))+'</div>'+
       '<div class="sigline">Payment received by (Secretary)<br>'+esc(staffNameIfRole(j.paymentReceivedBy,'Secretary'))+'</div>'+
       '<div class="sigline">Unit Received by (Customer)<br>'+esc(j.owner||'')+'</div></div>'+
@@ -4484,10 +4734,12 @@ function portalDataForVehicle(v){
         jobId:j.id, no:j.no||'', stage:j.stage||'', orNumber:j.orNumber||'',
         dateISO:(j.billedAt||j.dateIn||''), work:work,
         odo:Number(j.lastServiceOdo)||Number(j.odometer)||0,
-        amount:b.gross,
+        amount:b.gross, warranty:!!j.warranty,
         report:{
           orNumber:j.orNumber||'', jo:j.no||'', tin:j.customerTin||'', siRef:j.siRef||'',
           ingressOdo:Number(j.odometer)||0, lastOdo:Number(j.lastServiceOdo)||0,
+          warranty:!!j.warranty, comeback:(j.comebackOf?((jobById(j.comebackOf)||{}).no||''):''),
+          workAuth:(j.workAuth||[]).map(function(a){ return { desc:a.desc||'', amount:Number(a.amount)||0, approvedBy:a.approvedBy||'', method:a.method||'', at:a.at||'' }; }),
           lines:(j.lines||[]).map(function(l){ return { type:l.type, sku:(l.type==='part'?(l.sku||''):''), desc:l.desc, qty:Number(l.qty)||0, price:Number(l.price)||0, total:lineTotal(l) }; }),
           addl:(j.addlWork||[]).filter(function(a){return a.approved;}).map(function(a){ return { desc:a.desc, amount:Number(a.amount)||0 }; }),
           vatable:b.vatable, vat:b.vat, exempt:!!b.exempt, disc:b.disc, gross:b.gross, vatRate:Number((S.shop||{}).vatRate)||12,
@@ -4557,11 +4809,14 @@ function portalReportHTML(h, d){
     }).join('') || '<tr><td colspan="'+(isPart?5:4)+'" class="p-muted">—</td></tr>';
   }
   var addlRows=(r.addl||[]).map(function(a){ return '<tr><td>'+esc(a.desc)+'</td><td class="r">'+peso(a.amount)+'</td></tr>'; }).join('');
+  var waRows=(r.workAuth||[]).map(function(a){ return '<tr><td>'+esc(a.desc)+(Number(a.amount)>0?' <span class="p-muted">· '+peso(a.amount)+'</span>':'')+'</td>'+
+    '<td class="r p-muted">'+esc(a.approvedBy||'—')+' · '+esc(fmtDate(a.at))+(a.method?' · '+esc(a.method):'')+'</td></tr>'; }).join('');
   var tot=''
     + (r.exempt? '<div class="p-l2"><span>VAT-Exempt Sales</span><span>'+peso(r.vatable)+'</span></div>'
       : '<div class="p-l2"><span>VATable Sales</span><span>'+peso(r.vatable)+'</span></div><div class="p-l2"><span>VAT ('+(r.vatRate||12)+'%)</span><span>'+peso(r.vat)+'</span></div>')
-    + (r.disc? '<div class="p-l2"><span>Discount</span><span>−'+peso(r.disc)+'</span></div>':'')
+    + (r.disc? '<div class="p-l2"><span>'+(r.warranty?'Warranty (no charge)':'Discount')+'</span><span>−'+peso(r.disc)+'</span></div>':'')
     + '<div class="p-l2 p-grand"><span>Total Amount Due</span><span>'+peso(r.gross)+'</span></div>';
+  var cbBanner=(r.warranty||r.comeback)? '<div class="p-card" style="background:#fff4d6;border-color:#ffdf8a"><b>'+(r.warranty?'⚠ Warranty service — no charge':'Comeback')+'.</b>'+(r.comeback?' Rework of '+esc(r.comeback)+'.':'')+'</div>':'';
   function kvp(k,v){ return '<div class="p-kv"><span>'+esc(k)+'</span><span>'+esc(v)+'</span></div>'; }
   var meta='<div class="p-meta">'+
     kvp('OR #', r.orNumber||'—')+ kvp('JO #', r.jo||h.no||'—')+
@@ -4580,7 +4835,9 @@ function portalReportHTML(h, d){
     '<div class="p-veh"><div class="p-plate">Final Billing Receipt</div>'+
       '<div class="p-model">'+esc(h.no||'')+(r.orNumber?' · OR '+esc(r.orNumber):'')+'</div>'+
       '<div class="p-owner">'+esc(d.owner||'')+'</div></div>'+
+    cbBanner+
     '<div class="p-card"><div class="p-card-t">Details</div>'+meta+'</div>'+
+    (waRows?'<div class="p-card"><div class="p-card-t">Additional work you authorized</div><table class="p-tbl"><tbody>'+waRows+'</tbody></table></div>':'')+
     '<div class="p-card"><div class="p-card-t">Parts</div>'+
       '<table class="p-tbl"><thead><tr><th>SKU</th><th>Part</th><th class="r">Qty</th><th class="r">Unit</th><th class="r">Amount</th></tr></thead><tbody>'+lineRows(rowsP,true)+'</tbody></table></div>'+
     '<div class="p-card"><div class="p-card-t">Labor</div>'+
@@ -4748,8 +5005,10 @@ if (typeof module!=='undefined' && module.exports){
     arJobs:arJobs, jobByNo:jobByNo, vehicleByPlate:vehicleByPlate, vehDupe:vehDupe, partById:partById,
     can:can, routeAllowed:routeAllowed, setCurrentUser:function(u){ CURRENT_USER=u; },
     commissionTable:commissionTable, jobLaborCommission:jobLaborCommission, jobLaborCommissionMap:jobLaborCommissionMap, jobLaborCommissionMapAll:jobLaborCommissionMapAll, laborTotal:laborTotal,
-    jobMissingFields:jobMissingFields, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
+    jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
     allocateSeriesNumber:allocateSeriesNumber, maxSeriesNo:maxSeriesNo, nextNo:nextNo,
+    jobCostOfParts:jobCostOfParts, jobRevenueExVat:jobRevenueExVat, jobGrossMargin:jobGrossMargin, jobNetProfit:jobNetProfit,
+    jobMechActualHours:jobMechActualHours, jobHasTimer:jobHasTimer, jobActualHoursTotal:jobActualHoursTotal, timerRunning:timerRunning,
     advancePostJob:null
   };
 }
@@ -6178,15 +6437,7 @@ var PMS_TEMPLATE = [
     pmsRate(['Brake caliper/cylinder FR','Brake caliper/cylinder FL','Brake caliper/cylinder RR','Brake caliper/cylinder RL']),
     pmsRate(['Brake hose FR','Brake hose FL','Brake hose RR','Brake hose RL']),
     pmsRate(['Brake fluid condition']),
-    pmsRate(['Brakes cleaned']),
-    pmsYesNo(['Parking brake adjusted']) ] },
-
-  { title:'Battery/Alternator', blocks:[
-    { kind:'text', key:pmsKey('Resting battery voltage'), label:'Resting batt voltage (engine off, ref: 12.4V & up)', labeled:true, required:true },
-    { kind:'text', key:pmsKey('Alternator output'), label:'Alternator output (engine on, ref: 13.5–14.5V)', labeled:true, required:true },
-    { kind:'text', key:pmsKey('Load test'), label:'Load test (engine on, heavy load, ref: 13.0V)', labeled:true, required:true },
-    pmsRate(['General charging condition']),
-    pmsText('Battery notes') ] },
+    pmsYesNo(['Brakes cleaned','Parking brake adjusted']) ] },
 
   { title:'Engine Bay — Systems', blocks:[
     pmsRate(['Air filter','Fuel filter','Cabin filter',
@@ -6231,6 +6482,13 @@ var PMS_TEMPLATE = [
     pmsYesNo(['Tires rotated','Tires balanced']),
     pmsRate(['Hub bolts','Lug nuts']),
     pmsYesNo(['Performed wheel tightening to torque specs']) ] },
+
+  { title:'Battery/Alternator', blocks:[
+    { kind:'text', key:pmsKey('Resting battery voltage'), label:'Resting batt voltage (engine off, ref: 12.4V & up)', labeled:true, required:true },
+    { kind:'text', key:pmsKey('Alternator output'), label:'Alternator output (engine on, ref: 13.5–14.5V)', labeled:true, required:true },
+    { kind:'text', key:pmsKey('Load test'), label:'Load test (engine on, heavy load, ref: 13.0V)', labeled:true, required:true },
+    pmsRate(['General charging condition']),
+    pmsText('Battery notes') ] },
 
   { title:'Post PMS Notes', blocks:[
     { kind:'text', key:pmsKey('Post-PMS Drive Test Notes'), label:'Post-PMS Drive Test Notes', yn:{ key:pmsKey('Post-PMS test driven'), label:'Test Driven?' } },

@@ -148,6 +148,8 @@ function discOther(job){ var d=(job&&job.discount)||{}; return round2(Number(d.o
 /* Sum of the value-based buckets, with backward compatibility for the old
    {type, value} shape (treated as a single consolidated amount). */
 function discountRaw(job){
+  // Warranty comeback: no charge — the whole Total Amount Due is written off.
+  if (job && job.warranty) return jobSubtotal(job);
   var d = job && job.discount; if(!d) return 0;
   if (d.parts!==undefined || d.labor!==undefined || d.other!==undefined){
     return round2((Number(d.parts)||0)+(Number(d.labor)||0)+(Number(d.other)||0));
@@ -199,6 +201,8 @@ function staffCommissionRate(idOrStaff){
    includeAll=true ignores the payout toggle (evaluation/KPI figure); default
    returns only commission-eligible (toggle-on) staff (actual payout). */
 function _laborCommissionMap(job, includeAll){
+  // Warranty comeback pays NO labor commission — the rework is on the shop.
+  if (job && job.warranty) return {};
   var labor = discountedLabor(job);
   var map = {};
   // distinct mechanics actually assigned to this job (blank / "TBA" excluded)
@@ -239,6 +243,27 @@ function commissionEligible(idOrStaff){
   var s = (idOrStaff && typeof idOrStaff==='object') ? idOrStaff : staffById(idOrStaff);
   return !!s && s.commission !== false;
 }
+
+/* ---- Per-mechanic labor timer -------------------------------------------- */
+/* job.workLog = [{id, mechId, start, end|null}]. One open (end=null) segment per
+   mechanic at a time. A single open segment is capped at 8h so a forgotten "stop"
+   can't inflate hours — same guard as the B2 status-log estimate it supersedes. */
+var TIMER_SEG_CAP = 8*3600000;
+function timerRunning(job, mid){ return (job&&job.workLog||[]).some(function(s){ return s.mechId===mid && !s.end; }); }
+function jobMechActualHours(job, mid){
+  var ms=(job&&job.workLog||[]).reduce(function(t,s){
+    if(s.mechId!==mid) return t;
+    var start=new Date(s.start).getTime(), end=s.end?new Date(s.end).getTime():Date.now();
+    var d=end-start; if(!(d>0)) return t; if(d>TIMER_SEG_CAP) d=TIMER_SEG_CAP; return t+d;
+  },0);
+  return ms/3600000;
+}
+function jobHasTimer(job){ return !!(job && Array.isArray(job.workLog) && job.workLog.length); }
+function jobActualHoursTotal(job){
+  var seen={}; (job&&job.workLog||[]).forEach(function(s){ seen[s.mechId]=1; });
+  return round2(Object.keys(seen).reduce(function(t,mid){ return t+jobMechActualHours(job,mid); },0));
+}
+function fmtHrs(h){ var m=Math.max(0,Math.round((Number(h)||0)*60)); return Math.floor(m/60)+'h '+(m%60)+'m'; }
 
 /* ---- Payment helpers ------------------------------------------------------ */
 function jobPaid(job){ return round2(((job.payments)||[]).reduce(function(s,p){return s+(Number(p.amount)||0);},0)); }

@@ -76,15 +76,7 @@ var PMS_TEMPLATE = [
     pmsRate(['Brake caliper/cylinder FR','Brake caliper/cylinder FL','Brake caliper/cylinder RR','Brake caliper/cylinder RL']),
     pmsRate(['Brake hose FR','Brake hose FL','Brake hose RR','Brake hose RL']),
     pmsRate(['Brake fluid condition']),
-    pmsRate(['Brakes cleaned']),
-    pmsYesNo(['Parking brake adjusted']) ] },
-
-  { title:'Battery/Alternator', blocks:[
-    { kind:'text', key:pmsKey('Resting battery voltage'), label:'Resting batt voltage (engine off, ref: 12.4V & up)', labeled:true, required:true },
-    { kind:'text', key:pmsKey('Alternator output'), label:'Alternator output (engine on, ref: 13.5–14.5V)', labeled:true, required:true },
-    { kind:'text', key:pmsKey('Load test'), label:'Load test (engine on, heavy load, ref: 13.0V)', labeled:true, required:true },
-    pmsRate(['General charging condition']),
-    pmsText('Battery notes') ] },
+    pmsYesNo(['Brakes cleaned','Parking brake adjusted']) ] },
 
   { title:'Engine Bay — Systems', blocks:[
     pmsRate(['Air filter','Fuel filter','Cabin filter',
@@ -129,6 +121,13 @@ var PMS_TEMPLATE = [
     pmsYesNo(['Tires rotated','Tires balanced']),
     pmsRate(['Hub bolts','Lug nuts']),
     pmsYesNo(['Performed wheel tightening to torque specs']) ] },
+
+  { title:'Battery/Alternator', blocks:[
+    { kind:'text', key:pmsKey('Resting battery voltage'), label:'Resting batt voltage (engine off, ref: 12.4V & up)', labeled:true, required:true },
+    { kind:'text', key:pmsKey('Alternator output'), label:'Alternator output (engine on, ref: 13.5–14.5V)', labeled:true, required:true },
+    { kind:'text', key:pmsKey('Load test'), label:'Load test (engine on, heavy load, ref: 13.0V)', labeled:true, required:true },
+    pmsRate(['General charging condition']),
+    pmsText('Battery notes') ] },
 
   { title:'Post PMS Notes', blocks:[
     { kind:'text', key:pmsKey('Post-PMS Drive Test Notes'), label:'Post-PMS Drive Test Notes', yn:{ key:pmsKey('Post-PMS test driven'), label:'Test Driven?' } },

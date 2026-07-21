@@ -115,7 +115,10 @@ function totalsBox(j,opts){
   if(b.exempt){ rows+='<div class="l2"><span>VAT-Exempt Sales</span><span>'+peso(b.vatable)+'</span></div>'; }
   else { rows+='<div class="l2"><span>VATable Sales</span><span>'+peso(b.vatable)+'</span></div>';
     rows+='<div class="l2"><span>VAT ('+(S.shop.vatRate||12)+'%)</span><span>'+peso(b.vat)+'</span></div>'; }
-  if(opts.discount && b.disc){
+  if(opts.discount && j.warranty){
+    // Warranty comeback: the whole amount is written off — one clear line.
+    rows+='<div class="l2"><span>Less: Warranty (no charge)</span><span>−'+peso(b.disc)+'</span></div>';
+  } else if(opts.discount && b.disc){
     // Itemise the discount into Parts / Labor / Other when the job uses the
     // per-bucket model AND the buckets sum to the applied discount (i.e. it
     // wasn't capped at the subtotal). Otherwise fall back to one Discount line.
@@ -133,6 +136,26 @@ function totalsBox(j,opts){
   rows+='<div class="l2 grand"><span>Total Amount Due</span><span>'+peso(total)+'</span></div>';
   return '<div class="totbox">'+rows+'</div>';
 }
+/* Warranty / comeback banner for the priced documents. */
+function comebackNote(j){
+  if(!j.comebackOf && !j.warranty) return '';
+  var orig=j.comebackOf?jobById(j.comebackOf):null;
+  var bits=[];
+  if(orig) bits.push('Comeback of '+esc(orig.no)+' ('+esc(fmtDate(orig.dateIn))+')');
+  if(j.comebackReason) bits.push(esc(j.comebackReason));
+  return '<div class="notes" style="background:#fff4d6;border:1px solid #ffdf8a">'+
+    '<b>'+(j.warranty?'⚠ Warranty — no charge to customer':'Comeback')+'.</b>'+
+    (bits.length?' '+bits.join(' · '):'')+'</div>';
+}
+/* Customer-authorization log for extra work — proof of consent on the printout. */
+function workAuthDoc(j){
+  var wa=(j.workAuth||[]); if(!wa.length) return '';
+  return '<div class="dtitle" style="font-size:12px;margin-top:14px">Additional work — customer authorization</div>'+
+    '<table><thead><tr><th>Work authorized</th><th class="r">Amount</th><th>Approved by</th><th>When</th><th>How</th></tr></thead><tbody>'+
+    wa.map(function(a){ return '<tr><td>'+esc(a.desc)+'</td><td class="r">'+(Number(a.amount)>0?peso(a.amount):'—')+'</td>'+
+      '<td>'+esc(a.approvedBy||'—')+'</td><td>'+esc(fmtDateTime(a.at))+'</td><td>'+esc(a.method||'')+'</td></tr>'; }).join('')+
+    '</tbody></table>';
+}
 
 /* ---- Post Job Report: prices + Approved for release by -------------------- */
 function docPostJob(j){
@@ -143,7 +166,9 @@ function docPostJob(j){
        ['Ingress Odo', num(j.odometer)+' km'],['Last Service Odo', j.lastServiceOdo?num(j.lastServiceOdo)+' km':'—']],
       [['Date in', fmtDate(j.dateIn)],['ETD', fmtDate(j.etd)],['Service Adviser', esc(staffName(j.saId))],
        ['Mechanic', esc(mechName(j.mechanicIds))],['Bay', esc(bayName(j.bayId))],['PMS ref', esc(j.pmsRef)]] )+
+    comebackNote(j)+
     pricedLinesTable(j,{sku:true})+ totalsBox(j,{discount:false})+
+    workAuthDoc(j)+
     (j.notes?'<div class="notes"><b>Service notes:</b> '+esc(j.notes)+'</div>':'')+
     '<div class="sig-grid"><div class="sigline">Checked by (Service Adviser)<br>'+esc(staffName(j.saId))+'</div>'+
       '<div class="sigline">Approved for release by (Supervisor)<br>'+esc(staffNameIfRole(j.approvedReleaseBy,'SV'))+'</div>'+
@@ -166,7 +191,9 @@ function billingBody(j){
        ['JO #', esc(j.no)]],
       [['Date', fmtDate(j.billedAt)],['TIN', esc(j.customerTin||'—')],['SI reference', esc(j.siRef||'—')],
        ['Ingress Odo', num(j.odometer)+' km'],['Last Service Odo', j.lastServiceOdo?num(j.lastServiceOdo)+' km':'—']] )+
+    comebackNote(j)+
     pricedLinesTable(j,{sku:true})+ totalsBox(j,{discount:true})+
+    workAuthDoc(j)+
     '<div class="sig-grid"><div class="sigline">Approved for release by (Supervisor)<br>'+esc(staffNameIfRole(j.approvedReleaseBy,'SV'))+'</div>'+
       '<div class="sigline">Payment received by (Secretary)<br>'+esc(staffNameIfRole(j.paymentReceivedBy,'Secretary'))+'</div>'+
       '<div class="sigline">Unit Received by (Customer)<br>'+esc(j.owner||'')+'</div></div>'+

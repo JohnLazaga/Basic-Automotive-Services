@@ -39,10 +39,12 @@ function portalDataForVehicle(v){
         jobId:j.id, no:j.no||'', stage:j.stage||'', orNumber:j.orNumber||'',
         dateISO:(j.billedAt||j.dateIn||''), work:work,
         odo:Number(j.lastServiceOdo)||Number(j.odometer)||0,
-        amount:b.gross,
+        amount:b.gross, warranty:!!j.warranty,
         report:{
           orNumber:j.orNumber||'', jo:j.no||'', tin:j.customerTin||'', siRef:j.siRef||'',
           ingressOdo:Number(j.odometer)||0, lastOdo:Number(j.lastServiceOdo)||0,
+          warranty:!!j.warranty, comeback:(j.comebackOf?((jobById(j.comebackOf)||{}).no||''):''),
+          workAuth:(j.workAuth||[]).map(function(a){ return { desc:a.desc||'', amount:Number(a.amount)||0, approvedBy:a.approvedBy||'', method:a.method||'', at:a.at||'' }; }),
           lines:(j.lines||[]).map(function(l){ return { type:l.type, sku:(l.type==='part'?(l.sku||''):''), desc:l.desc, qty:Number(l.qty)||0, price:Number(l.price)||0, total:lineTotal(l) }; }),
           addl:(j.addlWork||[]).filter(function(a){return a.approved;}).map(function(a){ return { desc:a.desc, amount:Number(a.amount)||0 }; }),
           vatable:b.vatable, vat:b.vat, exempt:!!b.exempt, disc:b.disc, gross:b.gross, vatRate:Number((S.shop||{}).vatRate)||12,
@@ -112,11 +114,14 @@ function portalReportHTML(h, d){
     }).join('') || '<tr><td colspan="'+(isPart?5:4)+'" class="p-muted">—</td></tr>';
   }
   var addlRows=(r.addl||[]).map(function(a){ return '<tr><td>'+esc(a.desc)+'</td><td class="r">'+peso(a.amount)+'</td></tr>'; }).join('');
+  var waRows=(r.workAuth||[]).map(function(a){ return '<tr><td>'+esc(a.desc)+(Number(a.amount)>0?' <span class="p-muted">· '+peso(a.amount)+'</span>':'')+'</td>'+
+    '<td class="r p-muted">'+esc(a.approvedBy||'—')+' · '+esc(fmtDate(a.at))+(a.method?' · '+esc(a.method):'')+'</td></tr>'; }).join('');
   var tot=''
     + (r.exempt? '<div class="p-l2"><span>VAT-Exempt Sales</span><span>'+peso(r.vatable)+'</span></div>'
       : '<div class="p-l2"><span>VATable Sales</span><span>'+peso(r.vatable)+'</span></div><div class="p-l2"><span>VAT ('+(r.vatRate||12)+'%)</span><span>'+peso(r.vat)+'</span></div>')
-    + (r.disc? '<div class="p-l2"><span>Discount</span><span>−'+peso(r.disc)+'</span></div>':'')
+    + (r.disc? '<div class="p-l2"><span>'+(r.warranty?'Warranty (no charge)':'Discount')+'</span><span>−'+peso(r.disc)+'</span></div>':'')
     + '<div class="p-l2 p-grand"><span>Total Amount Due</span><span>'+peso(r.gross)+'</span></div>';
+  var cbBanner=(r.warranty||r.comeback)? '<div class="p-card" style="background:#fff4d6;border-color:#ffdf8a"><b>'+(r.warranty?'⚠ Warranty service — no charge':'Comeback')+'.</b>'+(r.comeback?' Rework of '+esc(r.comeback)+'.':'')+'</div>':'';
   function kvp(k,v){ return '<div class="p-kv"><span>'+esc(k)+'</span><span>'+esc(v)+'</span></div>'; }
   var meta='<div class="p-meta">'+
     kvp('OR #', r.orNumber||'—')+ kvp('JO #', r.jo||h.no||'—')+
@@ -135,7 +140,9 @@ function portalReportHTML(h, d){
     '<div class="p-veh"><div class="p-plate">Final Billing Receipt</div>'+
       '<div class="p-model">'+esc(h.no||'')+(r.orNumber?' · OR '+esc(r.orNumber):'')+'</div>'+
       '<div class="p-owner">'+esc(d.owner||'')+'</div></div>'+
+    cbBanner+
     '<div class="p-card"><div class="p-card-t">Details</div>'+meta+'</div>'+
+    (waRows?'<div class="p-card"><div class="p-card-t">Additional work you authorized</div><table class="p-tbl"><tbody>'+waRows+'</tbody></table></div>':'')+
     '<div class="p-card"><div class="p-card-t">Parts</div>'+
       '<table class="p-tbl"><thead><tr><th>SKU</th><th>Part</th><th class="r">Qty</th><th class="r">Unit</th><th class="r">Amount</th></tr></thead><tbody>'+lineRows(rowsP,true)+'</tbody></table></div>'+
     '<div class="p-card"><div class="p-card-t">Labor</div>'+
@@ -303,8 +310,10 @@ if (typeof module!=='undefined' && module.exports){
     arJobs:arJobs, jobByNo:jobByNo, vehicleByPlate:vehicleByPlate, vehDupe:vehDupe, partById:partById,
     can:can, routeAllowed:routeAllowed, setCurrentUser:function(u){ CURRENT_USER=u; },
     commissionTable:commissionTable, jobLaborCommission:jobLaborCommission, jobLaborCommissionMap:jobLaborCommissionMap, jobLaborCommissionMapAll:jobLaborCommissionMapAll, laborTotal:laborTotal,
-    jobMissingFields:jobMissingFields, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
+    jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
     allocateSeriesNumber:allocateSeriesNumber, maxSeriesNo:maxSeriesNo, nextNo:nextNo,
+    jobCostOfParts:jobCostOfParts, jobRevenueExVat:jobRevenueExVat, jobGrossMargin:jobGrossMargin, jobNetProfit:jobNetProfit,
+    jobMechActualHours:jobMechActualHours, jobHasTimer:jobHasTimer, jobActualHoursTotal:jobActualHoursTotal, timerRunning:timerRunning,
     advancePostJob:null
   };
 }

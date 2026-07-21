@@ -31,6 +31,21 @@ function vehMatch(v){
   if(!VEH_Q) return true; var q=VEH_Q.toLowerCase();
   return [v.plate,v.owner,v.contactPerson].some(function(x){ return String(x||'').toLowerCase().indexOf(q)>=0; });
 }
+/* The odometer at this vehicle's most recent service. v.odometer only receives a
+   job's last-service reading at RELEASE (and via Math.max, so a lower later reading
+   is dropped), which is why an entered "last service odometer" may not show yet.
+   Derive it from the newest job that carries a last-service reading; fall back to
+   the stored vehicle odometer. */
+function vehLastServiceOdo(v){
+  var best=null, bestKey='';
+  (S.jobs||[]).forEach(function(j){
+    if(!(j.vehicleId===v.id || (j.plate||'').toUpperCase()===(v.plate||'').toUpperCase())) return;
+    var reading=Number(j.lastServiceOdo)||0; if(!(reading>0)) return;
+    var key=String(j.billedAt||j.dateIn||'');
+    if(best===null || key>=bestKey){ best=reading; bestKey=key; }
+  });
+  return best!=null ? best : (Number(v.odometer)||0);
+}
 function vehBodyHTML(){
   var list=S.vehicles.filter(vehMatch);
   if(!list.length) return emptyState(VEH_Q? 'No vehicles match “'+esc(VEH_Q)+'”.' : 'No vehicles.');
@@ -38,10 +53,10 @@ function vehBodyHTML(){
     var due = v.nextServiceDate && v.nextServiceDate<=todayISO();
     var soon = v.nextServiceDate && v.nextServiceDate<=todayISO(new Date(Date.now()+14*86400000));
     return '<tr onclick="go(\'vehicle\',\''+v.id+'\')"><td><b>'+esc(v.plate)+'</b></td><td>'+esc(v.owner)+'</td>'+
-      '<td>'+esc((v.year+' '+v.make+' '+v.model).trim()+(v.variant?' '+v.variant:''))+'</td><td class="r">'+odo(v.odometer)+'</td>'+
+      '<td>'+esc((v.year+' '+v.make+' '+v.model).trim()+(v.variant?' '+v.variant:''))+'</td><td class="r">'+odo(vehLastServiceOdo(v))+'</td>'+
       '<td>'+(v.nextServiceDate? (due?chip('Overdue','due'):soon?chip('Due soon','gold'):fmtDate(v.nextServiceDate)) : '—')+'</td></tr>';
   }).join('');
-  return '<div class="card pad0"><table class="tbl click"><thead><tr><th>Plate</th><th>Owner</th><th>Vehicle</th><th class="r">Odometer</th><th>Next service</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+  return '<div class="card pad0"><table class="tbl click"><thead><tr><th>Plate</th><th>Owner</th><th>Vehicle</th><th class="r">Last service odo</th><th>Next service</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
 }
 function vehSearch(v){ VEH_Q=v; var el=document.getElementById('vehBody'); if(el) el.innerHTML=vehBodyHTML(); }
 VIEWS.vehicles = function(){
@@ -75,7 +90,7 @@ VIEWS.vehicle = function(id){
         '<div class="muted small mt8">Scans resolve once hosted at:<br><code class="qr-url">'+esc(portalLink(v.id))+'</code></div></div>'+
       '<div class="card"><h2>Owner / Vehicle</h2><div class="ksmall">'+
         kv('Owner',esc(v.owner))+kv('Address',esc(v.address||'—'))+kv('Contact',esc(v.contactPerson+' · '+v.contactNumber))+
-        kv('Chassis #',esc(v.chassis||'—'))+kv('Year/Make/Model',esc(v.year+' '+v.make+' '+v.model))+kv('Variant',esc(v.variant||'—'))+kv('Last service odo',odo(v.odometer))+
+        kv('Chassis #',esc(v.chassis||'—'))+kv('Year/Make/Model',esc(v.year+' '+v.make+' '+v.model))+kv('Variant',esc(v.variant||'—'))+kv('Last service odo',odo(vehLastServiceOdo(v)))+
         kv('Portal PIN',esc(v.portalPin||'— (customer sets on first scan)'))+'</div></div>'+
     '</div></div></div>';
 };

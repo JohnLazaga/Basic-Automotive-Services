@@ -13,16 +13,36 @@ function jobCostOfParts(j){
     return s + unitCost*(Number(l.qty)||0);
   },0));
 }
+/* ---- Profitability (VAT-exclusive) ---------------------------------------- */
+/* Discounts are taken off the VAT-inclusive Total Due; convert back to ex-VAT so
+   profit is measured on the same (ex-VAT) basis as revenue and cost. */
+function discountExVat(job){
+  var d = discountAmount(job);
+  if(!S || !S.shop || !S.shop.vatReg) return d;
+  var rate=(Number(S.shop.vatRate)||12)/100;
+  return round2(d/(1+rate));
+}
+/* Ex-VAT revenue after discount (0 for a warranty comeback — full write-off). */
+function jobRevenueExVat(job){ return round2(jobNet(job) - discountExVat(job)); }
+/* Gross margin = ex-VAT revenue − parts cost. (Labor is sold time — no material
+   cost; commission is a payout captured in net profit below.) */
+function jobGrossMargin(job){ return round2(jobRevenueExVat(job) - jobCostOfParts(job)); }
+/* Net profit = gross margin − labor commission paid on this job. */
+function jobNetProfit(job){ return round2(jobGrossMargin(job) - jobLaborCommission(job,S).pool); }
 
 /* ---- Reports & Analytics -------------------------------------------------- */
 VIEWS.reports = function(){
   var rel=releasedJobs();
-  var revenue=round2(rel.reduce(function(s,j){return s+jobGross(j);},0));
-  var partsCost=round2(rel.reduce(function(s,j){return s+jobCostOfParts(j);},0));
-  var gp=round2(revenue-partsCost);
-  var margin=revenue? Math.round(gp/revenue*100):0;
+  var revenue=round2(rel.reduce(function(s,j){return s+jobGross(j);},0));   // total billed (VAT-incl) — the sales headline
   var wip=round2(S.jobs.filter(function(j){return j.stage!=='Released';}).reduce(function(s,j){return s+jobGross(j);},0));
   var avg=rel.length? round2(revenue/rel.length):0;
+  // Profitability (ex-VAT, consistent with the per-job Profitability panel)
+  var revEx=round2(rel.reduce(function(s,j){return s+jobRevenueExVat(j);},0));
+  var partsCost=round2(rel.reduce(function(s,j){return s+jobCostOfParts(j);},0));
+  var gp=round2(rel.reduce(function(s,j){return s+jobGrossMargin(j);},0));
+  var margin=revEx? Math.round(gp/revEx*100):0;
+  var totalComm=round2(rel.reduce(function(s,j){return s+jobLaborCommission(j,S).pool;},0));
+  var netProfit=round2(rel.reduce(function(s,j){return s+jobNetProfit(j);},0));
 
   // revenue by month
   var byMonth={};
@@ -43,9 +63,15 @@ VIEWS.reports = function(){
   var comm=commissionTable(rel);
 
   return '<div class="page"><div class="page-head"><h1>Reports & Analytics</h1></div>'+
-    '<div class="kpis">'+kpi('Revenue (released)',peso(revenue))+kpi('Gross profit',peso(gp))+kpi('Margin',margin+'%')+
+    '<div class="kpis">'+kpi('Revenue (released)',peso(revenue),'total billed, VAT-incl')+kpi('Net profit',peso(netProfit),'after parts cost & commission')+kpi('Margin',margin+'%','gross, ex-VAT')+
       kpi('Open WIP',peso(wip))+kpi('Avg ticket',peso(avg))+'</div>'+
     '<div class="cols"><div class="colmain">'+
+      '<div class="card"><h2>Profitability <span class="muted small">· released · ex-VAT</span></h2>'+
+        line2('Revenue (ex-VAT)',peso(revEx))+line2('− Parts cost',peso(partsCost))+
+        line2('Gross margin','<b>'+peso(gp)+'</b> <span class="muted small">· '+margin+'%</span>')+
+        '<div class="bill-sep"></div>'+line2('− Labor commission',peso(totalComm))+
+        line2('Net profit','<b class="'+(netProfit<0?'st-bad-t':'st-good-t')+'">'+peso(netProfit)+'</b>')+
+        '<p class="muted small mt8">Gross margin = ex-VAT revenue − parts cost (labor is sold time). Net profit also subtracts labor commission. Warranty comebacks show ₱0 revenue against real parts cost.</p></div>'+
       '<div class="card"><h2>Revenue by month</h2>'+(months.length?bars(months,peso):emptyState('No released jobs yet.'))+'</div>'+
       '<div class="grid2cards"><div class="card"><h2>Top services</h2>'+(top(svc).length?bars(top(svc),peso):emptyState('—'))+'</div>'+
         '<div class="card"><h2>Top parts</h2>'+(top(prt).length?bars(top(prt),peso):emptyState('—'))+'</div></div>'+
@@ -269,8 +295,8 @@ function mechPerfSection(list){
     r.avgHrs = r.jobs ? round2(r.hours/r.jobs) : 0;
     r.avgLabor = r.jobs ? round2(r.labor/r.jobs) : 0;
   });
-  var T={jobs:0,hours:0,actual:0,otHit:0,otTotal:0,labor:0,commission:0};
-  m.forEach(function(r){ T.jobs+=r.jobs; T.hours+=r.hours; T.actual+=r.actual; T.otHit+=r.otHit; T.otTotal+=r.otTotal; T.labor+=r.labor; T.commission+=r.commission; });
+  var T={jobs:0,hours:0,actual:0,otHit:0,otTotal:0,labor:0,commission:0,comebacks:0};
+  m.forEach(function(r){ T.jobs+=r.jobs; T.hours+=r.hours; T.actual+=r.actual; T.otHit+=r.otHit; T.otTotal+=r.otTotal; T.labor+=r.labor; T.commission+=r.commission; T.comebacks+=(r.comebacks||0); });
   var teamEff=T.actual>0?Math.round(T.hours/T.actual*100):null;
   var teamOt =T.otTotal>0?Math.round(T.otHit/T.otTotal*100):null;
   var teamRev=T.actual>0?round2(T.labor/T.actual):0;
@@ -283,6 +309,7 @@ function mechPerfSection(list){
     kpi('Team on-time', teamOt!=null?teamOt+'%':'—', T.otTotal?('vs ETD · '+T.otHit+'/'+T.otTotal):'no ETDs')+
     kpi('Revenue / hr', peso(teamRev), 'labor ÷ actual hr')+
     kpi('Labor billed', peso(round2(T.labor)))+
+    kpi('Comebacks', T.comebacks, T.jobs?('warranty rework · '+Math.round(T.comebacks/T.jobs*100)+'% of jobs'):'warranty rework')+
   '</div>';
   var byEff=m.slice().sort(function(a,b){return (b.eff==null?-1:b.eff)-(a.eff==null?-1:a.eff);});
   var effBars=perfStatBars(byEff.map(function(r){return {label:r.name, pct:r.eff, band:effBand(r.eff), disp:r.eff!=null?r.eff+'%':'—'};}));
@@ -302,12 +329,13 @@ function mechPerfSection(list){
     var ob=r.ot==null?'<span class="muted">—</span>':'<span class="perf-badge '+otBand(r.ot)+'">'+r.ot+'%</span>';
     return '<div class="perf-card"><div class="perf-card-h"><b>'+esc(r.name)+'</b> <span class="muted small">'+esc(roleLabel(r.role))+'</span></div>'+
       '<div class="perf-badges">'+eb+'<span class="muted small">efficiency</span>'+ob+'<span class="muted small">on-time</span></div>'+
-      row('Jobs done', r.jobs)+ row('Standard hrs', num(round2(r.hours)))+ row('Actual hrs (B2)', num(round2(r.actual)))+
+      row('Jobs done', r.jobs)+ row('Standard hrs', num(round2(r.hours)))+ row('Actual hrs', num(round2(r.actual)))+
       row('Avg std hrs / job', num(r.avgHrs))+ row('Labor billed', peso(r.labor))+ row('Revenue / actual hr', peso(r.revhr))+
+      row('Comebacks', (r.comebacks>0?('<span class="st-bad-t">'+r.comebacks+'</span>'+(r.jobs?' ('+Math.round(r.comebacks/r.jobs*100)+'%)':'')):'0'))+
       row('Avg labor / job', peso(r.avgLabor))+ row('Commission', peso(r.commission))+'</div>';
   }).join('');
   return '<div class="card"><h2>Mechanic performance review</h2>'+
-    '<p class="muted small"><b>How to read.</b> <b class="st-good-t">Efficiency</b> = standard job hrs ÷ actual worked hrs: <span class="st-good-t">green ≥ 100%</span> (beat the estimate), <span class="st-warn-t">amber 85–99%</span>, <span class="st-bad-t">red &lt; 85%</span>; the marker on each bar is the 100% break-even. <b>On-time</b> = finished on/before ETD (green ≥ 90%). <b>Actual hrs</b> is time in status B2 from the log (capped 8h/interval), so keep the log honest for these to mean anything.</p>'+
+    '<p class="muted small"><b>How to read.</b> <b class="st-good-t">Efficiency</b> = standard job hrs ÷ actual worked hrs: <span class="st-good-t">green ≥ 100%</span> (beat the estimate), <span class="st-warn-t">amber 85–99%</span>, <span class="st-bad-t">red &lt; 85%</span>; the marker on each bar is the 100% break-even. <b>On-time</b> = finished on/before ETD (green ≥ 90%). <b>Actual hrs</b> is the per-mechanic labor timer when used, else time in status B2 from the log (capped 8h/interval). <b class="st-bad-t">Comebacks</b> are warranty rework charged to the mechanic — a fast tech with high comebacks is not actually cheap.</p>'+
     tiles+
     '<div class="perf-grid2">'+
       '<div><h3 class="perf-h">Efficiency % <span class="muted small">· marker = 100%</span></h3>'+effBars+'</div>'+
@@ -323,7 +351,7 @@ VIEWS.productivity = function(){
   var jobs=jobsInProdPeriod(billedJobs());
   var staff=(S.staff||[]).slice().sort(function(a,b){ return kpiRoleRank(a.role)-kpiRoleRank(b.role) || String(a.name||'').localeCompare(String(b.name||'')); });
   var byId={};
-  var list=staff.map(function(s){ var r={ id:s.id, name:s.name, role:s.role, on:(s.commission!==false), jobs:0, hours:0, actual:0, otHit:0, otTotal:0, labor:0, commission:0 }; byId[s.id]=r; return r; });
+  var list=staff.map(function(s){ var r={ id:s.id, name:s.name, role:s.role, on:(s.commission!==false), jobs:0, hours:0, actual:0, otHit:0, otTotal:0, labor:0, commission:0, comebacks:0 }; byId[s.id]=r; return r; });
   jobs.forEach(function(j){
     // Evaluation figure: pool split among EVERYONE assigned, ignoring the payout toggle.
     var cm=jobLaborCommissionMapAll(j,S); var lab=laborTotal(j.lines);
@@ -331,15 +359,18 @@ VIEWS.productivity = function(){
     // every distinct staff assigned in ANY capacity — job count
     var assigned=[]; mechs.concat([j.saId,j.assessedBy,j.partsSalesman]).forEach(function(x){ if(x&&x!=='TBA'&&assigned.indexOf(x)<0) assigned.push(x); });
     assigned.forEach(function(id){ var r=byId[id]; if(r) r.jobs++; });
-    // job hours & labor billed are mechanic productivity metrics — split among mechanics
-    var actualH=jobB2Hours(j); var onTime=jobOnTime(j);
+    // job hours & labor billed are mechanic productivity metrics — split among mechanics.
+    // Actual hrs: prefer the per-mechanic timer; fall back to an even split of the B2 estimate.
+    var timed=jobHasTimer(j); var actualH=jobB2Hours(j); var onTime=jobOnTime(j);
     mechs.forEach(function(mid){ var r=byId[mid]; if(!r) return;
       r.hours=round2(r.hours+(Number(j.jobHours)||0)/mechs.length);
       r.labor=round2(r.labor+lab/mechs.length);
-      r.actual=round2(r.actual+actualH/mechs.length);
+      r.actual=round2(r.actual+(timed? jobMechActualHours(j,mid) : actualH/mechs.length));
       if(onTime!==null){ r.otTotal++; if(onTime) r.otHit++; }
     });
     Object.keys(cm).forEach(function(id){ var r=byId[id]; if(r) r.commission=round2(r.commission+cm[id]); });
+    // Comeback attribution: counts against the at-fault mechanic (the one who did the original job).
+    if(j.comebackMechId){ var rc=byId[j.comebackMechId]; if(rc) rc.comebacks++; }
   });
   var rows=list.map(function(m){
     var toggle='<label class="switch" title="Include in commission payout"><input type="checkbox" '+(m.on?'checked':'')+
@@ -350,6 +381,7 @@ VIEWS.productivity = function(){
       '<td class="r">'+num(m.actual)+'</td>'+
       '<td class="r">'+(m.actual>0? effCell(m.hours,m.actual) : '<span class="muted">—</span>')+'</td>'+
       '<td class="r">'+(m.otTotal>0? Math.round(m.otHit/m.otTotal*100)+'% <span class="muted small">('+m.otHit+'/'+m.otTotal+')</span>' : '<span class="muted">—</span>')+'</td>'+
+      '<td class="r">'+(m.comebacks>0? '<b class="st-bad-t">'+m.comebacks+'</b>'+(m.jobs?' <span class="muted small">('+Math.round(m.comebacks/m.jobs*100)+'%)</span>':'') : '<span class="muted">0</span>')+'</td>'+
       '<td class="r">'+peso(m.labor)+'</td><td class="r">'+peso(m.jobs?round2(m.labor/m.jobs):0)+'</td><td class="r">'+commCell+'</td><td class="center">'+toggle+'</td></tr>';
   }).join('');
   var commBars=list.filter(function(m){return m.commission>0;}).map(function(m){return {label:m.name,value:m.commission};});
@@ -366,8 +398,8 @@ VIEWS.productivity = function(){
     '<div class="row gap" style="align-items:center;flex-wrap:wrap"><div class="seg">'+seg+'</div>'+custom+
       '<span class="muted small">'+esc(prodPeriodLabel())+'</span></div>'+
     '<p class="muted small mt8">Commission is each staff member’s own admin-set rate × the job’s labor (set per person on the Staff page). The Commission column is the <b>evaluation</b> figure — shown even for staff switched off (greyed). The <b>Payout sheet</b> pays only staff with <b>Payout</b> on.</p>'+
-    '<p class="muted small">Job hrs = standard hours from the Job Order. Actual hrs = time in status <b>B2</b> from the log (each interval capped at 8h). Efficiency = Job hrs ÷ Actual hrs (green ≥ 100%). On-time = finished on/before ETD (hits/total).</p>'+
-    '<div class="card pad0"><table class="tbl"><thead><tr><th>Staff</th><th class="r">Jobs</th><th class="r">Job hrs</th><th class="r">Actual hrs</th><th class="r">Efficiency</th><th class="r">On-time</th><th class="r">Labor billed</th><th class="r">Avg/job</th><th class="r">Commission</th><th class="center">Payout</th></tr></thead><tbody>'+(rows||'<tr><td colspan="10" class="muted center">No staff.</td></tr>')+'</tbody></table></div>'+
+    '<p class="muted small">Job hrs = standard hours from the Job Order. Actual hrs = the per-mechanic labor <b>timer</b> when used, else time in status <b>B2</b> from the log (each interval capped at 8h). Efficiency = Job hrs ÷ Actual hrs (green ≥ 100%). On-time = finished on/before ETD. <b>Comebacks</b> = warranty rework charged to the mechanic (% of their jobs) — watch this next to efficiency.</p>'+
+    '<div class="card pad0"><table class="tbl"><thead><tr><th>Staff</th><th class="r">Jobs</th><th class="r">Job hrs</th><th class="r">Actual hrs</th><th class="r">Efficiency</th><th class="r">On-time</th><th class="r">Comebacks</th><th class="r">Labor billed</th><th class="r">Avg/job</th><th class="r">Commission</th><th class="center">Payout</th></tr></thead><tbody>'+(rows||'<tr><td colspan="11" class="muted center">No staff.</td></tr>')+'</tbody></table></div>'+
     mechPerfSection(list)+
     '<div class="card"><h2>Commission by staff</h2>'+(commBars.length?bars(commBars,peso):emptyState('No commissions in this period.'))+'</div></div>';
 };

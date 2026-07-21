@@ -27,13 +27,19 @@ function blankJob(){
     lines:[], partsSalesman:'', siRef:'', pmsRef:'', notes:'',
     inspection:{ odometer:0, fuel:'', lights:'', condition:'', testDrive:'' },
     checklist:{ created:false, leaveUnit:false, items:{}, bodyNotes:'' },
+    comebackOf:null, comebackMechId:'', comebackReason:'', warranty:false,   // comeback / warranty rework
+    workAuth:[],    // customer authorizations for extra work: {id,desc,amount,approvedBy,method,note,at}
+    workLog:[],     // per-mechanic labor timer segments: {id,mechId,start,end|null}
     status:'A1', statusLog:[], addlWork:[], approvedReleaseBy:null, paymentReceivedBy:null,
     discount:{ parts:0, labor:0, other:0, otherNote:'' }, payments:[], orNumber:null, billedAt:null, releaseSignature:null,
     photos:[], inventoryDeducted:false };
 }
 
 async function createJob(base){
-  var j = Object.assign(blankJob(), base||{});
+  base = base || {};
+  var depAmt = Number(base.depositAmount)||0, depM = base.depositMethod||'Cash';
+  delete base.depositAmount; delete base.depositMethod;   // not job fields — recorded as a payment below
+  var j = Object.assign(blankJob(), base);
   j.no = await allocateSeriesNumber('jo','JO-',4);          // atomic, unique
   if (!j.statusLog.length) j.statusLog=[{ time:new Date().toISOString(), code:j.status||'A1', by:j.saId||'', note:'Job Order created.' }];
   var v = ensureVehicle(j);
@@ -41,6 +47,7 @@ async function createJob(base){
   ['owner','address','contactPerson','contactNumber','chassis','year','make','model','variant'].forEach(function(k){
     if(!j[k]) j[k]=v[k];
   });
+  if (depAmt>0) j.payments.push({ amount:round2(depAmt), method:depM, date:new Date().toISOString(), note:'Deposit (intake)' });
   S.jobs.unshift(j); persist();
   return j;
 }
@@ -81,6 +88,7 @@ function postJobMissingFields(j){
   if(!String(j.dateIn||'').trim()) missing.push('Date in');
   if(!String(j.etd||'').trim()) missing.push('ETD');
   if(!(Number(j.lastServiceOdo)>0)) missing.push('Last service odometer');
+  if(!(Number(j.jobHours)>0)) missing.push('Job hours');   // standard hrs — required so productivity/efficiency can be computed
   if(insp.fuel===''||insp.fuel===null||insp.fuel===undefined) missing.push('Fuel level');
   if(!String(insp.condition||'').trim()) missing.push('Condition');
   if(!j.saId||j.saId==='TBA') missing.push('Service Adviser');
@@ -99,7 +107,7 @@ var INGRESS_FIELD_INPUT = {
 var JOBDETAIL_FIELD_INPUT = {
   'Registered owner':'jdOwner','Contact person':'jdCP','Contact #':'jdContact','Address':'jdAddr',
   'Chassis #':'jdChassis','Year':'jdYear','Make':'jdMake','Model':'jdModel','Ingress odometer':'jdOdo',
-  'Date in':'jdDateIn','ETD':'jdEtd','Last service odometer':'jdLastOdo','Fuel level':'jdFuel','Condition':'jdCond' };
+  'Date in':'jdDateIn','ETD':'jdEtd','Last service odometer':'jdLastOdo','Job hours':'jdHours','Fuel level':'jdFuel','Condition':'jdCond' };
 /* A scannable checklist of the still-missing fields (replaces a comma list). */
 function missingChecklist(missing){
   return '<ul class="misslist">'+missing.map(function(m){
@@ -145,7 +153,11 @@ function intakeForm(d){
     field('Variant','<input id="inVariant" value="'+attr(d.variant||'')+'">')+
     field('Ingress odometer','<input id="inOdo" type="number" value="'+attr(d.odometer||'')+'">')+
     '</div>'+
-    field('Concerns / reported issues','<textarea id="inNotes" rows="3">'+esc(d.notes||'')+'</textarea>');
+    field('Concerns / reported issues','<textarea id="inNotes" rows="3">'+esc(d.notes||'')+'</textarea>')+
+    '<div class="grid2">'+
+      field('Deposit collected (optional)','<input id="inDeposit" type="number" step="0.01" min="0" value="'+attr(d.depositAmount||'')+'" placeholder="0.00">','Recorded as a payment on the job — reduces the balance from the start.')+
+      field('Deposit method','<select id="inDepositM"><option>Cash</option><option>GCash</option><option>Card</option><option>Bank transfer</option></select>')+
+    '</div>';
 }
 function intakeLookup(){ var v=vehicleByPlate(val('inPlate')); if(v){ setVal('inCP',v.contactPerson); setVal('inContact',v.contactNumber);
   setVal('inOwner',v.owner); setVal('inAddr',v.address); setVal('inChassis',v.chassis); setVal('inYear',v.year); setVal('inMake',v.make); setVal('inModel',v.model); setVal('inVariant',v.variant); setVal('inOdo',v.odometer);
@@ -153,7 +165,8 @@ function intakeLookup(){ var v=vehicleByPlate(val('inPlate')); if(v){ setVal('in
 function intakeSubmit(kind){
   var base={ plate:val('inPlate'), contactPerson:val('inCP'), contactNumber:val('inContact'), owner:val('inOwner'),
     address:val('inAddr'), chassis:val('inChassis'), year:val('inYear'), make:val('inMake'), model:val('inModel'), variant:val('inVariant'),
-    odometer:Number(val('inOdo'))||0, notes:val('inNotes') };
+    odometer:Number(val('inOdo'))||0, notes:val('inNotes'),
+    depositAmount:Number(val('inDeposit'))||0, depositMethod:val('inDepositM')||'Cash' };
   if (!base.plate){ toast('Plate is required','err'); return; }
   if (kind==='estimate'){ closeModal(); createEstimateFrom(base).then(function(e){ go('estimate', e.id); }); return; }
   // Job Order: if ingress is incomplete, prompt to finish now or proceed and complete later.
@@ -236,15 +249,19 @@ VIEWS.job = function(id){
     '<div class="cols">'+
       '<div class="colmain">'+
         jobStatusPanel(j)+
+        jobTimerPanel(j)+
         jobLinesPanel(j)+
+        jobWorkAuthPanel(j)+
         (typeof pmsReportPanel==='function'?pmsReportPanel(j):'')+
         jobInspectionPanel(j)+
         jobPhotosPanel(j)+
       '</div>'+
       '<div class="colside">'+
         (canSeeJobPrices()?jobBillPanel(j,bill):'')+
+        (canSeeJobPrices()?jobProfitPanel(j):'')+
         jobAssignPanel(j)+
         jobDetailsPanel(j)+
+        jobComebackPanel(j)+
         jobStagePanel(j,bill)+
       '</div>'+
     '</div>'+
@@ -484,9 +501,129 @@ function deleteJobConfirm(id){
     },'Delete job order', true);
 }
 
-/* Additional Work panel removed — extra work discovered mid-job is added
-   directly to the Parts / Labor lines of the ongoing job order. Legacy
-   addlWork entries on old jobs still render in bills and printouts. */
+/* The old auto-billing Additional Work panel was removed — extra work found mid-job
+   is added directly to the Parts / Labor lines. What follows is the CONSENT trail
+   for that extra work (does not bill), plus comeback/warranty, the labor timer, and
+   the profitability readout. Legacy addlWork entries still render in old bills. */
+
+/* ---- Additional-work customer authorization log --------------------------- */
+function jobWorkAuthPanel(j){
+  var rows=(j.workAuth||[]).map(function(a){
+    return '<div class="wa-row"><div class="wa-body"><div class="wa-desc"><b>'+esc(a.desc)+'</b>'+(Number(a.amount)>0?' <span class="muted">· '+peso(a.amount)+'</span>':'')+'</div>'+
+      '<div class="wa-meta">✓ '+esc(a.approvedBy||'—')+' · '+esc(fmtDateTime(a.at))+' · '+esc(a.method||'')+(a.note?' · '+esc(a.note):'')+'</div></div>'+
+      '<button class="btn xs ghost" title="Remove" onclick="delWorkAuth(\''+j.id+'\',\''+a.id+'\')">✕</button></div>';
+  }).join('') || emptyState('No customer authorizations recorded.');
+  return '<div class="card"><div class="card-head"><h2>Additional Work — Customer Authorization</h2>'+
+    '<button class="btn sm primary" onclick="addWorkAuth(\''+j.id+'\')">＋ Record</button></div>'+
+    '<p class="muted small">Log the customer’s consent for extra work found mid-job — who approved, when, and how. The charge itself is on the Parts/Labor lines above; this is the proof of approval that ends “I never approved that” disputes.</p>'+
+    '<div class="wa-list">'+rows+'</div></div>';
+}
+var waCtx=null;
+function addWorkAuth(id){
+  openModal('Record customer authorization',
+    field('Work authorized','<input id="waDesc" placeholder="e.g. Replace serpentine belt">')+
+    field('Amount (optional)','<input id="waAmt" type="number" step="0.01" min="0" placeholder="0.00">')+
+    field('Approved by (customer name)','<input id="waBy" placeholder="e.g. J. Dela Cruz">')+
+    field('How was it approved?','<select id="waMethod"><option>In person</option><option>By phone</option><option>SMS</option><option>Viber / Messenger</option><option>Email</option></select>')+
+    field('Note (optional)','<input id="waNote" placeholder="reference / remarks">'),
+    { onOk:'saveWorkAuth', width:'560px' });
+  setTimeout(function(){ waCtx=id; },10);
+}
+function saveWorkAuth(){
+  var j=jobById(waCtx); if(!j) return;
+  var desc=(val('waDesc')||'').trim(); if(!desc){ toast('Describe the work authorized','err'); return; }
+  var by=(val('waBy')||'').trim(); if(!by){ toast('Enter who approved it','err'); return; }
+  j.workAuth=j.workAuth||[];
+  j.workAuth.push({ id:uid('wa'), desc:desc, amount:Number(val('waAmt'))||0, approvedBy:by, method:val('waMethod'), note:val('waNote'), at:new Date().toISOString() });
+  persist(); closeModal(); toast('Authorization recorded'); render();
+}
+function delWorkAuth(id,aid){ var j=jobById(id); if(!j) return; j.workAuth=(j.workAuth||[]).filter(function(a){return a.id!==aid;}); persist(); render(); }
+
+/* ---- Comeback / warranty rework ------------------------------------------- */
+function jobComebackPanel(j){
+  if(j.comebackOf || j.warranty){
+    var orig=j.comebackOf?jobById(j.comebackOf):null;
+    return '<div class="card"><div class="card-head"><h2>Comeback / Warranty</h2><button class="btn sm ghost" onclick="editComeback(\''+j.id+'\')">Edit</button></div>'+
+      '<div class="cb-badges">'+(j.warranty?'<span class="perf-badge st-bad">Warranty · no charge</span>':'<span class="chip gold">Comeback</span>')+'</div>'+
+      '<div class="ksmall">'+
+        (orig?kv('Comeback of','<a class="lnk" onclick="go(\'job\',\''+orig.id+'\')">'+esc(orig.no)+'</a> <span class="muted small">'+esc(fmtDate(orig.dateIn))+'</span>'):(j.comebackOf?kv('Comeback of',esc(j.comebackOf)):''))+
+        (j.comebackMechId?kv('At-fault mechanic',esc(staffName(j.comebackMechId))):'')+
+        (j.comebackReason?kv('Reason',esc(j.comebackReason)):'')+
+      '</div>'+
+      (j.warranty?'<p class="muted small mt8">No charge to the customer; no commission is paid on this job. Counts against the at-fault mechanic’s comeback rate.</p>':'')+
+    '</div>';
+  }
+  return '<div class="card"><div class="card-head"><h2>Comeback / Warranty</h2></div>'+
+    '<p class="muted small">If this job is rework of a previous job, mark it as a comeback. A <b>warranty</b> comeback bills the customer nothing and pays no commission.</p>'+
+    '<button class="btn sm ghost full" onclick="editComeback(\''+j.id+'\')">Mark as comeback…</button></div>';
+}
+var cbCtx=null;
+function editComeback(id){
+  var j=jobById(id); if(!j) return;
+  var prior=(S.jobs||[]).filter(function(x){ return x.id!==j.id && (x.vehicleId===j.vehicleId || (x.plate||'').toUpperCase()===(j.plate||'').toUpperCase()); })
+    .sort(function(a,b){return (b.dateIn||'')<(a.dateIn||'')?-1:1;});
+  var jopts='<option value="">— none / clear —</option>'+prior.map(function(x){
+    var svc=(x.lines||[]).map(function(l){return l.desc;}).slice(0,2).join(', ');
+    return '<option value="'+x.id+'"'+(j.comebackOf===x.id?' selected':'')+'>'+esc(x.no)+' · '+esc(fmtDate(x.dateIn))+(svc?' · '+esc(svc):'')+'</option>';
+  }).join('');
+  var mechs=(S.staff||[]).filter(function(s){return isMechanicRole(s.role);});
+  var mopts='<option value="">— select mechanic —</option>'+mechs.map(function(s){return '<option value="'+s.id+'"'+(j.comebackMechId===s.id?' selected':'')+'>'+esc(s.name)+'</option>';}).join('');
+  openModal('Mark as comeback / warranty',
+    field('Comeback of (previous JO)','<select id="cbOf">'+jopts+'</select>','Previous job for this vehicle that this rework relates to.')+
+    field('At-fault mechanic','<select id="cbMech">'+mopts+'</select>','Counts against this mechanic’s comeback rate.')+
+    field('Reason / what failed','<textarea id="cbReason" rows="2">'+esc(j.comebackReason||'')+'</textarea>')+
+    '<label class="chk"><input type="checkbox" id="cbWarranty"'+(j.warranty?' checked':'')+'> Warranty — no charge to customer, no commission</label>',
+    { onOk:'saveComeback', width:'580px' });
+  setTimeout(function(){ cbCtx=id; },10);
+}
+function saveComeback(){
+  var j=jobById(cbCtx); if(!j) return;
+  j.comebackOf=val('cbOf')||null;
+  j.comebackMechId=val('cbMech')||'';
+  j.comebackReason=val('cbReason')||'';
+  j.warranty=checked('cbWarranty');
+  persist(); closeModal(); render();
+  toast(j.warranty?'Marked as warranty comeback — no charge, no commission':(j.comebackOf?'Marked as comeback':'Comeback cleared'));
+}
+
+/* ---- Per-mechanic labor timer --------------------------------------------- */
+function jobTimerPanel(j){
+  var mechs=(j.mechanicIds||[]).filter(function(id){return id&&id!=='TBA';});
+  if(!mechs.length) return '<div class="card"><h2>Labor Time</h2><p class="muted small">Assign mechanic(s) in the Assignment panel to track hands-on labor time.</p></div>';
+  var rows=mechs.map(function(mid){
+    var run=timerRunning(j,mid);
+    return '<div class="tm-row"><div class="tm-name"><b>'+esc(staffName(mid))+'</b>'+(run?' <span class="tm-live">● live</span>':'')+'</div>'+
+      '<div class="tm-hrs">'+fmtHrs(jobMechActualHours(j,mid))+'</div>'+
+      '<button class="btn xs '+(run?'ghost':'primary')+'" onclick="timerToggle(\''+j.id+'\',\''+mid+'\')">'+(run?'⏸ Pause':'▶ Start')+'</button></div>';
+  }).join('');
+  return '<div class="card"><div class="card-head"><h2>Labor Time <span class="muted small">· per mechanic</span></h2></div>'+
+    '<div class="tm-list">'+rows+'</div>'+
+    '<div class="muted small mt8">Total actual: <b>'+fmtHrs(jobActualHoursTotal(j))+'</b> — feeds the productivity efficiency metric (falls back to the clipboard B2 estimate when no timer is used).</div></div>';
+}
+function timerToggle(id,mid){
+  var j=jobById(id); if(!j) return; j.workLog=j.workLog||[];
+  var open=j.workLog.filter(function(s){return s.mechId===mid && !s.end;});
+  if(open.length){ open.forEach(function(s){ s.end=new Date().toISOString(); }); toast('Paused '+staffName(mid)); }
+  else { j.workLog.push({ id:uid('wl'), mechId:mid, start:new Date().toISOString(), end:null }); toast('Started '+staffName(mid)); }
+  persist(); render();
+}
+
+/* ---- Profitability (cost-gated) ------------------------------------------- */
+function jobProfitPanel(j){
+  if(typeof can==='function' && !can('part_cost')) return '';   // margin exposes part cost
+  var rev=jobRevenueExVat(j), pc=jobCostOfParts(j), gm=jobGrossMargin(j);
+  var comm=jobLaborCommission(j,S).pool, np=jobNetProfit(j);
+  var mpct=rev? Math.round(gm/rev*100):0;
+  return '<div class="card"><h2>Profitability <span class="muted small">· ex-VAT</span></h2>'+
+    line2('Revenue', peso(rev))+
+    line2('− Parts cost', peso(pc))+
+    line2('Gross margin', '<b>'+peso(gm)+'</b> <span class="muted small">· '+mpct+'%</span>')+
+    '<div class="bill-sep"></div>'+
+    line2('− Commission', peso(comm))+
+    line2('Net profit', '<b class="'+(np<0?'st-bad-t':'st-good-t')+'">'+peso(np)+'</b>')+
+    (j.warranty?'<p class="muted small mt8">Warranty comeback — ₱0 revenue; the parts cost is a loss carried by the shop.</p>':'')+
+  '</div>';
+}
 
 /* ---- Inspection / check-in panel ------------------------------------------ */
 var CHECKLIST_ITEMS=['Spare tire','Jack & wrench','Stereo / head unit','Floor mats','Valuables','OR/CR','Tools','Fire extinguisher','Early warning device'];
@@ -499,7 +636,7 @@ function jobInspectionPanel(j){
   return '<div class="card"><div class="card-head"><h2>Vehicle Check-in</h2>'+
     '<button class="btn sm" onclick="editInspection(\''+j.id+'\')">Edit check-in</button></div>'+
     '<div class="grid2 ksmall">'+
-      kv('Ingress odometer', odo(insp.odometer))+ kv('Fuel level', fmtFuel(insp.fuel))+
+      kv('Ingress odometer', odo(insp.odometer||j.odometer))+ kv('Fuel level', fmtFuel(insp.fuel))+
       kv('Dash lights / DTC', insp.lights||'None')+ kv('Condition', insp.condition||'—')+
     '</div>'+
     (cl.created? '<div class="checklist"><div class="cl-title">Items left in vehicle '+(cl.leaveUnit?'':'(unit not left)')+'</div>'+
@@ -527,7 +664,9 @@ function editInspection(id){
 var isCtx=null;
 function saveInspection(){
   var j=jobById(isCtx);
-  j.inspection={ odometer:Number(val('isOdo'))||0, fuel:(val('isFuel')===''?'':Number(val('isFuel'))||0), lights:val('isLights'), condition:val('isCond'), testDrive:j.inspection&&j.inspection.testDrive||'' };
+  var isOdo=Number(val('isOdo'))||0;
+  j.inspection={ odometer:isOdo, fuel:(val('isFuel')===''?'':Number(val('isFuel'))||0), lights:val('isLights'), condition:val('isCond'), testDrive:j.inspection&&j.inspection.testDrive||'' };
+  if(isOdo>0) j.odometer=isOdo;   // check-in "Ingress odometer" is the same reading — keep j.odometer in sync
   var leave=checked('isLeave'); var items={};
   CHECKLIST_ITEMS.forEach(function(it){ items[it]=checked('ck_'+btoa(it).replace(/=/g,'')); });
   j.checklist={ created:leave, leaveUnit:leave, items:items, bodyNotes:val('isBody') };

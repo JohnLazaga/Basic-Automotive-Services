@@ -351,6 +351,18 @@ textarea{resize:vertical} .chk{display:flex;align-items:center;gap:8px;font-size
 .perf-kv span{color:var(--ink2)} .perf-kv b{white-space:nowrap}
 .st-good-t{color:#1a7f37;font-weight:700} .st-warn-t{color:#b26b00;font-weight:700} .st-bad-t{color:#c62828;font-weight:700}
 [data-theme="dark"] .st-good-t{color:#57d977} [data-theme="dark"] .st-warn-t{color:#ffcf4d} [data-theme="dark"] .st-bad-t{color:#ff6b6b}
+/* ---- Work-authorization log, labor timer, comeback ---- */
+.wa-list{display:flex;flex-direction:column;gap:7px;margin-top:6px}
+.wa-row{display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border:1px solid var(--hair);border-radius:10px;background:var(--canvas)}
+.wa-body{flex:1;min-width:0} .wa-desc{font-size:13px} .wa-meta{font-size:11.5px;color:var(--ink2);margin-top:2px}
+.tm-list{display:flex;flex-direction:column;gap:8px;margin-top:2px}
+.tm-row{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:12px;padding:7px 10px;border:1px solid var(--hair);border-radius:10px}
+.tm-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap} .tm-hrs{font-variant-numeric:tabular-nums;font-weight:600;color:var(--ink2)}
+.tm-live{color:#c62828;font-weight:700;font-size:11px;animation:tmpulse 1.4s ease-in-out infinite}
+[data-theme="dark"] .tm-live{color:#ff6b6b}
+@keyframes tmpulse{0%,100%{opacity:1}50%{opacity:.35}}
+.cb-badges{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+a.lnk{color:var(--brand);cursor:pointer;font-weight:600}
 
 /* ---- Timeline ---- */
 .timeline{position:relative;padding-left:6px} .tl-item{display:flex;gap:12px;padding:6px 0}

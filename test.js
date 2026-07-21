@@ -353,6 +353,44 @@ section('RBAC permission engine');
   ok('no-user defaults to full access', M.can('settings')===true && M.routeAllowed('settings')===true);
 })();
 
+/* ------------------------------------- New features: comeback/profit/timer/gate */
+section('Comeback / warranty, profit, labor timer, deposits, job-hour gate');
+await (async function(){
+  const s=fresh(); const j=s.jobs[0];
+  // baseline: a normal job has a positive charge and (with mechanics) commission
+  const grossBefore=M.jobGross(j);
+  ok('baseline job has a charge', grossBefore>0);
+  // Warranty comeback: no charge + no commission
+  j.warranty=true;
+  ok('warranty job Total Due = 0', M.jobGross(j)===0);
+  ok('warranty pays no commission', Object.keys(M.jobLaborCommission(j,M.getS()).map).length===0);
+  ok('warranty billing shows the write-off', M.docBilling(j).indexOf('Warranty (no charge)')>-1);
+  // Profit: gross margin loses the parts cost, net loses commission too
+  j.warranty=false;
+  const pc=M.jobCostOfParts(j), gm=M.jobGrossMargin(j), np=M.jobNetProfit(j);
+  ok('parts cost is positive (seed has parts)', pc>0);
+  ok('gross margin = ex-VAT revenue − parts cost', gm===M.round2(M.jobRevenueExVat(j)-pc));
+  ok('net profit = gross margin − commission', np===M.round2(gm-M.jobLaborCommission(j,M.getS()).pool));
+  ok('warranty revenue is 0 (loss = parts cost)', (function(){ j.warranty=true; const r=M.jobRevenueExVat(j)===0 && M.jobGrossMargin(j)===M.round2(-pc); j.warranty=false; return r; })());
+  // Labor timer: closed segment accrues hours; open segment marks running
+  const mid=(j.mechanicIds||[]).filter(x=>x&&x!=='TBA')[0] || s.staff.find(x=>x.role==='Mechanic'||x.role==='SM').id;
+  j.mechanicIds=[mid]; j.workLog=[{id:'wl1',mechId:mid,start:'2026-07-21T01:00:00.000Z',end:'2026-07-21T03:30:00.000Z'}];
+  ok('timer accrues 2.5h from a closed segment', Math.abs(M.jobMechActualHours(j,mid)-2.5)<0.001);
+  ok('job reports having timer data', M.jobHasTimer(j)===true);
+  j.workLog.push({id:'wl2',mechId:mid,start:'2026-07-21T04:00:00.000Z',end:null});
+  ok('open segment is flagged running', M.timerRunning(j,mid)===true);
+  ok('open segment capped at 8h', M.jobMechActualHours(j,mid) <= 2.5+8+0.001);
+  // Deposit at intake -> recorded as a payment reducing the balance
+  const jd=await M.createJob({plate:'DEP 0001', owner:'Test', odometer:100, depositAmount:500, depositMethod:'GCash'});
+  ok('intake deposit recorded as a payment', (jd.payments||[]).some(p=>p.amount===500 && /Deposit/.test(p.note||'')));
+  ok('deposit temp fields not persisted on the job', !('depositAmount' in jd) && !('depositMethod' in jd));
+  // Job-hour gate: a job with no job hours cannot advance to Post Job Report
+  const jg=s.jobs[0]; jg.jobHours=0;
+  ok('missing job hours blocks Post Job Report', M.postJobMissingFields(jg).indexOf('Job hours')>-1);
+  jg.jobHours=3;
+  ok('setting job hours clears that gate item', M.postJobMissingFields(jg).indexOf('Job hours')<0);
+})();
+
 /* ---------------------------------------------------------------- SUMMARY */
 console.log('\n────────────────────────────────────────');
 console.log('  PASS: '+pass+'   FAIL: '+fail);
