@@ -692,9 +692,11 @@ function jobPhotosPanel(j){
       '<button class="btn sm ghost" onclick="showPhotoQR(\''+j.id+'\')">📱 Add by phone</button>'+
       '<label class="btn sm"><input type="file" accept="image/*" multiple style="display:none" onchange="addPhotos(\''+j.id+'\',this.files)">＋ Add photos</label>'+
     '</div></div>'+
-    '<div class="thumbs">'+(grid||emptyState('No photos attached.'))+'</div>'+
+    '<div class="thumbs">'+(grid || (_photosPending(j.id)? '<div class="muted small">Loading photos…</div>' : emptyState('No photos attached.')))+'</div>'+
     '<div class="photo-warn">⚠ All photos will be deleted from the server '+JOB_PHOTO_TTL_DAYS+' days after they are added. Please take a screenshot for your personal record.</div></div>';
 }
+/* True while the open job's photos are still being fetched from the cloud (lazy load). */
+function _photosPending(jobId){ return typeof cloudPhotosPending==='function' && cloudPhotosPending(jobId); }
 function _photoSrc(jid,pid){ var j=jobById(jid); var p=(j.photos||[]).find(function(x){return x.id===pid;}); return p?(p.url||p.data):''; }
 /* Save every photo on this job to the computer (one file each). Staff-only — the
    customer QR portal never exposes photos. */
@@ -772,6 +774,7 @@ VIEWS.photoup = function(jobId){
 };
 function addPhotos(id,files){
   var j=jobById(id);
+  if(typeof _photosLoaded!=='undefined') _photosLoaded[id]=true;   // this device now owns this job's photo set (so the write-diff includes it)
   handlePhotoFiles(files, function(datas){
     datas.forEach(function(d){ if((j.photos||[]).length>=12) return; j.photos.push({ id:uid('ph'), data:d, caption:'', ts:new Date().toISOString() }); });
     persist(); toast('Photos added'); render();

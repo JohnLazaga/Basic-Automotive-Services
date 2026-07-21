@@ -597,7 +597,7 @@ var BRANCH = {"id":"sudipen","slug":"sudipen","name":"Basic by JMSI — Sudipen"
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.2.0 · 2026-07-21 · 95e4d20';
+var APP_VERSION = 'v1.2.0 · 2026-07-21 · ead3397';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -2610,9 +2610,11 @@ function jobPhotosPanel(j){
       '<button class="btn sm ghost" onclick="showPhotoQR(\''+j.id+'\')">📱 Add by phone</button>'+
       '<label class="btn sm"><input type="file" accept="image/*" multiple style="display:none" onchange="addPhotos(\''+j.id+'\',this.files)">＋ Add photos</label>'+
     '</div></div>'+
-    '<div class="thumbs">'+(grid||emptyState('No photos attached.'))+'</div>'+
+    '<div class="thumbs">'+(grid || (_photosPending(j.id)? '<div class="muted small">Loading photos…</div>' : emptyState('No photos attached.')))+'</div>'+
     '<div class="photo-warn">⚠ All photos will be deleted from the server '+JOB_PHOTO_TTL_DAYS+' days after they are added. Please take a screenshot for your personal record.</div></div>';
 }
+/* True while the open job's photos are still being fetched from the cloud (lazy load). */
+function _photosPending(jobId){ return typeof cloudPhotosPending==='function' && cloudPhotosPending(jobId); }
 function _photoSrc(jid,pid){ var j=jobById(jid); var p=(j.photos||[]).find(function(x){return x.id===pid;}); return p?(p.url||p.data):''; }
 /* Save every photo on this job to the computer (one file each). Staff-only — the
    customer QR portal never exposes photos. */
@@ -2690,6 +2692,7 @@ VIEWS.photoup = function(jobId){
 };
 function addPhotos(id,files){
   var j=jobById(id);
+  if(typeof _photosLoaded!=='undefined') _photosLoaded[id]=true;   // this device now owns this job's photo set (so the write-diff includes it)
   handlePhotoFiles(files, function(datas){
     datas.forEach(function(d){ if((j.photos||[]).length>=12) return; j.photos.push({ id:uid('ph'), data:d, caption:'', ts:new Date().toISOString() }); });
     persist(); toast('Photos added'); render();
@@ -5300,13 +5303,9 @@ async function cloudFetchState(){
     var snap = await bcol(c).get();
     st[c] = snap.docs.map(function(d){ return d.data(); });
   }
-  // photos live in their own collections (one doc each) — load + attach to jobs
-  var psnap = await bcol('jobphotos').get();
-  indexJobPhotos(psnap.docs);
-  attachJobPhotos(st.jobs, st.jobs);   // st.jobs may also carry legacy embedded photos; attachJobPhotos keeps those not yet in the collection (they auto-migrate on next save)
-  var ppsnap = await bcol('pmsphotos').get();
-  indexPmsPhotos(ppsnap.docs);
-  attachPmsPhotos(st.jobs, st.jobs);   // same for PMS inspection photos (legacy embedded ones auto-migrate on next save)
+  // QUOTA: photos are NOT bulk-loaded here anymore — reading every job's photos on
+  // every session was the dominant Firestore-read cost. They load lazily per job when
+  // opened (watchJobPhotos). Jobs come in without photo bytes; that's expected.
   return st;
 }
 
@@ -5393,6 +5392,16 @@ function rememberSnap(){
    device through the same real-time listener as everything else. */
 var _photosByJob = {};     /* jobId -> [ {id,data,caption,ts} ] (authoritative, from the collection) */
 var _photoSnap = {};       /* photoId -> jsonString, for the write-diff */
+/* QUOTA: photos are large and used to be read for EVERY job on every reload/session,
+   which dominated Firestore reads. Now they load LAZILY — only the open job's photos
+   are read (and watched live), via watchJobPhotos() below. _photosLoaded[jobId] flips
+   true once a job's photos are authoritatively loaded; the write-diff (cloudPersist*)
+   only ever reconciles/deletes photos for loaded jobs, so an unloaded job's photos are
+   never touched. */
+var _photosLoaded = {};    /* jobId -> true once its photos are authoritatively loaded */
+function photosLoaded(jobId){ return !!_photosLoaded[jobId]; }
+/* True while the open job's photos are still being fetched (for a loading placeholder). */
+function cloudPhotosPending(jobId){ return cloudOn() && FB.ready && !!FB.user && !_photosLoaded[jobId]; }
 
 function photoDocForm(jobId, p){ return { id:p.id, jobId:jobId, data:p.data||'', caption:p.caption||'', ts:p.ts||'' }; }
 
@@ -5469,6 +5478,7 @@ async function cloudPersistPmsPhotos(){
   if (!FB.ready || !FB.user || _applyingRemote) return;
   var cur = {};
   (S.jobs||[]).forEach(function(j){
+    if(!_photosLoaded[j.id]) return;   // never reconcile/delete PMS photos for a job we haven't loaded
     var vals = _jobPmsVals(j); if(!vals) return;
     for (var key in vals){ if(!_own(vals,key)) continue; var v=vals[key]; if(!v || !Array.isArray(v.photos)) continue;
       v.photos.forEach(function(data,ord){ if(!data) return; cur[pmsPhotoDocId(j.id,key,data)] = { jobId:j.id, key:key, ord:ord, data:data }; });
@@ -5514,6 +5524,7 @@ async function cloudPersistPhotos(){
   if (!FB.ready || !FB.user || _applyingRemote) return;
   var cur = {};
   (S.jobs||[]).forEach(function(j){
+    if(!_photosLoaded[j.id]) return;   // never reconcile/delete photos for a job we haven't loaded
     (j.photos||[]).forEach(function(p){ if(p && p.id) cur[p.id] = photoDocForm(j.id, p); });
   });
   var ids = Object.keys(cur);
@@ -5545,26 +5556,9 @@ function cloudSubscribe(){
     }, function(err){ console.error('listener '+c, err); });
     _cloudSubs.push(u);
   });
-  // photos: their own collection, one doc per photo, keyed by jobId
-  var up = bcol('jobphotos').onSnapshot(function(snap){
-    if (snap.metadata.hasPendingWrites) return;                 // ignore our own local writes
-    _applyingRemote = true;
-    indexJobPhotos(snap.docs);
-    attachJobPhotos(S.jobs, S.jobs);   // re-attach, keeping any just-added local photo not yet echoed
-    _applyingRemote = false;
-    if (!modalOpen()) render();
-  }, function(err){ console.error('listener jobphotos', err); });
-  _cloudSubs.push(up);
-  // PMS inspection photos: their own collection, one doc per photo
-  var upp = bcol('pmsphotos').onSnapshot(function(snap){
-    if (snap.metadata.hasPendingWrites) return;                 // ignore our own local writes
-    _applyingRemote = true;
-    indexPmsPhotos(snap.docs);
-    attachPmsPhotos(S.jobs, S.jobs);   // re-attach, keeping any just-added local photo not yet echoed
-    _applyingRemote = false;
-    if (!modalOpen()) render();
-  }, function(err){ console.error('listener pmsphotos', err); });
-  _cloudSubs.push(upp);
+  // Photos are NOT globally subscribed anymore (that read every photo doc on the
+  // initial snapshot). Instead the currently-open job's photos are watched live by
+  // watchJobPhotos(), reading only that one job's photo docs.
   var um = bcol('meta').onSnapshot(function(snap){
     if (snap.metadata.hasPendingWrites) return;
     snap.docs.forEach(function(d){
@@ -5575,7 +5569,60 @@ function cloudSubscribe(){
   });
   _cloudSubs.push(um);
 }
-function cloudUnsub(){ _cloudSubs.forEach(function(u){ try{u();}catch(e){} }); _cloudSubs=[]; }
+function cloudUnsub(){ unwatchJobPhotos(); _cloudSubs.forEach(function(u){ try{u();}catch(e){} }); _cloudSubs=[]; }
+
+/* ---- Scoped photo watcher: only the OPEN job's photos --------------------- */
+/* Subscribes to just one job's jobphotos + pmsphotos (a WHERE query), so we read
+   that single job's photos and get live updates (e.g. a phone upload appears at
+   once) — without ever reading the whole photo collections. Switching jobs swaps
+   the subscription; leaving the job view drops it. */
+var _photoWatch = { id:null, subs:[] };
+function unwatchJobPhotos(){ _photoWatch.subs.forEach(function(u){ try{u();}catch(e){} }); _photoWatch.subs=[]; _photoWatch.id=null; }
+function watchJobPhotos(jobId){
+  if (!cloudOn() || !FB.ready || !FB.user || !jobId) return;
+  if (_photoWatch.id===jobId) return;          // already watching this job
+  unwatchJobPhotos();
+  _photoWatch.id = jobId;
+  var uj = bcol('jobphotos').where('jobId','==',jobId).onSnapshot(function(snap){
+    _applyingRemote = true;
+    _photosByJob[jobId] = [];                                   // rebuild THIS job's index only
+    Object.keys(_photoSnap).forEach(function(id){ try{ if(JSON.parse(_photoSnap[id]).jobId===jobId) delete _photoSnap[id]; }catch(e){} });
+    snap.docs.forEach(function(d){ var p=d.data(); if(!p||!p.id) return;
+      _photosByJob[jobId].push({ id:p.id, data:p.data||'', caption:p.caption||'', ts:p.ts||'' });
+      _photoSnap[p.id] = JSON.stringify({ id:p.id, jobId:p.jobId, data:p.data||'', caption:p.caption||'', ts:p.ts||'' });
+    });
+    _photosLoaded[jobId] = true;
+    var j = jobById(jobId); if(j) attachJobPhotos([j],[j]);
+    _applyingRemote = false;
+    if (!modalOpen()) render();
+  }, function(err){ console.error('watch jobphotos', err); });
+  var upp = bcol('pmsphotos').where('jobId','==',jobId).onSnapshot(function(snap){
+    _applyingRemote = true;
+    _pmsByJob[jobId] = {};                                      // rebuild THIS job's PMS index only
+    var pref = jobId+'__';
+    Object.keys(_pmsPhotoSnap).forEach(function(id){ if(id.indexOf(pref)===0) delete _pmsPhotoSnap[id]; });
+    snap.docs.forEach(function(d){ var p=d.data(); if(!p||!p.jobId||!p.key) return;
+      var ord=(typeof p.ord==='number')?p.ord:0;
+      var byKey=(_pmsByJob[jobId]=_pmsByJob[jobId]||{});
+      (byKey[p.key]=byKey[p.key]||[]).push({ ord:ord, data:p.data||'' });
+      _pmsPhotoSnap[d.id]=String(ord);
+    });
+    _photosLoaded[jobId] = true;
+    var j = jobById(jobId); if(j) attachPmsPhotos([j],[j]);
+    _applyingRemote = false;
+    if (!modalOpen()) render();
+  }, function(err){ console.error('watch pmsphotos', err); });
+  _photoWatch.subs = [uj, upp];
+}
+/* Drive the watcher off the route: watch the open job's photos, drop them otherwise. */
+var _arPrevCloud = (typeof afterRender==='function') ? afterRender : function(){};
+afterRender = function(){
+  _arPrevCloud();
+  if (cloudOn() && FB.ready && FB.user && typeof ROUTE!=='undefined'){
+    if ((ROUTE.view==='job' || ROUTE.view==='photoup') && ROUTE.arg){ watchJobPhotos(ROUTE.arg); }
+    else if (_photoWatch.id){ unwatchJobPhotos(); }
+  }
+};
 
 /* ============================================================================
    LOCAL BRANCH BACKEND (Phase 3) — operational data on the branch mini-PC.
@@ -6883,6 +6930,7 @@ function pmsSetYN(key, v, el){
    by any composite row that offers "Take / add photo" (keyed by the row's key). */
 function pmsAddRowPhoto(key, files){
   var j=_pmsCtx&&jobById(_pmsCtx.jobId); if(!j) return;
+  if(typeof _photosLoaded!=='undefined') _photosLoaded[j.id]=true;   // own this job's PMS photo set for the write-diff
   pmsCurrentSave();
   handlePhotoFiles(files, function(datas){
     j.pms=j.pms||{status:'in_progress'}; j.pms.report=j.pms.report||{values:{}}; j.pms.report.values=j.pms.report.values||{};

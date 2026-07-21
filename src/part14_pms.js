@@ -522,6 +522,7 @@ function pmsSetYN(key, v, el){
    by any composite row that offers "Take / add photo" (keyed by the row's key). */
 function pmsAddRowPhoto(key, files){
   var j=_pmsCtx&&jobById(_pmsCtx.jobId); if(!j) return;
+  if(typeof _photosLoaded!=='undefined') _photosLoaded[j.id]=true;   // own this job's PMS photo set for the write-diff
   pmsCurrentSave();
   handlePhotoFiles(files, function(datas){
     j.pms=j.pms||{status:'in_progress'}; j.pms.report=j.pms.report||{values:{}}; j.pms.report.values=j.pms.report.values||{};
