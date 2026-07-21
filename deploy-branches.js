@@ -8,12 +8,13 @@
      node deploy-branches.js --push "msg"    ...with a custom commit message
 
    What it does:
-     1. Builds the MAIN site (root index.html + version.txt).
-     2. Builds every CLOUD branch from branches.json and stages BOTH
-        index.html AND version.txt into /<slug>/ (served at
-        basicautomotiveservices.com/<slug>).
-     3. Runs the acceptance tests (node test.js) — aborts the push if they fail.
-     4. With --push: commits everything and pushes to GitHub Pages.
+     1. Builds every CLOUD branch from branches.json (Fairview, Commonwealth,
+        Sudipen, Sandbox) and stages BOTH index.html AND version.txt into
+        /<slug>/ (served at basicautomotiveservices.com/<slug>). Fairview is now
+        /fairview — the site ROOT is a separate marketing placeholder this script
+        never overwrites.
+     2. Runs the acceptance tests (node test.js) — aborts the push if they fail.
+     3. With --push: commits everything and pushes to GitHub Pages.
 
    WHY version.txt matters: the in-app update checker (part2_shell.js) compares
    the served /<slug>/version.txt against the running app's baked-in version and
@@ -33,21 +34,20 @@ const MSG = argv.filter(a => a !== '--push')[0] || 'Deploy app to all branches';
 if (!fs.existsSync(path.join(ROOT, 'build.js'))) die('run this from the repo root (build.js not found)');
 const branches = JSON.parse(fs.readFileSync(path.join(ROOT, 'branches.json'), 'utf8'));
 
-// Cloud branches served as /<slug>/ folders: dataSource "cloud", excluding main
-// (main = root site) and any local/dev entry (localtest).
+// Every cloud branch is served as a /<slug>/ folder — INCLUDING Fairview (now at
+// /fairview). The site ROOT is a separate marketing placeholder that this script
+// never touches. Local/dev entries (dataSource 'local', e.g. localtest) are skipped.
 const cloudSlugs = Object.keys(branches).filter(function(slug){
   var b = branches[slug];
-  return slug !== 'main' && b && b.dataSource === 'cloud';
+  return b && b.dataSource === 'cloud';
 });
 
 console.log('\n=== Deploy to all branches ===');
-console.log('Main (root) + cloud branches: ' + cloudSlugs.join(', ') + '\n');
+console.log('Cloud branches (each served at /<slug>/): ' + cloudSlugs.join(', '));
+console.log('Site root (index.html) is the marketing placeholder — left untouched.\n');
 
-// 1. Main site -> root index.html + version.txt
-console.log('[build] main (root site)');
-run('node build.js');
-
-// 2. Each cloud branch -> /<slug>/{index.html,version.txt}
+// Build each cloud branch -> /<slug>/{index.html,version.txt}. Fairview (the default
+// branch) also emits _bundle.js, which the acceptance tests below require.
 cloudSlugs.forEach(function(slug){
   console.log('[build] ' + slug);
   run('node build.js --branch=' + slug);

@@ -15,11 +15,13 @@ const ARGS = process.argv.slice(2);
 //       "dev"            = isolated LOCAL build (no cloud, own private storage).
 const MODE = ARGS.indexOf('dev') >= 0 ? 'dev' : 'prod';
 const branchArg = (ARGS.find(function(a){ return a.indexOf('--branch=') === 0; }) || '').split('=')[1];
-const BRANCH_SLUG = branchArg || 'main';
+// Fairview is the default/reference branch. It is served at /fairview/ like every
+// other branch — the site ROOT is a separate marketing placeholder, never the app.
+const BRANCH_SLUG = branchArg || 'fairview';
 const BRANCHES = JSON.parse(fs.readFileSync(path.join(__dirname, 'branches.json'), 'utf8'));
 const BRANCH = BRANCHES[BRANCH_SLUG];
 if (!BRANCH) { throw new Error('Unknown branch "' + BRANCH_SLUG + '". Known: ' + Object.keys(BRANCHES).join(', ')); }
-const IS_DEFAULT_BRANCH = (BRANCH_SLUG === 'main');
+const IS_DEFAULT_BRANCH = (BRANCH_SLUG === 'fairview');   // emits the Node test bundle + reference HTML
 
 // Version stamp: semantic version from the VERSION file + build date + the short
 // git hash of HEAD. The hash makes every deploy's version string unique, so
@@ -65,31 +67,24 @@ if (MODE === 'dev') {
   fs.writeFileSync(devDest, out, 'utf8');
   console.log('Built DEV (local mode, isolated) -> ' + devDest);
   console.log('  HTML : ' + out.length.toLocaleString() + ' bytes');
-} else if (IS_DEFAULT_BRANCH) {
-  // Default branch = the live team site. Root output — UNCHANGED behavior.
-  const dest = path.join(__dirname, 'BASIC_by_JMSI_System.html');
-  fs.writeFileSync(dest, out, 'utf8');
-  // Emit index.html at the repo root so GitHub Pages serves the app directly.
-  fs.writeFileSync(path.join(__dirname, 'index.html'), out, 'utf8');
-  // Also emit the concatenated JS as a CommonJS bundle for the Node smoke test.
-  fs.writeFileSync(path.join(__dirname, '_bundle.js'), js, 'utf8');
-  // A tiny version marker at the site root — for a future auto-update check.
-  fs.writeFileSync(path.join(__dirname, 'version.txt'), APP_VERSION, 'utf8');
-  console.log('Built ' + dest + '  (' + APP_VERSION + ')');
-  console.log('  CSS  : ' + css.length.toLocaleString() + ' bytes');
-  console.log('  JS   : ' + js.length.toLocaleString() + ' bytes');
-  console.log('  HTML : ' + out.length.toLocaleString() + ' bytes');
 } else {
-  // A named branch: self-contained artifact in dist/<slug>/ for that branch's
-  // mini-PC to serve (and/or a per-branch public host). Root site untouched.
+  // Every prod branch — INCLUDING Fairview — is a self-contained artifact in
+  // dist/<slug>/, served at /<slug>/. The site ROOT (index.html) is the marketing
+  // placeholder and is NEVER written by the build, so it can't clobber the website.
   const dir = path.join(__dirname, 'dist', BRANCH.slug);
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, 'index.html'), out, 'utf8');
   fs.writeFileSync(path.join(dir, 'branch.json'), JSON.stringify(BRANCH, null, 2), 'utf8');
   fs.writeFileSync(path.join(dir, 'version.txt'), APP_VERSION, 'utf8');
   console.log('Built branch "' + BRANCH.slug + '" (' + BRANCH.name + ') -> ' + path.join(dir, 'index.html'));
-  console.log('  Local URL  : ' + BRANCH.localUrl);
   console.log('  Public URL : ' + BRANCH.publicUrl);
   console.log('  Parts URL  : ' + BRANCH.partsUrl + '  (' + BRANCH.partsSource + ')');
   console.log('  HTML : ' + out.length.toLocaleString() + ' bytes');
+  // The default branch (Fairview) also emits the reference HTML + the Node test
+  // bundle used by `node test.js`. These are dev artifacts, not the served site.
+  if (IS_DEFAULT_BRANCH) {
+    fs.writeFileSync(path.join(__dirname, 'BASIC_by_JMSI_System.html'), out, 'utf8');
+    fs.writeFileSync(path.join(__dirname, '_bundle.js'), js, 'utf8');
+    console.log('  + reference BASIC_by_JMSI_System.html and _bundle.js (test)  (' + APP_VERSION + ')');
+  }
 }
