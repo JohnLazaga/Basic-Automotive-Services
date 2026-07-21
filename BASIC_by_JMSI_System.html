@@ -585,7 +585,7 @@ var BRANCH = {"id":"main","slug":"main","name":"Basic by JMSI — Fairview (Main
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.2.0 · 2026-07-20 · 9c8e8c2';
+var APP_VERSION = 'v1.2.0 · 2026-07-21 · 7723d02';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -4376,17 +4376,41 @@ function docDailyClose(){
 }
 function printDailyClose(){ printDoc(docDailyClose()); }
 
-/* ---- QR sticker ----------------------------------------------------------- */
+/* ---- QR sticker (1.5in × 3in label stock) --------------------------------- */
+/* Self-contained doc sized to one physical label — NOT docShell (that's A4 page
+   furniture). @page fixes the sheet at exactly 1.5×3in (38.1×76.2mm) with no page
+   margin, so the printer treats one label as one page. The 5mm safe margin all
+   sides is inner padding on the box, keeping every mark off the label edge (no
+   printer can ink to the edge anyway). Content area = 28.1×66.2mm; the QR is
+   maxed to fill that width (~27mm) — width is the hard limit, so it can't grow
+   further without eating into the 5mm margin.
+   PRINTING: pick the label as the paper size and set the dialog's Margins to
+   "None" (or "Default") so the browser honours @page instead of adding its own. */
 function docQRSticker(v){
   var url=portalLink(v.id);
-  var body='<div style="text-align:center;border:2px dashed #1D1D1F;border-radius:14px;padding:18px;max-width:320px;margin:20px auto">'+
-    '<img src="'+LOGO_URI_PRINT+'" style="width:44px;height:44px;border-radius:10px"/>'+
-    '<div style="font-weight:800;margin:6px 0">'+esc(S.shop.name)+'</div>'+
-    '<div style="font-size:20px;color:#6E6E73">Scan for service history</div>'+
-    '<div id="stickerQR" style="display:flex;justify-content:center;margin:10px 0"></div>'+
-    '<div style="font-weight:700;font-size:24px">'+esc(v.plate)+'</div></div>'+
-    '<script src="'+QR_LIB_URL+'" onload="new QRCode(document.getElementById(\'stickerQR\'),{text:\''+url+'\',width:150,height:150})"><\/script>';
-  return docShell('QR · '+v.plate, body);
+  var css='<style>'+
+    '@page{size:38.1mm 76.2mm;margin:0}'+                 /* 1.5in × 3in, no page margin */
+    '*{box-sizing:border-box}'+
+    'html,body{margin:0;padding:0;width:38.1mm;height:76.2mm}'+
+    "body{font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}"+
+    '.sticker{width:38.1mm;height:76.2mm;padding:5mm;display:flex;flex-direction:column;align-items:center;'+
+      'justify-content:center;text-align:center;overflow:hidden}'+   /* 5mm safe margin all sides */
+    '.sticker img.logo{width:8mm;height:8mm;border-radius:1.4mm;display:block}'+
+    '.sticker .nm{font-weight:800;font-size:8.5px;line-height:1.1;margin:1.2mm 0 .3mm;max-width:100%}'+
+    '.sticker .tag{font-size:6.5px;letter-spacing:.02em;color:#6E6E73;text-transform:uppercase}'+
+    '.sticker .qr{margin:1.6mm 0 1.4mm}'+
+    '.sticker .qr img,.sticker .qr canvas{display:block;width:27mm;height:27mm}'+   /* fill content width */
+    '.sticker .plate{font-weight:800;font-size:13px;letter-spacing:.02em}'+
+  '</style>';
+  var body='<div class="sticker">'+
+    '<img class="logo" src="'+LOGO_URI_PRINT+'"/>'+
+    '<div class="nm">'+esc(S.shop.name)+'</div>'+
+    '<div class="tag">Scan for service history</div>'+
+    '<div class="qr" id="stickerQR"></div>'+
+    '<div class="plate">'+esc(v.plate)+'</div></div>'+
+    /* Render at ~300dpi (320px) so the CSS 27mm box is a crisp downscale, not a blur. */
+    '<script src="'+QR_LIB_URL+'" onload="new QRCode(document.getElementById(\'stickerQR\'),{text:\''+url+'\',width:320,height:320})"><\/script>';
+  return '<!doctype html><html><head><meta charset="utf-8"><title>QR · '+esc(v.plate)+'</title>'+css+'</head><body>'+body+'</body></html>';
 }
 function printQRSticker(id){ printDoc(docQRSticker(vehicleById(id))); }
 
