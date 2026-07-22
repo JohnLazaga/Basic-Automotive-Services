@@ -19,6 +19,7 @@ branch-server/photos/
 
 # Generated PDF guides (rebuilt from the *_EASY.html sources with Edge --print-to-pdf)
 Password_Reset_Guide.pdf
+Device_Lockdown_Guide.pdf
 
 # OS cruft
 Thumbs.db
