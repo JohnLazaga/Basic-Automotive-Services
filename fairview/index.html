@@ -139,6 +139,7 @@ h2{font-size:16px;font-weight:700;letter-spacing:-.01em;margin:0 0 10px}
 .jcard{background:#fff;border:1px solid var(--hair);border-radius:13px;padding:11px;margin-bottom:9px;cursor:pointer;box-shadow:var(--sh-1)}
 .jcard:hover{border-color:var(--brand)} .jcard-top{display:flex;align-items:center;gap:7px}
 .jcard .plate{font-weight:700} .duedot{margin-left:auto;color:var(--gold);font-size:15px}
+.jcard-owner{color:var(--ink2);font-size:12px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .jcard-veh{font-size:13px;margin:5px 0 2px} .jcard-meta{display:flex;justify-content:space-between;font-size:11.5px;color:var(--ink2)}
 .jcard-foot{display:flex;justify-content:space-between;margin-top:7px;font-size:12px} .jcard-foot .bill{font-weight:700}
 
@@ -601,7 +602,7 @@ var BRANCH = {"id":"main","slug":"fairview","name":"Basic by JMSI — Fairview (
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.2.0 · 2026-07-22 · 2a74355';
+var APP_VERSION = 'v1.2.0 · 2026-07-22 · 9047497';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -1737,6 +1738,7 @@ function jobCardMini(j){
   var due = isUpdateDue(j);
   return '<div class="jcard" onclick="go(\'job\',\''+j.id+'\')">'+
     '<div class="jcard-top">'+statusBadge(j.status)+'<span class="plate">'+esc(j.plate)+'</span>'+
+      (j.owner?'<span class="jcard-owner">'+esc(j.owner)+'</span>':'')+
       (due?'<span class="duedot" title="Update due">●</span>':'')+'</div>'+
     '<div class="jcard-veh">'+esc(j.year+' '+j.make+' '+j.model)+'</div>'+
     '<div class="jcard-meta"><span>'+esc(bayName(j.bayId))+'</span><span>'+esc(mechName(j.mechanicIds))+'</span></div>'+
@@ -1760,7 +1762,7 @@ function boardList(active){
     var due=isUpdateDue(j);
     return '<tr onclick="go(\'job\',\''+j.id+'\')">'+
       '<td><b>'+esc(j.no)+'</b></td><td>'+esc(j.plate)+'</td>'+
-      '<td>'+esc(j.make+' '+j.model)+'</td>'+
+      '<td>'+esc(j.make+' '+j.model)+(j.owner?' <span class="muted small">· '+esc(j.owner)+'</span>':'')+'</td>'+
       '<td>'+statusBadge(j.status)+(due?' <span class="amber">⚑ due</span>':'')+'</td>'+
       '<td>'+esc(bayName(j.bayId))+'</td>'+
       '<td>'+esc(mechName(j.mechanicIds))+'</td>'+

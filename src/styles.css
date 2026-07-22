@@ -128,6 +128,7 @@ h2{font-size:16px;font-weight:700;letter-spacing:-.01em;margin:0 0 10px}
 .jcard{background:#fff;border:1px solid var(--hair);border-radius:13px;padding:11px;margin-bottom:9px;cursor:pointer;box-shadow:var(--sh-1)}
 .jcard:hover{border-color:var(--brand)} .jcard-top{display:flex;align-items:center;gap:7px}
 .jcard .plate{font-weight:700} .duedot{margin-left:auto;color:var(--gold);font-size:15px}
+.jcard-owner{color:var(--ink2);font-size:12px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .jcard-veh{font-size:13px;margin:5px 0 2px} .jcard-meta{display:flex;justify-content:space-between;font-size:11.5px;color:var(--ink2)}
 .jcard-foot{display:flex;justify-content:space-between;margin-top:7px;font-size:12px} .jcard-foot .bill{font-weight:700}
 

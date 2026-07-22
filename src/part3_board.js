@@ -97,6 +97,7 @@ function jobCardMini(j){
   var due = isUpdateDue(j);
   return '<div class="jcard" onclick="go(\'job\',\''+j.id+'\')">'+
     '<div class="jcard-top">'+statusBadge(j.status)+'<span class="plate">'+esc(j.plate)+'</span>'+
+      (j.owner?'<span class="jcard-owner">'+esc(j.owner)+'</span>':'')+
       (due?'<span class="duedot" title="Update due">●</span>':'')+'</div>'+
     '<div class="jcard-veh">'+esc(j.year+' '+j.make+' '+j.model)+'</div>'+
     '<div class="jcard-meta"><span>'+esc(bayName(j.bayId))+'</span><span>'+esc(mechName(j.mechanicIds))+'</span></div>'+
@@ -120,7 +121,7 @@ function boardList(active){
     var due=isUpdateDue(j);
     return '<tr onclick="go(\'job\',\''+j.id+'\')">'+
       '<td><b>'+esc(j.no)+'</b></td><td>'+esc(j.plate)+'</td>'+
-      '<td>'+esc(j.make+' '+j.model)+'</td>'+
+      '<td>'+esc(j.make+' '+j.model)+(j.owner?' <span class="muted small">· '+esc(j.owner)+'</span>':'')+'</td>'+
       '<td>'+statusBadge(j.status)+(due?' <span class="amber">⚑ due</span>':'')+'</td>'+
       '<td>'+esc(bayName(j.bayId))+'</td>'+
       '<td>'+esc(mechName(j.mechanicIds))+'</td>'+
