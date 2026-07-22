@@ -138,12 +138,12 @@ function addAccountDialog(){
     field('Full name','<input id="acName" placeholder="Juan Dela Cruz">')+
     '<div class="grid2">'+
     field('Username','<input id="acUser" placeholder="e.g. junjun" autocomplete="off" autocapitalize="off" oninput="this.value=this.value.toLowerCase().replace(/[^a-z0-9_.-]/g,\'\')">')+
-    field('Password','<input id="acPass" type="text" placeholder="set a password" autocomplete="off" autocapitalize="off">')+
+    field('Password','<input id="acPass" type="text" placeholder="set a password" autocomplete="off" autocapitalize="off"><button type="button" class="btn xs ghost" style="margin-top:6px" onclick="setVal(\'acPass\', genRandomPassword())">🎲 Generate random</button>')+
     '</div>'+
     '<div class="grid2">'+
     field('Role','<select id="acRole">'+ROLE_LIST.map(function(r){return '<option value="'+r+'">'+esc(roleLabel(r))+'</option>';}).join('')+'</select>')+
     field('Admin?','<label class="chk"><input type="checkbox" id="acAdmin"> Full admin access</label>')+'</div>'+
-    '<p class="muted small">The staff member signs in with this <b>username</b> and <b>password</b>. Share it with them; they can keep or you can change it later.</p>',
+    '<p class="muted small">Tip: click <b>🎲 Generate random</b>, then type this password into the shop device once and let the browser <b>Save</b> it — the worker signs in with one tap and never needs to know it. The password is <b>not</b> stored anywhere; use 🎲 Reset later if it’s ever lost.</p>',
     { onOk:'createStaffAccount', okText:'Create account' });
 }
 function createStaffAccount(){
@@ -162,8 +162,8 @@ function createStaffAccount(){
   var sec=getSecondaryApp();
   sec.auth().createUserWithEmailAndPassword(email, pass).then(function(cred){
     return bcol('users').doc(cred.user.uid).set({
-      username:username, email:email, name:name, role:role, isAdmin:isAdmin, active:true, password:pass, createdAt:new Date().toISOString()
-    }).then(function(){ return sec.auth().signOut(); });
+      username:username, email:email, name:name, role:role, isAdmin:isAdmin, active:true, createdAt:new Date().toISOString()
+    }).then(function(){ return sec.auth().signOut(); });   // password is NOT stored — Firebase keeps it hashed
   }).then(function(){
     closeModal(); toast('Account created · username "'+username+'"'); refreshAccounts();
   }).catch(function(e){
@@ -175,22 +175,22 @@ function _localUserUpdate(uid, fields, msg){ return _postJSON(branchBase()+'/aut
 function setAccountRole(uid, role){ if(typeof dataLocal==='function'&&dataLocal()){ return _localUserUpdate(uid,{role:role},'Role updated'); } bcol('users').doc(uid).update({ role:role }).then(function(){ toast('Role updated'); refreshAccounts(); }); }
 function setAccountAdmin(uid, isAdmin){ if(typeof dataLocal==='function'&&dataLocal()){ return _localUserUpdate(uid,{isAdmin:isAdmin},'Updated'); } bcol('users').doc(uid).update({ isAdmin:isAdmin }).then(function(){ toast('Updated'); refreshAccounts(); }); }
 function setAccountActive(uid, active){ if(typeof dataLocal==='function'&&dataLocal()){ return _localUserUpdate(uid,{active:active},active?'Account enabled':'Account disabled'); } bcol('users').doc(uid).update({ active:active }).then(function(){ toast(active?'Account enabled':'Account disabled'); refreshAccounts(); }); }
-/* Admin: view and change a staff login password. Firebase Auth never reveals a
-   password, so the app keeps an admin-only copy in the user doc. Changing it is
-   done by signing into a secondary Firebase app as that user (with the current
-   password) and calling updatePassword — no Admin SDK needed. */
+/* Admin: set a staff login password. Passwords are NOT stored anywhere — Firebase
+   keeps them hashed. To set a SPECIFIC password on a cloud branch (no Admin SDK) we
+   sign into a secondary app as that user with their CURRENT password and call
+   updatePassword; any legacy stored copy is deleted on success. For a no-hassle
+   random password that needs no current password, use 🎲 Reset (adminResetPassword). */
 var pwCtx=null;
 function passwordDialog(uid){
   if(!isAdminUser()){ toast('Admins only','err'); return; }
   var u=(ACCOUNTS||[]).find(function(x){return x.uid===uid;}); if(!u) return;
-  var has = !!u.password;
-  openModal('Password — '+esc(u.name||u.username||u.email),
-    field('Current password', has
-        ? '<input id="pwCur" value="'+attr(u.password)+'" readonly autocomplete="off">'
-        : '<input id="pwCur" value="" placeholder="not stored — type the current password" autocomplete="off">',
-      has ? 'Stored password for this login.' : 'No stored copy yet. Enter the current password once to change it; it will be saved afterward.')+
-    field('New password','<input id="pwNew" type="text" placeholder="set a new password (min 6 characters)" autocomplete="off">'),
-    { onOk:'saveStaffPassword', okText:'Update password' });
+  var cloud = !(typeof dataLocal==='function' && dataLocal());
+  openModal('Set a password — '+esc(u.name||u.username||u.email),
+    (cloud ? '<p class="muted small">To set a <b>specific</b> password, type the worker’s <b>current</b> one first (Firebase requires it to change it). Don’t know it? Use <b>🎲 Reset</b> instead — it makes a random one with no current password needed, and stores nothing.</p>'
+           + field('Current password','<input id="pwCur" type="text" placeholder="type the current password" autocomplete="off">')
+           : '')+
+    field('New password','<input id="pwNew" type="text" placeholder="new password (min 6 characters)" autocomplete="off"><button type="button" class="btn xs ghost" style="margin-top:6px" onclick="setVal(\'pwNew\', genRandomPassword())">🎲 Generate random</button>'),
+    { onOk:'saveStaffPassword', okText:'Set password' });
   setTimeout(function(){ pwCtx=uid; },10);
 }
 function saveStaffPassword(){
@@ -211,7 +211,7 @@ function saveStaffPassword(){
   sec.auth().signInWithEmailAndPassword(email, curPw)
     .then(function(cred){ return cred.user.updatePassword(newPw); })
     .then(function(){ return sec.auth().signOut(); })
-    .then(function(){ return bcol('users').doc(u.uid).update({ password:newPw }); })
+    .then(function(){ return bcol('users').doc(u.uid).update({ password: firebase.firestore.FieldValue.delete() }); })   // purge any legacy plaintext copy; store nothing
     .then(function(){ closeModal(); toast('Password updated'); refreshAccounts(); })
     .catch(function(e){
       var code=(e.code||'');
