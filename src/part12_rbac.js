@@ -221,6 +221,58 @@ function saveStaffPassword(){
     });
 }
 
+/* Admin: reset a login to a fresh RANDOM password and show it ONCE, storing
+   nothing. Cloud branches call the secure adminResetPassword Cloud Function
+   (Admin SDK — see password-reset-kit/). Local branches use the branch server's
+   password endpoint with a client-generated random. */
+function resetPwRandom(uid){
+  if(!isAdminUser()){ toast('Admins only','err'); return; }
+  var u=(ACCOUNTS||[]).find(function(x){return x.uid===uid;}); if(!u) return;
+  var who=esc(u.name||u.username||u.email);
+  confirmModal('Reset '+who+'’s password?',
+    'This makes a brand-new <b>random</b> password and shows it to you <b>once</b>. Their old password stops working right away, and nothing is saved anywhere. Continue?',
+    function(){ _doResetPwRandom(u); }, 'Reset to random');
+}
+function _doResetPwRandom(u){
+  if(typeof dataLocal==='function' && dataLocal()){
+    var pw=genRandomPassword();
+    _postJSON(branchBase()+'/auth/users/'+encodeURIComponent(u.uid)+'/password', { password:pw }).then(function(d){
+      if(d&&d.ok){ closeModal(); showOncePassword(u, pw); refreshAccounts(); }
+      else toast((d&&d.error)||'Could not reset password','err');
+    }).catch(function(){ toast('Cannot reach branch server','err'); });
+    return;
+  }
+  if(typeof firebase==='undefined' || !firebase.functions){ toast('Reset service not loaded — reload the page','err'); return; }
+  toast('Resetting…');
+  var bId=(typeof branchId==='function')?branchId():'';
+  firebase.functions().httpsCallable('adminResetPassword')({ targetUid:u.uid, branchId:bId })
+    .then(function(res){ closeModal(); showOncePassword(u, (res&&res.data&&res.data.password)||''); refreshAccounts(); })
+    .catch(function(e){ toast(_fnResetError(e),'err'); });
+}
+function _fnResetError(e){
+  var code=(e&&e.code)||'';
+  if(code.indexOf('permission-denied')>=0) return 'Admins only.';
+  if(code.indexOf('unauthenticated')>=0) return 'Please sign in again.';
+  if(code.indexOf('not-found')>=0) return 'User not found here — or the reset service isn’t deployed yet.';
+  if(code.indexOf('internal')>=0) return 'The reset service isn’t deployed yet — see password-reset-kit/README.';
+  return (e&&e.message)||'Could not reset the password.';
+}
+function showOncePassword(u, pw){
+  if(!pw){ toast('Reset done, but no password came back','err'); return; }
+  openModal('New password — '+esc(u.name||u.username||u.email),
+    '<p class="muted small">Copy this now — it will <b>not</b> be shown again. Type it into the shop device once and let the browser <b>Save</b> it.</p>'+
+    '<div class="pw-once"><code id="pwOnceVal">'+esc(pw)+'</code><button class="btn sm" type="button" onclick="copyOncePw()">Copy</button></div>'+
+    '<p class="muted small">Nothing was saved anywhere. Lost it? Just reset again.</p>',
+    { footer:'<button class="btn primary" onclick="closeModal()">Done</button>' });
+}
+function copyOncePw(){ var el=document.getElementById('pwOnceVal'); var t=el?el.textContent:''; if(t&&navigator.clipboard){ navigator.clipboard.writeText(t); } toast('Copied'); }
+/* Memorable random password (browser-side, for LOCAL branches). */
+function genRandomPassword(){
+  var W=['Motor','Bakal','Pusa','Aso','Kalye','Lobo','Tigre','Bituin','Araw','Buwan','Piston','Gulong','Preno','Makina','Susi','Kable','Tubo','Pinto','Dagat','Bundok'];
+  function r(n){ if(typeof crypto!=='undefined'&&crypto.getRandomValues){ var a=new Uint32Array(1); crypto.getRandomValues(a); return a[0]%n; } return Math.floor(Math.random()*n); }
+  return W[r(W.length)]+'-'+(1000+r(9000))+'-'+W[r(W.length)]+'-'+(1000+r(9000));
+}
+
 /* Edit one staff account (name, role, admin, active) — committed on Save. */
 var acEditCtx=null;
 function editAccountDialog(uid){
@@ -296,7 +348,8 @@ VIEWS.accounts = function(){
         '<td>'+(u.active===false?chip('Disabled'):chip('Active','ok'))+'</td>'+
         '<td class="r">'+
           '<button class="btn xs" onclick="editAccountDialog(\''+u.uid+'\')">✎ Edit</button> '+
-          '<button class="btn xs ghost" onclick="passwordDialog(\''+u.uid+'\')">🔑 Password</button>'+
+          '<button class="btn xs ghost" onclick="passwordDialog(\''+u.uid+'\')">🔑 Password</button> '+
+          '<button class="btn xs ghost" onclick="resetPwRandom(\''+u.uid+'\')" title="Reset to a new random password, shown once">🎲 Reset</button>'+
         '</td></tr>';
     }).join('');
     accHTML = '<div class="card pad0"><table class="tbl"><thead><tr><th>Staff</th><th>Role</th><th>Status</th><th class="r">Actions</th></tr></thead><tbody>'+rows+'</tbody></table></div>';

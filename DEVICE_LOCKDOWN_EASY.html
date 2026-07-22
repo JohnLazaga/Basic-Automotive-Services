@@ -1,0 +1,180 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Basic by JMSI — Lock the App to Shop Devices (Easy)</title>
+<style>
+:root{--ink:#1d1d1f;--ink2:#5f5f66;--brand:#d10000;--hair:#e4e4e7;--bg:#f4f4f6;--panel:#fff;
+--tipbg:#eef7ee;--tipbd:#2e7d32;--warnbg:#fff5e6;--warnbd:#c77700;--seebg:#eef2ff;--seebd:#3949ab;--codebg:#101014}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16.5px/1.65 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+.wrap{max-width:820px;margin:0 auto;padding:34px 22px 90px}
+.cover{background:#101014;color:#fff;border-radius:18px;padding:34px 30px;margin-bottom:26px}
+.cover .brand{color:var(--brand);font-weight:800;letter-spacing:.6px;font-size:14px}
+.cover h1{margin:6px 0 8px;font-size:30px}
+.cover p{margin:0;color:#cfcfd6;font-size:15px}
+h2{font-size:22px;margin:34px 0 6px;border-bottom:3px solid var(--brand);padding-bottom:6px}
+h3{font-size:17px;margin:22px 0 6px}
+p{margin:9px 0}
+a{color:var(--brand)}
+code{background:#ececf0;border:1px solid var(--hair);border-radius:5px;padding:1px 6px;font:14px/1.5 Consolas,Menlo,monospace}
+.step{background:var(--panel);border:1px solid var(--hair);border-radius:14px;padding:6px 22px 18px;margin:16px 0;box-shadow:0 1px 0 var(--hair);position:relative}
+.step>h3{display:flex;align-items:center;gap:12px}
+.num{flex:none;width:34px;height:34px;border-radius:50%;background:var(--brand);color:#fff;font-weight:800;display:inline-flex;align-items:center;justify-content:center;font-size:16px}
+.box{border-radius:10px;padding:11px 15px;margin:12px 0;font-size:15px}
+.tip{background:var(--tipbg);border-left:4px solid var(--tipbd)}
+.warn{background:var(--warnbg);border-left:4px solid var(--warnbd)}
+.see{background:var(--seebg);border-left:4px solid var(--seebd)}
+.box b{display:inline}
+ul,ol{margin:8px 0;padding-left:24px}li{margin:5px 0}
+kbd{background:#fff;border:1px solid #bbb;border-bottom-width:2px;border-radius:5px;padding:1px 6px;font:13px Consolas,monospace}
+.tbl{width:100%;border-collapse:collapse;margin:12px 0;background:var(--panel);border-radius:8px;overflow:hidden}
+.tbl th,.tbl td{border:1px solid var(--hair);padding:8px 11px;text-align:left;font-size:15px;vertical-align:top}
+.tbl th{background:#fafafa}
+.chk{list-style:none;padding-left:0}.chk li{padding-left:26px;position:relative}.chk li:before{content:"☐";position:absolute;left:0;color:var(--brand);font-weight:700}
+.pill{display:inline-block;background:#101014;color:#fff;border-radius:999px;font:700 12px -apple-system,Segoe UI,sans-serif;padding:3px 11px;margin:2px 4px 2px 0}
+.foot{color:var(--ink2);font-size:13px;margin-top:30px;text-align:center}
+@media print{body{background:#fff}.wrap{padding:0}.step,.tbl{box-shadow:none}.cover{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style></head><body><div class="wrap">
+
+<div class="cover">
+  <div class="brand">BASIC by JMSI</div>
+  <h1>Locking the app to shop devices — the easy way</h1>
+  <p>Follow each step in order. If you can use a phone, you can do this. Do the whole guide once per shop iPad and once per shop computer.</p>
+</div>
+
+<h2>What this does (in plain words)</h2>
+<p>Each worker gets a <b>secret password they never see</b>. You type it into the shop's iPad or computer <b>one time</b>, and the device remembers it. After that, the worker just taps <b>Sign in</b> and they're in — without ever knowing the password.</p>
+<p>So at the shop, work is easy. But at home, on their own phone, they <b>don't know the password</b>, so they can't get in. That's the whole trick.</p>
+<div class="box tip"><b>You (the owner/admin) are different.</b> You know your own password, so you can still open the app from anywhere. This guide only locks down the <b>workers</b>.</div>
+<div class="box warn"><b>Be honest with yourself:</b> this stops normal, honest staff. A very sneaky person on a <b>Windows computer</b> could still peek at the password. That's why the <b>iPad is the safest</b> — do the important stations on iPads.</div>
+
+<h2>Part A — Make the secret password (do this once per worker)</h2>
+
+<div class="step"><h3><span class="num">1</span> Make each worker's login with a long, random password</h3>
+<ul>
+  <li>When you add a worker's account, give them a <b>long, silly, random password</b>. Example: <code>Bakal-7739-Lobo-Kalye</code>.</li>
+  <li><b>Write it in your own private notebook</b> (or a locked notes app on your phone). One line per worker.</li>
+  <li><b>Never tell the worker the password.</b> Never write it on the device or on a sticky note.</li>
+</ul>
+<div class="box tip">Tip: make it easy to type once but impossible to guess — mix words and numbers, like <code>Motor-4182-Pusa</code>. You only type it a few times total.</div>
+</div>
+
+<h2>Part B — Set up a shop iPad <span class="pill">SAFEST</span></h2>
+<p>Do this on <b>each</b> shop iPad. Takes about 10 minutes.</p>
+
+<div class="step"><h3><span class="num">2</span> (If the iPad was used before) Erase it clean</h3>
+<ol>
+  <li>Open <b>Settings</b> → <b>General</b> → <b>Transfer or Reset iPad</b> → <b>Erase All Content and Settings</b>.</li>
+  <li>Let it restart. (Skip this step if the iPad is brand new.)</li>
+</ol>
+</div>
+
+<div class="step"><h3><span class="num">3</span> Give it a passcode only YOU know</h3>
+<ol>
+  <li>During setup (or in <b>Settings → Face ID &amp; Passcode</b>), set a <b>passcode</b>.</li>
+  <li>This passcode is the <b>manager's secret</b>. Write it in your notebook. Do <b>not</b> give it to workers.</li>
+</ol>
+<div class="box see">Why: to peek at a saved password, the iPad asks for this passcode. If workers don't know it, they can't peek.</div>
+</div>
+
+<div class="step"><h3><span class="num">4</span> Do NOT sign in with a personal Apple ID</h3>
+<ol>
+  <li>When the iPad asks to <b>Sign in with your Apple&nbsp;ID</b> / iCloud, tap <b>"Set Up Later in Settings"</b> or <b>Skip</b>.</li>
+  <li>If it's already signed into someone's Apple ID: <b>Settings</b> → tap the name at the top → <b>Sign Out</b>.</li>
+</ol>
+<div class="box see">Why: this stops the saved password from copying itself onto anyone's personal iPhone.</div>
+</div>
+
+<div class="step"><h3><span class="num">5</span> Log in once and let Safari save it</h3>
+<ol>
+  <li>Open <b>Safari</b>. Type the shop's app link, for Fairview:<br><code>https://basicautomotiveservices.com/fairview</code><br>(Use that branch's own link for other branches.)</li>
+  <li>Type the worker's <b>email</b> and the <b>secret password from your notebook</b>. Tap <b>Sign in</b>.</li>
+  <li>Safari asks <b>"Save Password?"</b> → tap <b>Save Password</b>. ✅</li>
+</ol>
+</div>
+
+<div class="step"><h3><span class="num">6</span> Make an app icon on the Home Screen</h3>
+<ol>
+  <li>In Safari, tap the <b>Share</b> button (the square with an arrow pointing up).</li>
+  <li>Tap <b>Add to Home Screen</b> → name it <b>BASIC</b> → tap <b>Add</b>.</li>
+  <li>Now there's a <b>BASIC</b> icon like a real app. Workers tap that, then tap Sign in — it fills the password by itself.</li>
+</ol>
+</div>
+
+<div class="step"><h3><span class="num">7</span> Lock the iPad to just this app (Guided Access)</h3>
+<ol>
+  <li>Go to <b>Settings → Accessibility → Guided Access</b> → turn it <b>ON</b>.</li>
+  <li>Tap <b>Passcode Settings → Set Guided Access Passcode</b> → set a passcode (manager's secret — can be the same as step 3).</li>
+  <li>Open the <b>BASIC</b> app. <b>Triple-click</b> the top button (the power button) → tap <b>Start</b>.</li>
+  <li>Now the iPad is stuck on the app. To get out, <b>triple-click</b> again and type your passcode.</li>
+</ol>
+<div class="box tip">Done! This iPad now only shows the app, workers can't peek at the password, and the password can't jump to their phone.</div>
+</div>
+
+<h2>Part C — Set up a Windows shop computer</h2>
+<p>Do this on <b>each</b> shop computer. Takes about 10 minutes.</p>
+
+<div class="step"><h3><span class="num">8</span> Make a "Shop" account the workers will use</h3>
+<ol>
+  <li>Open <b>Settings → Accounts → Other users → Add account</b>.</li>
+  <li>Click <b>"I don't have this person's sign-in information"</b> → <b>"Add a user without a Microsoft account."</b></li>
+  <li>Name it <b>Shop</b>. Set a password and <b>keep it secret</b> (write it in your notebook).</li>
+  <li>Sign out and sign in to the <b>Shop</b> account.</li>
+</ol>
+</div>
+
+<div class="step"><h3><span class="num">9</span> Open Chrome and DON'T sign in to Google</h3>
+<ol>
+  <li>Open <b>Google Chrome</b>.</li>
+  <li>If it asks you to <b>sign in / turn on sync</b>, click <b>"No thanks"</b> or close it.</li>
+  <li>Check: Chrome menu (three dots ⋮) → <b>Settings</b> → the top should say you're <b>not</b> signed in. Good.</li>
+</ol>
+<div class="box see">Why: if Chrome signs into a Google account, the saved password copies to any phone with that account. We don't want that.</div>
+</div>
+
+<div class="step"><h3><span class="num">10</span> Log in once and let Chrome save it</h3>
+<ol>
+  <li>Go to the shop's app link (e.g. <code>https://basicautomotiveservices.com/fairview</code>).</li>
+  <li>Type the worker's <b>email</b> and the <b>secret password</b>. Click <b>Sign in</b>.</li>
+  <li>Chrome asks <b>"Save password?"</b> → click <b>Save</b>. ✅</li>
+</ol>
+</div>
+
+<div class="step"><h3><span class="num">11</span> Make it open by itself</h3>
+<ol>
+  <li>Chrome menu (⋮) → <b>Settings</b> → <b>On startup</b> → choose <b>"Open a specific page or set of pages"</b> → <b>Add a new page</b> → paste the app link.</li>
+  <li>Right-click the Chrome icon on the taskbar → <b>Pin to taskbar</b>.</li>
+  <li>Tell workers: open Chrome, click <b>Sign in</b> — it fills the password by itself.</li>
+</ol>
+<div class="box warn"><b>Windows is a little weaker than iPad.</b> A very curious person could still dig out the password on a computer. If a station really matters, use an <b>iPad</b> instead.</div>
+</div>
+
+<h2>Everyday rules (keep it working)</h2>
+<table class="tbl">
+  <tr><th>When this happens…</th><th>Do this</th></tr>
+  <tr><td><b>New worker joins</b></td><td>Make their login with a new random password (Part A), then log in once on the shop devices and tap <b>Save</b> (steps 5 &amp; 10).</td></tr>
+  <tr><td><b>Worker leaves / is fired</b></td><td>In the app's <b>Accounts</b> page, switch their account <b>off</b> (or change their password). The saved login stops working right away.</td></tr>
+  <tr><td><b>iPad or computer is lost / stolen</b></td><td>Change the passwords of every worker whose login was saved on that device (or switch those accounts off). Now the saved logins are useless.</td></tr>
+  <tr><td><b>You (owner/admin)</b></td><td>You know your own password — you can log in from anywhere, anytime. Nothing changes for you.</td></tr>
+</table>
+
+<h2>Quick checklist per device</h2>
+<p><b>iPad:</b></p>
+<ul class="chk">
+  <li>Manager-only passcode set</li>
+  <li>NOT signed into a personal Apple ID</li>
+  <li>Logged in once, password Saved</li>
+  <li>BASIC icon added to Home Screen</li>
+  <li>Guided Access turned on and Started</li>
+</ul>
+<p><b>Windows computer:</b></p>
+<ul class="chk">
+  <li>Separate "Shop" account, password kept secret</li>
+  <li>Chrome NOT signed into Google (sync off)</li>
+  <li>Logged in once, password Saved</li>
+  <li>App link set to open on startup, Chrome pinned</li>
+</ul>
+
+<div class="box tip"><b>That's it.</b> Workers can do everything at the shop with one tap, and can't log in from home because they never learned the password. Repeat this guide for every new branch and every new device.</div>
+
+<div class="foot">BASIC by JMSI — device lockdown guide. Keep your password notebook private.</div>
+
+</div></body></html>
