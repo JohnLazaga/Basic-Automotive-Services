@@ -602,7 +602,7 @@ var BRANCH = {"id":"main","slug":"fairview","name":"Basic by JMSI — Fairview (
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.2.0 · 2026-07-23 · 4dd18d3';
+var APP_VERSION = 'v1.2.0 · 2026-07-23 · a246848';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -2182,7 +2182,7 @@ VIEWS.job = function(id){
       '</div>'+
       '<div class="colside">'+
         (canSeeJobPrices()?jobBillPanel(j,bill):'')+
-        (canSeeJobPrices()?jobProfitPanel(j):'')+
+        (canSeeProfit()?jobProfitPanel(j):'')+
         jobAssignPanel(j)+
         jobDetailsPanel(j)+
         jobComebackPanel(j)+
@@ -3684,15 +3684,16 @@ VIEWS.reports = function(){
   var comm=commissionTable(rel);
 
   return '<div class="page"><div class="page-head"><h1>Reports & Analytics</h1></div>'+
-    '<div class="kpis">'+kpi('Revenue (released)',peso(revenue),'total billed, VAT-incl')+kpi('Net profit',peso(netProfit),'after parts cost & commission')+kpi('Margin',margin+'%','gross, ex-VAT')+
+    '<div class="kpis">'+kpi('Revenue (released)',peso(revenue),'total billed, VAT-incl')+
+      (canSeeProfit()?kpi('Net profit',peso(netProfit),'after parts cost & commission')+kpi('Margin',margin+'%','gross, ex-VAT'):'')+
       kpi('Open WIP',peso(wip))+kpi('Avg ticket',peso(avg))+'</div>'+
     '<div class="cols"><div class="colmain">'+
-      '<div class="card"><h2>Profitability <span class="muted small">· released · ex-VAT</span></h2>'+
+      (canSeeProfit()?('<div class="card"><h2>Profitability <span class="muted small">· released · ex-VAT</span></h2>'+
         line2('Revenue (ex-VAT)',peso(revEx))+line2('− Parts cost',peso(partsCost))+
         line2('Gross margin','<b>'+peso(gp)+'</b> <span class="muted small">· '+margin+'%</span>')+
         '<div class="bill-sep"></div>'+line2('− Labor commission',peso(totalComm))+
         line2('Net profit','<b class="'+(netProfit<0?'st-bad-t':'st-good-t')+'">'+peso(netProfit)+'</b>')+
-        '<p class="muted small mt8">Gross margin = ex-VAT revenue − parts cost (labor is sold time). Net profit also subtracts labor commission. Warranty comebacks show ₱0 revenue against real parts cost.</p></div>'+
+        '<p class="muted small mt8">Gross margin = ex-VAT revenue − parts cost (labor is sold time). Net profit also subtracts labor commission. Warranty comebacks show ₱0 revenue against real parts cost.</p></div>'):'')+
       '<div class="card"><h2>Revenue by month</h2>'+(months.length?bars(months,peso):emptyState('No released jobs yet.'))+'</div>'+
       '<div class="grid2cards"><div class="card"><h2>Top services</h2>'+(top(svc).length?bars(top(svc),peso):emptyState('—'))+'</div>'+
         '<div class="card"><h2>Top parts</h2>'+(top(prt).length?bars(top(prt),peso):emptyState('—'))+'</div></div>'+
@@ -6026,6 +6027,15 @@ function canSeeJobPrices(){
   if (typeof CURRENT_USER==='undefined' || !CURRENT_USER) return true;
   var role=CURRENT_USER.role;
   return !!CURRENT_USER.isAdmin || role==='SV' || role==='Secretary' || role==='Parts Salesman';
+}
+
+/* Profitability (net profit, gross margin, parts cost) is ADMINS ONLY — it
+   exposes what the shop earns per job. Non-admins with prices/reports access
+   still see revenue and bills, never the profit readouts. Local / pre-auth
+   (dev build, mini-PC) returns true, matching the other gates' convention. */
+function canSeeProfit(){
+  if (typeof CURRENT_USER==='undefined' || !CURRENT_USER) return true;
+  return !!CURRENT_USER.isAdmin;
 }
 
 /* The single access check used everywhere. */

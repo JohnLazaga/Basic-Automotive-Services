@@ -258,7 +258,7 @@ VIEWS.job = function(id){
       '</div>'+
       '<div class="colside">'+
         (canSeeJobPrices()?jobBillPanel(j,bill):'')+
-        (canSeeJobPrices()?jobProfitPanel(j):'')+
+        (canSeeProfit()?jobProfitPanel(j):'')+
         jobAssignPanel(j)+
         jobDetailsPanel(j)+
         jobComebackPanel(j)+

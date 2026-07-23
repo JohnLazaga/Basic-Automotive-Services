@@ -63,15 +63,16 @@ VIEWS.reports = function(){
   var comm=commissionTable(rel);
 
   return '<div class="page"><div class="page-head"><h1>Reports & Analytics</h1></div>'+
-    '<div class="kpis">'+kpi('Revenue (released)',peso(revenue),'total billed, VAT-incl')+kpi('Net profit',peso(netProfit),'after parts cost & commission')+kpi('Margin',margin+'%','gross, ex-VAT')+
+    '<div class="kpis">'+kpi('Revenue (released)',peso(revenue),'total billed, VAT-incl')+
+      (canSeeProfit()?kpi('Net profit',peso(netProfit),'after parts cost & commission')+kpi('Margin',margin+'%','gross, ex-VAT'):'')+
       kpi('Open WIP',peso(wip))+kpi('Avg ticket',peso(avg))+'</div>'+
     '<div class="cols"><div class="colmain">'+
-      '<div class="card"><h2>Profitability <span class="muted small">· released · ex-VAT</span></h2>'+
+      (canSeeProfit()?('<div class="card"><h2>Profitability <span class="muted small">· released · ex-VAT</span></h2>'+
         line2('Revenue (ex-VAT)',peso(revEx))+line2('− Parts cost',peso(partsCost))+
         line2('Gross margin','<b>'+peso(gp)+'</b> <span class="muted small">· '+margin+'%</span>')+
         '<div class="bill-sep"></div>'+line2('− Labor commission',peso(totalComm))+
         line2('Net profit','<b class="'+(netProfit<0?'st-bad-t':'st-good-t')+'">'+peso(netProfit)+'</b>')+
-        '<p class="muted small mt8">Gross margin = ex-VAT revenue − parts cost (labor is sold time). Net profit also subtracts labor commission. Warranty comebacks show ₱0 revenue against real parts cost.</p></div>'+
+        '<p class="muted small mt8">Gross margin = ex-VAT revenue − parts cost (labor is sold time). Net profit also subtracts labor commission. Warranty comebacks show ₱0 revenue against real parts cost.</p></div>'):'')+
       '<div class="card"><h2>Revenue by month</h2>'+(months.length?bars(months,peso):emptyState('No released jobs yet.'))+'</div>'+
       '<div class="grid2cards"><div class="card"><h2>Top services</h2>'+(top(svc).length?bars(top(svc),peso):emptyState('—'))+'</div>'+
         '<div class="card"><h2>Top parts</h2>'+(top(prt).length?bars(top(prt),peso):emptyState('—'))+'</div></div>'+

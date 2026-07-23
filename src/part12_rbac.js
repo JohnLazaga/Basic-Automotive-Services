@@ -61,6 +61,15 @@ function canSeeJobPrices(){
   return !!CURRENT_USER.isAdmin || role==='SV' || role==='Secretary' || role==='Parts Salesman';
 }
 
+/* Profitability (net profit, gross margin, parts cost) is ADMINS ONLY — it
+   exposes what the shop earns per job. Non-admins with prices/reports access
+   still see revenue and bills, never the profit readouts. Local / pre-auth
+   (dev build, mini-PC) returns true, matching the other gates' convention. */
+function canSeeProfit(){
+  if (typeof CURRENT_USER==='undefined' || !CURRENT_USER) return true;
+  return !!CURRENT_USER.isAdmin;
+}
+
 /* The single access check used everywhere. */
 function can(cap){
   if (typeof CURRENT_USER==='undefined' || !CURRENT_USER) return true; // pre-auth / local / tests
