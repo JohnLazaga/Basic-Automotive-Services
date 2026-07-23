@@ -1,0 +1,11 @@
+{
+  "id": "main",
+  "slug": "fairview",
+  "name": "Basic by JMSI — Fairview (Main)",
+  "location": "Fairview, Quezon City",
+  "localUrl": "http://fairview.basic.local",
+  "publicUrl": "https://basicautomotiveservices.com/fairview",
+  "partsUrl": "http://fairview.basic.local:8790",
+  "partsSource": "cloud",
+  "dataSource": "cloud"
+}

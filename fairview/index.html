@@ -602,7 +602,7 @@ var BRANCH = {"id":"main","slug":"fairview","name":"Basic by JMSI — Fairview (
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.2.0 · 2026-07-22 · 9047497';
+var APP_VERSION = 'v1.2.0 · 2026-07-23 · e6d4f2b';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -1177,7 +1177,7 @@ var NAV = [
     { id:'pms', label:'PMS Queue', icon:'🔧' }
   ]},
   { group:'ANALYTICS', items:[
-    { id:'reports', label:'Reports', icon:'▣', cap:'reports' },
+    { id:'reports', label:'Reports', icon:'▣', adminOnly:true },
     { id:'dailyclose', label:'Daily Close', icon:'◷', cap:'dailyclose' },
     { id:'productivity', label:'Productivity', icon:'⚙', cap:'productivity' },
     { id:'receivables', label:'Receivables', icon:'₱', cap:'receivables' }
@@ -1194,7 +1194,10 @@ var NAV = [
     { id:'settings', label:'Settings', icon:'⚒', cap:'settings' }
   ]}
 ];
-function navAllowed(it){ return (typeof can!=='function') || !it.cap || can(it.cap); }
+function navAllowed(it){
+  if (it.adminOnly) return (typeof canSeeReports!=='function') || canSeeReports();  // hard admin-only items (e.g. Reports)
+  return (typeof can!=='function') || !it.cap || can(it.cap);
+}
 
 var NAV_STACK = [];      // breadcrumb of visited pages for ESC "back"
 function _navTo(view, arg){
@@ -2182,7 +2185,7 @@ VIEWS.job = function(id){
       '</div>'+
       '<div class="colside">'+
         (canSeeJobPrices()?jobBillPanel(j,bill):'')+
-        (canSeeJobPrices()?jobProfitPanel(j):'')+
+        (canSeeProfit()?jobProfitPanel(j):'')+
         jobAssignPanel(j)+
         jobDetailsPanel(j)+
         jobComebackPanel(j)+
@@ -3320,7 +3323,16 @@ function saveVehicle(){
     odometer:Number(val('vehOdo'))||0, nextServiceDate:val('vehNextDate'), nextServiceOdo:Number(val('vehNextOdo'))||'', address:val('vehAddr'),
     portalPin:(val('vehPin')||'').replace(/\D/g,'').slice(0,6) };
   var vid;
-  if(vehCtx){ Object.assign(vehicleById(vehCtx),data); vid=vehCtx; } else { data.id=uid('vh'); S.vehicles.push(data); vid=data.id; }
+  if(vehCtx){
+    var rec=vehicleById(vehCtx), oldPlate=(rec&&rec.plate||'').toUpperCase();
+    Object.assign(rec,data); vid=vehCtx;
+    // Job orders each keep their own plate snapshot. Keep them in sync with the
+    // vehicle: re-stamp jobs linked by vehicleId (repairs any already-stale
+    // plate too), plus legacy jobs still matching the OLD plate text.
+    (S.jobs||[]).forEach(function(j){
+      if(j.vehicleId===vid || (j.plate||'').toUpperCase()===oldPlate) j.plate=data.plate;
+    });
+  } else { data.id=uid('vh'); S.vehicles.push(data); vid=data.id; }
   persist(); if(typeof publishPortalDoc==='function') publishPortalDoc(vid);   // refresh public portal
   closeModal(); toast('Vehicle saved'); render();
 }
@@ -3675,15 +3687,16 @@ VIEWS.reports = function(){
   var comm=commissionTable(rel);
 
   return '<div class="page"><div class="page-head"><h1>Reports & Analytics</h1></div>'+
-    '<div class="kpis">'+kpi('Revenue (released)',peso(revenue),'total billed, VAT-incl')+kpi('Net profit',peso(netProfit),'after parts cost & commission')+kpi('Margin',margin+'%','gross, ex-VAT')+
+    '<div class="kpis">'+kpi('Revenue (released)',peso(revenue),'total billed, VAT-incl')+
+      (canSeeProfit()?kpi('Net profit',peso(netProfit),'after parts cost & commission')+kpi('Margin',margin+'%','gross, ex-VAT'):'')+
       kpi('Open WIP',peso(wip))+kpi('Avg ticket',peso(avg))+'</div>'+
     '<div class="cols"><div class="colmain">'+
-      '<div class="card"><h2>Profitability <span class="muted small">· released · ex-VAT</span></h2>'+
+      (canSeeProfit()?('<div class="card"><h2>Profitability <span class="muted small">· released · ex-VAT</span></h2>'+
         line2('Revenue (ex-VAT)',peso(revEx))+line2('− Parts cost',peso(partsCost))+
         line2('Gross margin','<b>'+peso(gp)+'</b> <span class="muted small">· '+margin+'%</span>')+
         '<div class="bill-sep"></div>'+line2('− Labor commission',peso(totalComm))+
         line2('Net profit','<b class="'+(netProfit<0?'st-bad-t':'st-good-t')+'">'+peso(netProfit)+'</b>')+
-        '<p class="muted small mt8">Gross margin = ex-VAT revenue − parts cost (labor is sold time). Net profit also subtracts labor commission. Warranty comebacks show ₱0 revenue against real parts cost.</p></div>'+
+        '<p class="muted small mt8">Gross margin = ex-VAT revenue − parts cost (labor is sold time). Net profit also subtracts labor commission. Warranty comebacks show ₱0 revenue against real parts cost.</p></div>'):'')+
       '<div class="card"><h2>Revenue by month</h2>'+(months.length?bars(months,peso):emptyState('No released jobs yet.'))+'</div>'+
       '<div class="grid2cards"><div class="card"><h2>Top services</h2>'+(top(svc).length?bars(top(svc),peso):emptyState('—'))+'</div>'+
         '<div class="card"><h2>Top parts</h2>'+(top(prt).length?bars(top(prt),peso):emptyState('—'))+'</div></div>'+
@@ -5982,7 +5995,6 @@ var CAPS = [
   { key:'billing',      label:'Final billing / OR #' },
   { key:'billing_edit', label:'Edit billing after it is done' },
   { key:'receivables',  label:'Receivables (A/R)' },
-  { key:'reports',      label:'Reports' },
   { key:'dailyclose',   label:'Daily Close' },
   { key:'productivity', label:'Productivity & commissions' },
   { key:'parts_manage', label:'Parts / Labor / PO' },
@@ -5993,7 +6005,7 @@ var CAPS = [
 
 /* Default matrix (Admin always has everything via isAdmin). Admin-editable. */
 var DEFAULT_PERMS = {
-  SV:               { appointments:1, estimates:1, prices:1, part_cost:1, discounts:1, billing:1, billing_edit:1, receivables:1, reports:1, dailyclose:1, parts_manage:1 },
+  SV:               { appointments:1, estimates:1, prices:1, part_cost:1, discounts:1, billing:1, billing_edit:1, receivables:1, dailyclose:1, parts_manage:1 },
   SA:               { appointments:1, estimates:1, prices:1, billing:1, receivables:1 },
   SM:               { estimates:1, prices:1 },
   Mechanic:         {},
@@ -6017,6 +6029,23 @@ function canSeeJobPrices(){
   if (typeof CURRENT_USER==='undefined' || !CURRENT_USER) return true;
   var role=CURRENT_USER.role;
   return !!CURRENT_USER.isAdmin || role==='SV' || role==='Secretary' || role==='Parts Salesman';
+}
+
+/* Profitability (net profit, gross margin, parts cost) is ADMINS ONLY — it
+   exposes what the shop earns per job. Non-admins with prices/reports access
+   still see revenue and bills, never the profit readouts. Local / pre-auth
+   (dev build, mini-PC) returns true, matching the other gates' convention. */
+function canSeeProfit(){
+  if (typeof CURRENT_USER==='undefined' || !CURRENT_USER) return true;
+  return !!CURRENT_USER.isAdmin;
+}
+
+/* Reports & Analytics is ADMINS ONLY — it aggregates revenue, cost, profit and
+   margins. This is a hard gate (not a grantable role capability): only Admin, or
+   the local / pre-auth dev build, may open the Reports page or see it in nav. */
+function canSeeReports(){
+  if (typeof CURRENT_USER==='undefined' || !CURRENT_USER) return true;
+  return !!CURRENT_USER.isAdmin;
 }
 
 /* The single access check used everywhere. */
@@ -6348,11 +6377,14 @@ function accessDenied(what){
 /* Map a route to the capability it requires (for the renderView guard). */
 var VIEW_CAP = {
   appointments:'appointments', estimates:'estimates', estimate:'estimates',
-  reports:'reports', dailyclose:'dailyclose', productivity:'productivity', receivables:'receivables',
+  dailyclose:'dailyclose', productivity:'productivity', receivables:'receivables',
   parts:'parts_manage', labor:'parts_manage', purchaseorders:'parts_manage', po:'parts_manage',
   staff:'staff_manage', accounts:'staff_manage', settings:'settings'
 };
-function routeAllowed(view){ var c=VIEW_CAP[view]; return !c || can(c); }
+function routeAllowed(view){
+  if (view==='reports') return canSeeReports();   // Reports & Analytics: admins only
+  var c=VIEW_CAP[view]; return !c || can(c);
+}
 
 
 /* ===== */
