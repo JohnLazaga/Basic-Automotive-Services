@@ -177,7 +177,16 @@ function saveVehicle(){
     odometer:Number(val('vehOdo'))||0, nextServiceDate:val('vehNextDate'), nextServiceOdo:Number(val('vehNextOdo'))||'', address:val('vehAddr'),
     portalPin:(val('vehPin')||'').replace(/\D/g,'').slice(0,6) };
   var vid;
-  if(vehCtx){ Object.assign(vehicleById(vehCtx),data); vid=vehCtx; } else { data.id=uid('vh'); S.vehicles.push(data); vid=data.id; }
+  if(vehCtx){
+    var rec=vehicleById(vehCtx), oldPlate=(rec&&rec.plate||'').toUpperCase();
+    Object.assign(rec,data); vid=vehCtx;
+    // Job orders each keep their own plate snapshot. Keep them in sync with the
+    // vehicle: re-stamp jobs linked by vehicleId (repairs any already-stale
+    // plate too), plus legacy jobs still matching the OLD plate text.
+    (S.jobs||[]).forEach(function(j){
+      if(j.vehicleId===vid || (j.plate||'').toUpperCase()===oldPlate) j.plate=data.plate;
+    });
+  } else { data.id=uid('vh'); S.vehicles.push(data); vid=data.id; }
   persist(); if(typeof publishPortalDoc==='function') publishPortalDoc(vid);   // refresh public portal
   closeModal(); toast('Vehicle saved'); render();
 }
