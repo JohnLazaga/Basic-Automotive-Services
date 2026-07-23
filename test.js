@@ -332,11 +332,16 @@ section('RBAC permission engine');
   ok('admin can settings', M.can('settings')===true);
   ok('admin can delete', M.can('delete')===true);
   ok('admin route settings allowed', M.routeAllowed('settings')===true);
+  ok('admin route reports allowed', M.routeAllowed('reports')===true);
+  // Non-admin SV is blocked from Reports even though SV is a supervisor role
+  M.setCurrentUser({ uid:'sv', role:'SV', isAdmin:false });
+  ok('non-admin SV blocked from reports route', M.routeAllowed('reports')===false);
   // SA: billing yes, part_cost/reports no
   M.setCurrentUser({ uid:'b', role:'SA', isAdmin:false });
   ok('SA can billing', M.can('billing')===true);
   ok('SA cannot part_cost', M.can('part_cost')===false);
   ok('SA cannot reports', M.can('reports')===false);
+  ok('SA blocked from reports route (admins only)', M.routeAllowed('reports')===false);
   ok('SA blocked from settings route', M.routeAllowed('settings')===false);
   ok('SA allowed board route', M.routeAllowed('board')===true);
   // Mechanic: baseline only

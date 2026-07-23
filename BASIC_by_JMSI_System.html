@@ -602,7 +602,7 @@ var BRANCH = {"id":"main","slug":"fairview","name":"Basic by JMSI — Fairview (
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.2.0 · 2026-07-23 · a246848';
+var APP_VERSION = 'v1.2.0 · 2026-07-23 · 63e1768';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -1177,7 +1177,7 @@ var NAV = [
     { id:'pms', label:'PMS Queue', icon:'🔧' }
   ]},
   { group:'ANALYTICS', items:[
-    { id:'reports', label:'Reports', icon:'▣', cap:'reports' },
+    { id:'reports', label:'Reports', icon:'▣', adminOnly:true },
     { id:'dailyclose', label:'Daily Close', icon:'◷', cap:'dailyclose' },
     { id:'productivity', label:'Productivity', icon:'⚙', cap:'productivity' },
     { id:'receivables', label:'Receivables', icon:'₱', cap:'receivables' }
@@ -1194,7 +1194,10 @@ var NAV = [
     { id:'settings', label:'Settings', icon:'⚒', cap:'settings' }
   ]}
 ];
-function navAllowed(it){ return (typeof can!=='function') || !it.cap || can(it.cap); }
+function navAllowed(it){
+  if (it.adminOnly) return (typeof canSeeReports!=='function') || canSeeReports();  // hard admin-only items (e.g. Reports)
+  return (typeof can!=='function') || !it.cap || can(it.cap);
+}
 
 var NAV_STACK = [];      // breadcrumb of visited pages for ESC "back"
 function _navTo(view, arg){
@@ -5992,7 +5995,6 @@ var CAPS = [
   { key:'billing',      label:'Final billing / OR #' },
   { key:'billing_edit', label:'Edit billing after it is done' },
   { key:'receivables',  label:'Receivables (A/R)' },
-  { key:'reports',      label:'Reports' },
   { key:'dailyclose',   label:'Daily Close' },
   { key:'productivity', label:'Productivity & commissions' },
   { key:'parts_manage', label:'Parts / Labor / PO' },
@@ -6003,7 +6005,7 @@ var CAPS = [
 
 /* Default matrix (Admin always has everything via isAdmin). Admin-editable. */
 var DEFAULT_PERMS = {
-  SV:               { appointments:1, estimates:1, prices:1, part_cost:1, discounts:1, billing:1, billing_edit:1, receivables:1, reports:1, dailyclose:1, parts_manage:1 },
+  SV:               { appointments:1, estimates:1, prices:1, part_cost:1, discounts:1, billing:1, billing_edit:1, receivables:1, dailyclose:1, parts_manage:1 },
   SA:               { appointments:1, estimates:1, prices:1, billing:1, receivables:1 },
   SM:               { estimates:1, prices:1 },
   Mechanic:         {},
@@ -6034,6 +6036,14 @@ function canSeeJobPrices(){
    still see revenue and bills, never the profit readouts. Local / pre-auth
    (dev build, mini-PC) returns true, matching the other gates' convention. */
 function canSeeProfit(){
+  if (typeof CURRENT_USER==='undefined' || !CURRENT_USER) return true;
+  return !!CURRENT_USER.isAdmin;
+}
+
+/* Reports & Analytics is ADMINS ONLY — it aggregates revenue, cost, profit and
+   margins. This is a hard gate (not a grantable role capability): only Admin, or
+   the local / pre-auth dev build, may open the Reports page or see it in nav. */
+function canSeeReports(){
   if (typeof CURRENT_USER==='undefined' || !CURRENT_USER) return true;
   return !!CURRENT_USER.isAdmin;
 }
@@ -6367,11 +6377,14 @@ function accessDenied(what){
 /* Map a route to the capability it requires (for the renderView guard). */
 var VIEW_CAP = {
   appointments:'appointments', estimates:'estimates', estimate:'estimates',
-  reports:'reports', dailyclose:'dailyclose', productivity:'productivity', receivables:'receivables',
+  dailyclose:'dailyclose', productivity:'productivity', receivables:'receivables',
   parts:'parts_manage', labor:'parts_manage', purchaseorders:'parts_manage', po:'parts_manage',
   staff:'staff_manage', accounts:'staff_manage', settings:'settings'
 };
-function routeAllowed(view){ var c=VIEW_CAP[view]; return !c || can(c); }
+function routeAllowed(view){
+  if (view==='reports') return canSeeReports();   // Reports & Analytics: admins only
+  var c=VIEW_CAP[view]; return !c || can(c);
+}
 
 
 /* ===== */

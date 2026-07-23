@@ -29,7 +29,7 @@ var NAV = [
     { id:'pms', label:'PMS Queue', icon:'🔧' }
   ]},
   { group:'ANALYTICS', items:[
-    { id:'reports', label:'Reports', icon:'▣', cap:'reports' },
+    { id:'reports', label:'Reports', icon:'▣', adminOnly:true },
     { id:'dailyclose', label:'Daily Close', icon:'◷', cap:'dailyclose' },
     { id:'productivity', label:'Productivity', icon:'⚙', cap:'productivity' },
     { id:'receivables', label:'Receivables', icon:'₱', cap:'receivables' }
@@ -46,7 +46,10 @@ var NAV = [
     { id:'settings', label:'Settings', icon:'⚒', cap:'settings' }
   ]}
 ];
-function navAllowed(it){ return (typeof can!=='function') || !it.cap || can(it.cap); }
+function navAllowed(it){
+  if (it.adminOnly) return (typeof canSeeReports!=='function') || canSeeReports();  // hard admin-only items (e.g. Reports)
+  return (typeof can!=='function') || !it.cap || can(it.cap);
+}
 
 var NAV_STACK = [];      // breadcrumb of visited pages for ESC "back"
 function _navTo(view, arg){

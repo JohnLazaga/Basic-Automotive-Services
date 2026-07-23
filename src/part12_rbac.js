@@ -24,7 +24,6 @@ var CAPS = [
   { key:'billing',      label:'Final billing / OR #' },
   { key:'billing_edit', label:'Edit billing after it is done' },
   { key:'receivables',  label:'Receivables (A/R)' },
-  { key:'reports',      label:'Reports' },
   { key:'dailyclose',   label:'Daily Close' },
   { key:'productivity', label:'Productivity & commissions' },
   { key:'parts_manage', label:'Parts / Labor / PO' },
@@ -35,7 +34,7 @@ var CAPS = [
 
 /* Default matrix (Admin always has everything via isAdmin). Admin-editable. */
 var DEFAULT_PERMS = {
-  SV:               { appointments:1, estimates:1, prices:1, part_cost:1, discounts:1, billing:1, billing_edit:1, receivables:1, reports:1, dailyclose:1, parts_manage:1 },
+  SV:               { appointments:1, estimates:1, prices:1, part_cost:1, discounts:1, billing:1, billing_edit:1, receivables:1, dailyclose:1, parts_manage:1 },
   SA:               { appointments:1, estimates:1, prices:1, billing:1, receivables:1 },
   SM:               { estimates:1, prices:1 },
   Mechanic:         {},
@@ -66,6 +65,14 @@ function canSeeJobPrices(){
    still see revenue and bills, never the profit readouts. Local / pre-auth
    (dev build, mini-PC) returns true, matching the other gates' convention. */
 function canSeeProfit(){
+  if (typeof CURRENT_USER==='undefined' || !CURRENT_USER) return true;
+  return !!CURRENT_USER.isAdmin;
+}
+
+/* Reports & Analytics is ADMINS ONLY — it aggregates revenue, cost, profit and
+   margins. This is a hard gate (not a grantable role capability): only Admin, or
+   the local / pre-auth dev build, may open the Reports page or see it in nav. */
+function canSeeReports(){
   if (typeof CURRENT_USER==='undefined' || !CURRENT_USER) return true;
   return !!CURRENT_USER.isAdmin;
 }
@@ -399,8 +406,11 @@ function accessDenied(what){
 /* Map a route to the capability it requires (for the renderView guard). */
 var VIEW_CAP = {
   appointments:'appointments', estimates:'estimates', estimate:'estimates',
-  reports:'reports', dailyclose:'dailyclose', productivity:'productivity', receivables:'receivables',
+  dailyclose:'dailyclose', productivity:'productivity', receivables:'receivables',
   parts:'parts_manage', labor:'parts_manage', purchaseorders:'parts_manage', po:'parts_manage',
   staff:'staff_manage', accounts:'staff_manage', settings:'settings'
 };
-function routeAllowed(view){ var c=VIEW_CAP[view]; return !c || can(c); }
+function routeAllowed(view){
+  if (view==='reports') return canSeeReports();   // Reports & Analytics: admins only
+  var c=VIEW_CAP[view]; return !c || can(c);
+}
