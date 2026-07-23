@@ -68,15 +68,33 @@ if (MODE === 'dev') {
   console.log('Built DEV (local mode, isolated) -> ' + devDest);
   console.log('  HTML : ' + out.length.toLocaleString() + ' bytes');
 } else {
-  // Every prod branch — INCLUDING Fairview — is a self-contained artifact in
-  // dist/<slug>/, served at /<slug>/. The site ROOT (index.html) is the marketing
-  // placeholder and is NEVER written by the build, so it can't clobber the website.
+  // Every prod branch — INCLUDING Fairview — is a self-contained artifact.
+  // It is written to TWO places:
+  //   1. dist/<slug>/   — git-ignored; consumed by the mini-PC / local-branch
+  //                       workflow (add-local-branch.js, branch-server).
+  //   2. <slug>/        — COMMITTED at the repo root; THIS is what GitHub Pages
+  //                       serves at /<slug>/. dist/ is git-ignored and can never
+  //                       reach Pages, so the build MUST write the served folder
+  //                       directly — otherwise `git add -A && push` publishes
+  //                       nothing and the live site silently freezes.
+  // The site ROOT (index.html) is the marketing placeholder and is NEVER written.
   const dir = path.join(__dirname, 'dist', BRANCH.slug);
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, 'index.html'), out, 'utf8');
   fs.writeFileSync(path.join(dir, 'branch.json'), JSON.stringify(BRANCH, null, 2), 'utf8');
   fs.writeFileSync(path.join(dir, 'version.txt'), APP_VERSION, 'utf8');
   console.log('Built branch "' + BRANCH.slug + '" (' + BRANCH.name + ') -> ' + path.join(dir, 'index.html'));
+
+  // Publish to the committed served folder — every branch that Pages hosts (i.e.
+  // any branch whose public URL is on the domain, not a localhost-only dev branch).
+  const isServed = !/localhost/i.test(BRANCH.publicUrl || '');
+  if (isServed) {
+    const pub = path.join(__dirname, BRANCH.slug);
+    fs.mkdirSync(pub, { recursive: true });
+    fs.writeFileSync(path.join(pub, 'index.html'), out, 'utf8');
+    fs.writeFileSync(path.join(pub, 'version.txt'), APP_VERSION, 'utf8');
+    console.log('  Served (committed) -> ' + path.join(BRANCH.slug, 'index.html') + '  ← GitHub Pages serves this');
+  }
   console.log('  Public URL : ' + BRANCH.publicUrl);
   console.log('  Parts URL  : ' + BRANCH.partsUrl + '  (' + BRANCH.partsSource + ')');
   console.log('  HTML : ' + out.length.toLocaleString() + ' bytes');
