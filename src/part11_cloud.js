@@ -205,7 +205,15 @@ async function onSignedIn(user){
     console.error('account load failed', e);
     renderCloudError('Sign-in problem.', (e&&e.message)||'Please try again.'); return;
   }
-  // 2) Load shop data.
+  // 2) Premises gate — the server decides whether this connection is the shop's.
+  //    A refusal renders its own lock screen and signs the user out, so stop here.
+  //    (Runs AFTER loadCurrentUser because the check needs to know who you are,
+  //    and BEFORE any data read because that is exactly what it protects.)
+  if (typeof premisesEnsure === 'function'){
+    var onSite = await premisesEnsure();
+    if (!onSite) return;
+  }
+  // 3) Load shop data.
   try {
     await cloudLoadAll();
   } catch(e){

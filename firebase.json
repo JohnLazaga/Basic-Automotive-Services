@@ -1,5 +1,8 @@
 {
   "functions": {
     "source": "password-reset-kit/functions"
+  },
+  "firestore": {
+    "rules": "firestore.rules"
   }
 }

@@ -98,3 +98,11 @@ exports.adminResetPassword = functions.https.onCall(async (data, context) => {
 
   return { password };   // shown ONCE to the admin; never persisted
 });
+
+/* ============================================================================
+   Also deployed from this functions project: the shop-premises gate
+   (startShopSession / trustThisNetwork / forgetNetwork / setEnforcement).
+   It lives in its own module because it is app-specific, not part of the
+   reusable password-reset kit. See shop-session.js for the why and how.
+   ========================================================================== */
+Object.assign(exports, require('./shop-session'));

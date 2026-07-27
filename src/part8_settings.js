@@ -45,6 +45,8 @@ VIEWS.settings = function(){
 
     sqlServerCard()+
 
+    premisesCard()+
+
   '</div><div class="colside">'+
     '<div class="card"><h2>Service Bays</h2><div class="tags">'+bays+'</div>'+
       '<div class="row gap mt8"><input id="bayNew" placeholder="Bay name"><button class="btn sm" onclick="addBay()">Add</button></div></div>'+

@@ -4,6 +4,16 @@ rules_version = '2';
    A user belongs to a branch iff branches/{b}/users/{uid} exists and is active.
    The shop owner (by email) is a super-admin across every branch.
    One branch's data is completely walled off from another's.
+
+   PREMISES GATE (see password-reset-kit/functions/shop-session.js)
+   Being signed in is not enough: a non-admin also needs a live session document
+   at branches/{b}/sessions/{uid}, which ONLY the Admin SDK can write and which
+   the startShopSession function issues only when the request comes from one of
+   the branch's trusted networks. A worker who copies his saved password out of
+   the browser and signs in from home therefore reads nothing.
+
+   The gate is dormant until branches/{b}/meta/network.enforce == true, so
+   deploying these rules cannot lock a shop out. Trust the shop network first.
    ========================================================================== */
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -14,6 +24,12 @@ service cloud.firestore {
     function acctPath(b) {
       return /databases/$(database)/documents/branches/$(b)/users/$(request.auth.uid);
     }
+    function sessPath(b) {
+      return /databases/$(database)/documents/branches/$(b)/sessions/$(request.auth.uid);
+    }
+    function netPath(b) {
+      return /databases/$(database)/documents/branches/$(b)/shopnet/network;
+    }
     function memberOf(b) {
       return request.auth != null
              && exists(acctPath(b))
@@ -23,6 +39,30 @@ service cloud.firestore {
       return memberOf(b) && get(acctPath(b)).data.isAdmin == true;
     }
 
+    /* Is the premises gate switched on for this branch? Absent doc / absent
+       field == off, so the gate stays dormant until an admin enables it. */
+    function enforcingPremises(b) {
+      return exists(netPath(b)) && get(netPath(b)).data.get('enforce', false) == true;
+    }
+    /* A live, unexpired shop session. The default makes a session document that
+       only carries a denial stamp (no expiresAt) evaluate as expired. */
+    function hasShopSession(b) {
+      return exists(sessPath(b))
+             && get(sessPath(b)).data.get('expiresAt', request.time) > request.time;
+    }
+    /* Admins and the owner work from home by design; everyone else must hold a
+       session issued from a trusted shop network. */
+    function onPremises(b) {
+      return !enforcingPremises(b)
+             || isOwner()
+             || get(acctPath(b)).data.get('isAdmin', false) == true
+             || hasShopSession(b);
+    }
+    /* The check that guards real shop data: an active member, on the premises. */
+    function activeMember(b) {
+      return memberOf(b) && onPremises(b);
+    }
+
     /* ---- Branch container doc (metadata only) ---- */
     match /branches/{b} {
       allow read:  if isOwner() || memberOf(b);
@@ -30,27 +70,53 @@ service cloud.firestore {
 
       /* Operational data — staff, bays, parts, labor, vehicles, estimates,
          jobs, appointments, purchaseOrders, catalog. Members of the branch
-         read/write; 'users' and 'meta' are handled by their own stricter rules
-         below (excluded here so members can't edit accounts/shop settings). */
+         read/write; 'users', 'meta' and 'sessions' are handled by their own
+         stricter rules below (excluded here so members can't edit accounts,
+         shop settings, the trusted-network list, or their own session). */
       match /{coll}/{doc} {
-        allow read, write: if (isOwner() || memberOf(b))
+        allow read, write: if (isOwner() || activeMember(b))
                               && coll != 'users' && coll != 'meta'
                               && coll != 'portal' && coll != 'appt_requests'
-                              && coll != 'portal_claims';
+                              && coll != 'portal_claims'
+                              && coll != 'sessions' && coll != 'shopnet';
+      }
+
+      match /meta/shop {
+        allow read:  if isOwner() || activeMember(b);
+        allow write: if isOwner() || adminOf(b);
       }
 
       /* Counters (orcounter/jocounter/estcounter/pocounter/counters) — any
-         active member may run the allocation transaction. Shop settings
-         (meta/shop) are admin-only. */
-      match /meta/shop {
-        allow read:  if isOwner() || memberOf(b);
-        allow write: if isOwner() || adminOf(b);
-      }
+         active member on the premises may run the allocation transaction.
+         The app listens to this whole collection, so this rule must stay
+         document-id agnostic: a `doc != '...'` condition here cannot be
+         satisfied by a collection listen and would break the live sync. That
+         is why the trusted-network list lives in its own collection below
+         rather than as another meta document. */
       match /meta/{doc} {
-        allow read, write: if isOwner() || memberOf(b);
+        allow read, write: if isOwner() || activeMember(b);
+      }
+
+      /* Trusted networks for the premises gate. Readable so the Settings screen
+         can show them; writable ONLY by the Cloud Functions (Admin SDK), never
+         by a client — otherwise a worker would simply add his home address. */
+      match /shopnet/{doc} {
+        allow read:  if isOwner() || memberOf(b);
+        allow write: if false;
+      }
+
+      /* Shop sessions — issued by startShopSession (Admin SDK) only. A member
+         may read their own to see when it expires; nobody may write one. */
+      match /sessions/{uid} {
+        allow get:   if isOwner() || adminOf(b) || (request.auth != null && request.auth.uid == uid);
+        allow list:  if isOwner() || adminOf(b);
+        allow write: if false;
       }
 
       /* Accounts — a member reads their own doc; admins list/manage all.
+         Deliberately NOT premises-gated: the app must resolve who you are
+         before it can ask for a shop session, and the sign-in screen would
+         otherwise deadlock. Reading your own name/role reveals no shop data.
          (Bootstrap of a branch's first admin is done by the owner.) */
       match /users/{uid} {
         allow get:   if isOwner() || adminOf(b) || (request.auth != null && request.auth.uid == uid);
@@ -62,7 +128,7 @@ service cloud.firestore {
          branch members publish. */
       match /portal/{doc} {
         allow read:  if true;
-        allow write: if isOwner() || memberOf(b);
+        allow write: if isOwner() || activeMember(b);
       }
 
       /* Customer appointment requests — anonymous create (validated), staff manage. */
@@ -71,7 +137,7 @@ service cloud.firestore {
                       && request.resource.data.name is string    && request.resource.data.name.size() < 120
                       && request.resource.data.contact is string && request.resource.data.contact.size() < 60
                       && request.resource.data.notes is string   && request.resource.data.notes.size() < 1000;
-        allow read, update, delete: if isOwner() || memberOf(b);
+        allow read, update, delete: if isOwner() || activeMember(b);
       }
 
       /* Customer portal PIN self-claim — anonymous create (validated), staff read/delete. */
@@ -80,7 +146,7 @@ service cloud.firestore {
                       && request.resource.data.pin is string
                       && request.resource.data.pin.size() >= 4
                       && request.resource.data.pin.size() <= 6;
-        allow read, delete: if isOwner() || memberOf(b);
+        allow read, delete: if isOwner() || activeMember(b);
         allow update: if false;
       }
     }
