@@ -137,17 +137,20 @@ PIN server-side and returns the payload, leaving only
 local branch server already does (`branch-server/server.js`, `/portal/:id/verify`).
 Until that's done, treat the cloud portal as public information.
 
-## Gotcha: the `meta` collection is listened to as a whole
+## Gotcha: keep `meta` reads document-scoped
 
-`part11_cloud.js` subscribes to `branches/{b}/meta` as a collection. A rule for a
-listened collection **cannot** carry per-document-id conditions — a `list`
-operation can't satisfy `doc != 'shop'`, so the whole live sync breaks.
+Rules for a **listened collection** cannot carry per-document-id conditions. A
+collection listen is a `list`, and a `list` can't satisfy `doc != 'shop'` — so
+the moment anything subscribes to `branches/{b}/meta` as a collection, that
+condition has to come out of the rule and live sync breaks without it.
 
-That's why the trusted-network list lives in its own `shopnet` collection rather
-than as another `meta` document. Keep `match /meta/{doc}` document-id agnostic.
+This matters because Firestore **ORs all matching rules together**. A broad
+`match /meta/{doc}` grant overrides the narrower admin-only rule on `meta/shop`
+sitting right above it, and every member gets to rewrite shop settings — BIR
+details, VAT rate, commission rate, portal config.
 
-Note the consequence: because Firestore ORs all matching rules together, the
-broad `match /meta/{doc}` grant means any active member can still write
-`meta/shop`, despite the narrower admin-only rule above it. Closing that means
-changing the client to listen to `meta/shop` and `meta/counters` as two document
-listeners instead of one collection listener, then tightening the rule.
+So `part11_cloud.js` watches **`meta/shop` and `meta/counters` as two document
+listeners**, never the collection, which is what lets `match /meta/{doc}` carry
+`&& doc != 'shop'`. If you ever replace those with a collection listener you
+silently reopen the hole. The same constraint is why the trusted-network list
+lives in its own `shopnet` collection rather than as another `meta` document.
