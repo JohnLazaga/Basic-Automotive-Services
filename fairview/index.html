@@ -602,7 +602,7 @@ var BRANCH = {"id":"main","slug":"fairview","name":"Basic by JMSI — Fairview (
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.2.0 · 2026-07-27 · f59bf58';
+var APP_VERSION = 'v1.2.0 · 2026-07-27 · 94522f1';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -5588,15 +5588,25 @@ function cloudSubscribe(){
   // Photos are NOT globally subscribed anymore (that read every photo doc on the
   // initial snapshot). Instead the currently-open job's photos are watched live by
   // watchJobPhotos(), reading only that one job's photo docs.
-  var um = bcol('meta').onSnapshot(function(snap){
-    if (snap.metadata.hasPendingWrites) return;
-    snap.docs.forEach(function(d){
-      if (d.id==='shop'){ S.shop = Object.assign(S.shop||{}, d.data()); _metaSnap.shop = JSON.stringify(S.shop); }
-      if (d.id==='counters'){ S.counters = Object.assign(S.counters||{}, d.data()); _metaSnap.counters = JSON.stringify(S.counters); }
-    });
+  // meta/shop and meta/counters are watched as TWO DOCUMENT listeners, not as one
+  // listener on the whole meta collection. A collection listen is a `list`, and a
+  // list cannot satisfy a rule carrying a document-id condition — so listening to
+  // the collection forces `match /meta/{doc}` to stay id-agnostic, which in turn
+  // hands every member write access to meta/shop (rules OR together, so the
+  // narrower admin-only rule above it cannot take it back). Watching the two docs
+  // individually is what lets the rule exclude 'shop'. It also reads exactly the
+  // two documents we care about instead of the whole collection.
+  var umShop = bcol('meta').doc('shop').onSnapshot(function(d){
+    if (d.metadata.hasPendingWrites || !d.exists) return;
+    S.shop = Object.assign(S.shop||{}, d.data()); _metaSnap.shop = JSON.stringify(S.shop);
     if (!modalOpen()) render();
-  });
-  _cloudSubs.push(um);
+  }, function(err){ console.error('listener meta/shop', err); });
+  var umCounters = bcol('meta').doc('counters').onSnapshot(function(d){
+    if (d.metadata.hasPendingWrites || !d.exists) return;
+    S.counters = Object.assign(S.counters||{}, d.data()); _metaSnap.counters = JSON.stringify(S.counters);
+    if (!modalOpen()) render();
+  }, function(err){ console.error('listener meta/counters', err); });
+  _cloudSubs.push(umShop, umCounters);
 }
 function cloudUnsub(){ unwatchJobPhotos(); _cloudSubs.forEach(function(u){ try{u();}catch(e){} }); _cloudSubs=[]; }
 

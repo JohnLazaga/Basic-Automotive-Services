@@ -88,13 +88,18 @@ service cloud.firestore {
 
       /* Counters (orcounter/jocounter/estcounter/pocounter/counters) — any
          active member on the premises may run the allocation transaction.
-         The app listens to this whole collection, so this rule must stay
-         document-id agnostic: a `doc != '...'` condition here cannot be
-         satisfied by a collection listen and would break the live sync. That
-         is why the trusted-network list lives in its own collection below
-         rather than as another meta document. */
+         'shop' is excluded so the admin-only rule above actually holds: rules
+         OR together, so without this exclusion a broad grant here would hand
+         write access to shop settings straight back to every member.
+
+         This exclusion is only possible because the client watches meta/shop
+         and meta/counters as two DOCUMENT listeners (part11_cloud.js). A
+         listener on the whole meta collection is a `list`, which cannot satisfy
+         a document-id condition — reintroducing one would break live sync. Keep
+         meta reads document-scoped. (The same constraint is why the
+         trusted-network list lives in its own shopnet collection.) */
       match /meta/{doc} {
-        allow read, write: if isOwner() || activeMember(b);
+        allow read, write: if (isOwner() || activeMember(b)) && doc != 'shop';
       }
 
       /* Trusted networks for the premises gate. Readable so the Settings screen
