@@ -344,6 +344,9 @@ function eodData(from, to){
   var vs=vatSplit(net,S);
   var partsRev=round2(billed.reduce(function(s,j){return s+partsTotal(j.lines);},0));
   var laborRev=round2(billed.reduce(function(s,j){return s+laborTotal(j.lines);},0));
+  /* Approved additional work is part of net sales too, so the mix only ties back
+     to `net` if it is carried alongside parts and labor. */
+  var addlRev=round2(billed.reduce(function(s,j){return s+addlTotal(j);},0));
 
   /* Receipts issued in the period, in series order — VOIDED ONES INCLUDED. That
      is the point of the list: reconciliation needs to see the void sitting in
@@ -365,7 +368,7 @@ function eodData(from, to){
     for(var n=receipts[0].n; n<=receipts[receipts.length-1].n; n++){ if(!everyOr[n]) missing.push(n); }
   }
   return { from:from, to:to, txns:txns, byMethod:byMethod, collections:collections,
-           billed:billed, net:net, disc:disc, vs:vs, partsRev:partsRev, laborRev:laborRev,
+           billed:billed, net:net, disc:disc, vs:vs, partsRev:partsRev, laborRev:laborRev, addlRev:addlRev,
            receipts:receipts, voidCount:voidCount, missing:missing };
 }
 /* Receipts-by-series table shared by both screens and both printouts. */
@@ -417,7 +420,8 @@ VIEWS.dailyclose = function(){
       eodReceiptsCard(d, false)+'</div>'+
     '<div class="colside">'+
       '<div class="card"><h2>Collections by method</h2>'+(Object.keys(d.byMethod).length?Object.keys(d.byMethod).map(function(m){return line2(m,peso(d.byMethod[m]));}).join(''):emptyState('—'))+'</div>'+
-      '<div class="card"><h2>Sales mix</h2>'+line2('Parts',peso(d.partsRev))+line2('Labor',peso(d.laborRev))+'</div>'+
+      '<div class="card"><h2>Sales mix</h2>'+line2('Parts',peso(d.partsRev))+line2('Labor',peso(d.laborRev))+
+        (d.addlRev?line2('Additional work',peso(d.addlRev)):'')+line2('Net sales',peso(d.net))+'</div>'+
     '</div></div></div>';
 };
 

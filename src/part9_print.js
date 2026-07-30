@@ -40,6 +40,25 @@ function printCSS(){
     '.pms-rpt{table-layout:fixed;margin:4px 0}.pms-rpt td:first-child{width:56%}.pms-rpt td:last-child{width:44%}.pms-rpt td{padding:3px 8px}'+
     '.pms-sec-blk .dtitle{page-break-after:avoid;margin-bottom:2px}'+       /* keep a heading with its rows, but let sections flow */
     '.pms-pgfoot{margin-top:16px;padding-top:8px;border-top:1px solid #E5E5EA;text-align:center;font-size:10.5px;color:#6E6E73}'+
+    /* ---- EOD / range report: three summary boxes across, then packed tables.
+       Scoped under .eod so the invoice and job order keep their airier look. --- */
+    '.eod .dhead{padding-bottom:9px;margin-bottom:10px}.eod .dtitle{font-size:13px;margin:0 0 8px}'+
+    '.eod-sum{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;page-break-inside:avoid}'+
+    '.eod-sum .b{border:1px solid #E5E5EA;border-radius:8px;padding:7px 9px}'+
+    '.eod-sum h4{margin:0 0 4px;font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:#6E6E73;font-weight:700}'+
+    '.eod-sum .l2{display:flex;justify-content:space-between;gap:8px;font-size:11.5px;padding:1.5px 0}'+
+    '.eod-sum .l2.g{border-top:1.5px solid #1D1D1F;margin-top:4px;padding-top:4px;font-weight:800;font-size:12.5px}'+
+    '.eod-h{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#CC0F0F;'+
+      'border-bottom:1px solid #E5E5EA;padding-bottom:3px;margin:14px 0 0;overflow:hidden;page-break-after:avoid}'+
+    '.eod-h span{float:right;font-weight:600;text-transform:none;letter-spacing:0;color:#6E6E73}'+
+    '.eod table{font-size:11.5px;margin:3px 0 0}'+
+    '.eod th,.eod td{padding:3px 6px;vertical-align:top}'+
+    '.eod thead{display:table-header-group}'+          /* column heads repeat on every page of a long range */
+    '.eod tr{page-break-inside:avoid}'+
+    '.eod .vd{color:#CC0F0F;font-weight:700;font-size:9.5px;letter-spacing:.03em}'+
+    '.eod .vd i{color:#6E6E73;font-weight:500;font-style:normal;letter-spacing:0}'+
+    '.eod .notes{margin:6px 0 0;padding:6px 8px;font-size:11px;border-left:3px solid #F21717}'+
+    '.eod .sig-grid{margin-top:16px;font-size:11px}.eod .sigline{margin-top:26px}'+
   '</style>';
 }
 function docHeader(title){
@@ -322,44 +341,63 @@ function printMechCommission(){ printDoc(docMechCommission()); }
    from eodData(), so a range printout always reconciles against its days. */
 function docEodBody(d, title, withDate){
   var vs=d.vs;
-  return docHeader(title)+
-    '<div class="totbox" style="width:340px;margin:0 0 14px"><div class="l2"><span>Net sales (billed)</span><span>'+peso(d.net)+'</span></div>'+
-    (vs.exempt?'<div class="l2"><span>VAT-Exempt</span><span>'+peso(vs.gross)+'</span></div>':'<div class="l2"><span>VATable</span><span>'+peso(vs.vatable)+'</span></div><div class="l2"><span>Output VAT</span><span>'+peso(vs.vat)+'</span></div>')+
-    (d.disc?'<div class="l2"><span>Discounts</span><span>'+peso(d.disc)+'</span></div>':'')+
-    '<div class="l2 grand"><span>Collections</span><span>'+peso(d.collections)+'</span></div></div>'+
-    '<div class="dtitle" style="font-size:12px">Collections by method</div><table><tbody>'+
-    (Object.keys(d.byMethod).length
-      ? Object.keys(d.byMethod).map(function(m){return '<tr><td>'+esc(m)+'</td><td class="r">'+peso(d.byMethod[m])+'</td></tr>';}).join('')
-      : '<tr><td colspan="2">None</td></tr>')+'</tbody></table>'+
-    '<div class="dtitle" style="font-size:12px">Sales mix</div><table><tbody>'+
-      '<tr><td>Parts</td><td class="r">'+peso(d.partsRev)+'</td></tr>'+
-      '<tr><td>Labor</td><td class="r">'+peso(d.laborRev)+'</td></tr></tbody></table>'+
+  var cols=withDate?5:4;                      // both tables carry the same column count
+  var due=round2(vs.gross-d.disc);            // what the billed jobs actually ask for — ties to the OR total
+  var recTotal=round2(d.receipts.reduce(function(s,r){return s+(r.voided?0:r.amount);},0));
+  var methods=Object.keys(d.byMethod);
+  function sl(a,b,grand){ return '<div class="l2'+(grand?' g':'')+'"><span>'+a+'</span><span>'+b+'</span></div>'; }
+
+  /* Series span, count and void tally ride on the section heading instead of
+     taking a line of their own. */
+  var series=d.receipts.length
+    ? esc(d.receipts[0].or)+(d.receipts.length>1?' → '+esc(d.receipts[d.receipts.length-1].or):'')+
+      ' · '+d.receipts.length+' issued'+(d.voidCount?' · '+d.voidCount+' void':'')
+    : 'none issued';
+
+  return '<div class="eod">'+docHeader(title)+
+    /* Sales, collections and mix side by side: the three columns that used to be
+       three stacked blocks. Each closes on its own total. */
+    '<div class="eod-sum">'+
+      '<div class="b"><h4>Sales (billed)</h4>'+
+        (vs.exempt ? sl('VAT-Exempt', peso(vs.gross))
+                   : sl('VATable', peso(vs.vatable))+sl('Output VAT', peso(vs.vat)))+
+        (d.disc?sl('Less discounts','('+peso(d.disc)+')'):'')+
+        sl('Amount due', peso(due), true)+'</div>'+
+      '<div class="b"><h4>Collections by method</h4>'+
+        (methods.length ? methods.map(function(m){return sl(esc(m), peso(d.byMethod[m]));}).join('')
+                        : sl('None','—'))+
+        sl('Total collected', peso(d.collections), true)+'</div>'+
+      '<div class="b"><h4>Sales mix</h4>'+
+        sl('Parts', peso(d.partsRev))+sl('Labor', peso(d.laborRev))+
+        (d.addlRev?sl('Additional work', peso(d.addlRev)):'')+
+        sl('Net sales', peso(d.net), true)+'</div>'+
+    '</div>'+
     /* OR numbers in series, voids shown in place — this is what gets ticked off
-       against the receipt booklet during reconciliation. */
-    '<div class="dtitle" style="font-size:12px">OR numbers by series'+
-      (d.receipts.length?' · '+esc(d.receipts[0].or)+(d.receipts.length>1?' → '+esc(d.receipts[d.receipts.length-1].or):'')+
-        ' ('+d.receipts.length+(d.voidCount?', '+d.voidCount+' void':'')+')':'')+'</div>'+
+       against the receipt booklet during reconciliation. The void and its reason
+       sit under the number they belong to, which retires the Status column. */
+    '<div class="eod-h">OR numbers by series<span>'+series+'</span></div>'+
     (d.missing.length?'<div class="notes"><b>Unaccounted:</b> '+d.missing.map(function(n){return 'OR-'+n;}).join(', ')+
       ' — issued in this range but on no job order.</div>':'')+
-    '<table><thead><tr><th>OR #</th>'+(withDate?'<th>Date</th>':'')+'<th>JO #</th><th>Sold to</th><th>Status</th><th class="r">Amount</th></tr></thead><tbody>'+
+    '<table><thead><tr><th>OR #</th>'+(withDate?'<th>Date</th>':'')+'<th>JO #</th><th>Sold to</th><th class="r">Amount</th></tr></thead><tbody>'+
     (d.receipts.length
       ? d.receipts.map(function(r){
-          return '<tr><td>'+esc(r.or)+'</td>'+(withDate?'<td>'+esc(fmtDate(r.day))+'</td>':'')+
+          return '<tr><td><b>'+esc(r.or)+'</b>'+
+            (r.voided?'<br><span class="vd">VOID'+(r.voidReason?' <i>'+esc(r.voidReason)+'</i>':'')+'</span>':'')+'</td>'+
+            (withDate?'<td>'+esc(fmtDate(r.day))+'</td>':'')+
             '<td>'+esc(r.jo)+'</td><td>'+esc(r.owner)+'</td>'+
-            '<td>'+(r.voided?'VOID'+(r.voidReason?' — '+esc(r.voidReason):''):'')+'</td>'+
             '<td class="r">'+(r.voided?'—':peso(r.amount))+'</td></tr>';
         }).join('')
-      : '<tr><td colspan="'+(withDate?6:5)+'">No receipts issued.</td></tr>')+
-    '<tr class="tot"><td></td>'+(withDate?'<td></td>':'')+'<td></td><td></td><td class="r">Total</td><td class="r">'+
-      peso(round2(d.receipts.reduce(function(s,r){return s+(r.voided?0:r.amount);},0)))+'</td></tr>'+
+      : '<tr><td colspan="'+cols+'">No receipts issued.</td></tr>')+
+    '<tr class="tot"><td colspan="'+(cols-1)+'" class="r">Total (excl. void)</td><td class="r">'+peso(recTotal)+'</td></tr>'+
     '</tbody></table>'+
-    '<div class="dtitle" style="font-size:12px">Transactions</div><table><thead><tr><th>JO #</th>'+
-      (withDate?'<th>Date</th>':'')+'<th>Customer</th><th>Method</th><th class="r">Amount</th></tr></thead><tbody>'+
+    '<div class="eod-h">Transactions<span>'+d.txns.length+' payment'+(d.txns.length===1?'':'s')+'</span></div>'+
+    '<table><thead><tr><th>JO #</th>'+(withDate?'<th>Date</th>':'')+
+      '<th>Customer</th><th>Method</th><th class="r">Amount</th></tr></thead><tbody>'+
     (d.txns.length
       ? d.txns.map(function(t){return '<tr><td>'+esc(t.job.no)+'</td>'+(withDate?'<td>'+esc(fmtDate(t.day))+'</td>':'')+
           '<td>'+esc(t.job.owner)+'</td><td>'+esc(t.p.method)+'</td><td class="r">'+peso(t.p.amount)+'</td></tr>';}).join('')
-      : '<tr><td colspan="'+(withDate?5:4)+'">No collections.</td></tr>')+'</tbody></table>'+
-    '<div class="sig-grid"><div class="sigline">Cashier</div><div class="sigline">Service Manager</div><div class="sigline">Verified by</div></div>';
+      : '<tr><td colspan="'+cols+'">No collections.</td></tr>')+'</tbody></table>'+
+    '<div class="sig-grid"><div class="sigline">Cashier</div><div class="sigline">Service Manager</div><div class="sigline">Verified by</div></div></div>';
 }
 function docDailyClose(){
   var date=DC_DATE||todayISO();
