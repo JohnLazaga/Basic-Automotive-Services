@@ -371,6 +371,70 @@ section('OR series: gaps in the receipt sequence are detected');
   ok('unbilled jobs are ignored', M.orSeriesRows().length===2 && M.seriesGaps(M.orSeriesRows()).length===0);
 })();
 
+/* --------------------------------------------- EOD / date-range figures */
+section('EOD & range report: OR series with void status, one shared aggregator');
+(function(){
+  const s=fresh();
+  const mk=(n,or,day,amt,voided)=>({ id:'j'+n, no:'JO-'+String(n).padStart(4,'0'), plate:'ABC 123',
+    owner:'CUST '+n, stage:'Released', dateIn:day, billedAt:day+'T02:00:00.000Z',
+    lines:[{id:'l1',type:'labor',desc:'Service',qty:1,price:amt}],
+    payments:[{id:'p1',amount:amt,method:'Cash',date:day+'T03:00:00.000Z'}],
+    discount:{parts:0,labor:0,other:0}, mechanicIds:[], orNumber:or,
+    orVoid: voided ? { at:day+'T04:00:00.000Z', by:'u1', byName:'Admin', reason:'wrong customer' } : null });
+
+  s.jobs=[ mk(1,'OR-1207','2026-07-01',1000,false),
+           mk(2,'OR-1208','2026-07-01',2000,true),    // voided, same day
+           mk(3,'OR-1209','2026-07-02',3000,false) ];
+  M.setS(s);
+
+  // Single day
+  let d=M.eodData('2026-07-01','2026-07-01');
+  ok('day: receipts include the void', d.receipts.length===2);
+  ok('day: series order', d.receipts.map(r=>r.or).join(',')==='OR-1207,OR-1208');
+  ok('day: void flagged with reason', d.receipts[1].voided===true && d.receipts[1].voidReason==='wrong customer');
+  ok('day: void count', d.voidCount===1);
+  ok('day: no unaccounted numbers', d.missing.length===0);
+  ok('day: voided sale excluded from net', d.billed.length===1);
+  ok('day: collections keep the cash', d.collections===3000);
+
+  // Range spanning both days
+  d=M.eodData('2026-07-01','2026-07-03');
+  ok('range: all receipts listed', d.receipts.length===3);
+  ok('range: still in series order', d.receipts.map(r=>r.n).join(',')==='1207,1208,1209');
+  ok('range: collections summed', d.collections===6000);
+  ok('range: voided excluded from sales', d.billed.length===2);
+
+  // A day whose receipts skip a number that belongs to another day must NOT be
+  // reported as missing — that was the false-alarm risk.
+  d=M.eodData('2026-07-02','2026-07-02');
+  ok('adjacent-day receipt is not "missing"', d.missing.length===0 && d.receipts.length===1);
+
+  // A number carried by no job anywhere IS missing.
+  const s2=fresh();
+  s2.jobs=[ mk(1,'OR-1207','2026-07-01',1000,false), mk(2,'OR-1209','2026-07-01',1000,false) ];
+  M.setS(s2);
+  d=M.eodData('2026-07-01','2026-07-01');
+  ok('genuinely absent number reported', d.missing.length===1 && d.missing[0]===1208);
+
+  // Empty period must not crash or invent anything.
+  d=M.eodData('2020-01-01','2020-01-02');
+  ok('empty period is clean', d.receipts.length===0 && d.missing.length===0 && d.collections===0);
+
+  // Printed range report renders with dates and void status.
+  M.setS(s); M.setCurrentUser({uid:'u1',isAdmin:true,role:'SV',active:true});
+  M.setEodRange('2026-07-01','2026-07-03');
+  const doc=M.docEodRange();
+  ok('printed range renders', typeof doc==='string' && doc.indexOf('Sales &amp; Collections')>0 || doc.indexOf('Sales & Collections')>0);
+  ok('printed range lists the OR series', doc.indexOf('OR-1207')>0 && doc.indexOf('OR-1209')>0);
+  ok('printed range marks the void', doc.indexOf('VOID')>0 && doc.indexOf('wrong customer')>0);
+  // Printed EOD for one day must agree with the aggregator.
+  M.setDcDate('2026-07-01');
+  const eod=M.docDailyClose();
+  ok('printed EOD lists that day only', eod.indexOf('OR-1208')>0 && eod.indexOf('OR-1209')<0);
+  ok('printed EOD marks the void', eod.indexOf('VOID')>0);
+  M.setCurrentUser(null);
+})();
+
 /* --------------------------------------------- Delete capability + clear guard */
 section('Delete/clear-data permission is real, and clearing is blocked by receipts');
 (function(){

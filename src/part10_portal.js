@@ -300,6 +300,8 @@ if (typeof module!=='undefined' && module.exports){
     VIEWS:function(){ return VIEWS; },
     docJobOrder:docJobOrder, docPostJob:docPostJob, docBilling:docBilling, docEstimate:docEstimate,
     docPO:docPO, docStatement:docStatement, docPayout:docPayout, docDailyClose:docDailyClose,
+    eodData:eodData, docEodRange:docEodRange, setEodRange:function(f,t){ EOD_FROM=f; EOD_TO=t; },
+    setDcDate:function(d){ DC_DATE=d; },
     createJob:createJob, createJobFromAppt:createJobFromAppt, createEstimateFrom:createEstimateFrom,
     deductInventory:deductInventory, receivePO:receivePO,
     importPartsText:importPartsText, importPartsFromArray:importPartsFromArray, parseCSV:parseCSV,

@@ -608,7 +608,7 @@ var BRANCH = {"id":"main","slug":"fairview","name":"Basic by JMSI — Fairview (
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.2.0 · 2026-07-30 · 1aa9b96';
+var APP_VERSION = 'v1.2.0 · 2026-07-30 · 4cec596';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -3909,10 +3909,59 @@ VIEWS.reports = function(){
         comm.map(function(c){return '<tr><td>'+esc(c.name)+' <span class="muted small">'+esc(c.role)+'</span></td><td class="r">'+peso(c.amount)+'</td></tr>';}).join('')+
         '</tbody></table>':emptyState('No commissions yet.'))+'</div>'+
     '</div></div>'+
+    eodRangeCard()+
     orSeriesCard()+
     joSeriesCard()+
   '</div>';
 };
+
+/* ---- Sales & collections for a date range --------------------------------
+   The Daily Close figures over any period, from the same eodData() aggregator,
+   so a month here always reconciles against the days that make it up. */
+var EOD_FROM='', EOD_TO='';
+function eodRange(){
+  var today=todayISO();
+  return { from:EOD_FROM || today.slice(0,7)+'-01', to:EOD_TO || today };
+}
+function setEodRange(which, v){
+  if(which==='from') EOD_FROM=v; else EOD_TO=v;
+  render();
+}
+function eodRangePreset(p){
+  var today=todayISO();
+  if(p==='today'){ EOD_FROM=today; EOD_TO=today; }
+  else if(p==='week'){ var dt=new Date(); var dow=(dt.getDay()+6)%7; var mon=new Date(dt); mon.setDate(dt.getDate()-dow); EOD_FROM=todayISO(mon); EOD_TO=today; }
+  else if(p==='month'){ EOD_FROM=today.slice(0,7)+'-01'; EOD_TO=today; }
+  render();
+}
+function eodRangeCard(){
+  var r=eodRange();
+  /* Guard a reversed range rather than silently showing nothing. */
+  if(r.from>r.to) return '<div class="card"><h2>Sales &amp; collections by date range</h2>'+
+    '<div class="row gap wrap mb8">'+eodRangeControls(r)+'</div>'+
+    '<div class="lg-msg err">The "from" date is after the "to" date.</div></div>';
+  var d=eodData(r.from, r.to);
+  return '<div class="card"><div class="card-head"><h2>Sales &amp; collections by date range</h2>'+
+    '<button class="btn sm ghost" onclick="printEodRange()">⎙ Print</button></div>'+
+    '<div class="row gap wrap mb8">'+eodRangeControls(r)+'</div>'+
+    '<div class="muted small mb8">'+esc(fmtDate(r.from))+' – '+esc(fmtDate(r.to))+'</div>'+
+    '<div class="kpis">'+kpi('Collections',peso(d.collections))+kpi('Net sales (billed)',peso(d.net))+
+      kpi('Output VAT',peso(d.vs.vat))+kpi('Discounts',peso(d.disc))+kpi('Transactions',d.txns.length)+'</div>'+
+    '<div class="grid2cards">'+
+      '<div class="card"><h2>Collections by method</h2>'+(Object.keys(d.byMethod).length?Object.keys(d.byMethod).map(function(m){return line2(m,peso(d.byMethod[m]));}).join(''):emptyState('—'))+'</div>'+
+      '<div class="card"><h2>Sales mix</h2>'+line2('Parts',peso(d.partsRev))+line2('Labor',peso(d.laborRev))+
+        '<div class="bill-sep"></div>'+line2('Receipts issued',String(d.receipts.length)+(d.voidCount?' ('+d.voidCount+' void)':''))+'</div>'+
+    '</div>'+
+    eodReceiptsCard(d, true)+'</div>';
+}
+function eodRangeControls(r){
+  return '<input type="date" value="'+attr(r.from)+'" onchange="setEodRange(\'from\',this.value)">'+
+    '<span class="muted">to</span>'+
+    '<input type="date" value="'+attr(r.to)+'" onchange="setEodRange(\'to\',this.value)">'+
+    '<button class="btn sm ghost" onclick="eodRangePreset(\'today\')">Today</button>'+
+    '<button class="btn sm ghost" onclick="eodRangePreset(\'week\')">This week</button>'+
+    '<button class="btn sm ghost" onclick="eodRangePreset(\'month\')">This month</button>';
+}
 
 /* ---- OR numbers by series (with corresponding JO #s) ---------------------- */
 /* Every issued Official Receipt, ordered by its numeric series, paired with the
@@ -4091,39 +4140,104 @@ function commissionTable(jobs){
   return Object.keys(map).map(function(k){return map[k];}).filter(function(c){return c.amount>0;}).sort(function(a,b){return b.amount-a.amount;});
 }
 
-/* ---- Daily Close ---------------------------------------------------------- */
-var DC_DATE=null;
-VIEWS.dailyclose = function(){
-  if(!DC_DATE) DC_DATE=todayISO();
-  var date=DC_DATE;
-  // payments on that date across all jobs
+/* ---- End-of-day / period figures ------------------------------------------
+   One aggregator for the Daily Close screen, the printed EOD and the date-range
+   report, so the three can never disagree. `from`/`to` are inclusive local days
+   (pass the same date twice for a single day). */
+function eodData(from, to){
   var txns=[];
-  S.jobs.forEach(function(j){ (j.payments||[]).forEach(function(p){ if(localDay(p.date)===date) txns.push({ job:j, p:p }); }); });
+  S.jobs.forEach(function(j){ (j.payments||[]).forEach(function(p){
+    var d=localDay(p.date); if(d && d>=from && d<=to) txns.push({ job:j, p:p, day:d });
+  }); });
+  txns.sort(function(a,b){ return a.day<b.day?-1:a.day>b.day?1:0; });
   var byMethod={};
   txns.forEach(function(t){ byMethod[t.p.method]=round2((byMethod[t.p.method]||0)+t.p.amount); });
   var collections=round2(txns.reduce(function(s,t){return s+t.p.amount;},0));
-  // jobs billed that day -> net sales / vat / discounts
-  // Voided receipts are not sales. Collections above are left untouched: a void
-  // does not un-receive cash, so a refund is entered as its own payment.
-  var billed=S.jobs.filter(function(j){return localDay(j.billedAt)===date && !jobVoided(j);});
+
+  function inPeriod(j){ var d=localDay(j.billedAt); return !!d && d>=from && d<=to; }
+  /* Voided receipts are not sales, so they are out of every figure below.
+     Collections are left untouched: a void does not un-receive cash, so a
+     refund is entered as its own payment. */
+  var billed=S.jobs.filter(function(j){ return inPeriod(j) && !jobVoided(j); });
   var net=round2(billed.reduce(function(s,j){return s+jobNet(j);},0));   // VATable base (ex-VAT)
   var disc=round2(billed.reduce(function(s,j){return s+discountAmount(j);},0));
   var vs=vatSplit(net,S);
   var partsRev=round2(billed.reduce(function(s,j){return s+partsTotal(j.lines);},0));
   var laborRev=round2(billed.reduce(function(s,j){return s+laborTotal(j.lines);},0));
 
+  /* Receipts issued in the period, in series order — VOIDED ONES INCLUDED. That
+     is the point of the list: reconciliation needs to see the void sitting in
+     its place in the series, not a hole where a number used to be. */
+  var receipts=S.jobs.filter(function(j){ return inPeriod(j) && j.orNumber; }).map(function(j){
+    var m=/(\d+)/.exec(String(j.orNumber));
+    return { n:m?Number(m[1]):0, or:j.orNumber, jo:j.no, owner:j.owner||'', plate:j.plate||'',
+             day:localDay(j.billedAt), amount:jobGross(j), voided:jobVoided(j),
+             voidReason:(j.orVoid&&j.orVoid.reason)||'', id:j.id };
+  }).sort(function(a,b){ return a.n-b.n; });
+  var voidCount=receipts.filter(function(r){ return r.voided; }).length;
+  /* Numbers inside the period's range that NO job carries anywhere in the shop.
+     Checked against every job, not just this period's, so a receipt issued on an
+     adjacent day is not mistaken for a missing one. */
+  var everyOr={};
+  (S.jobs||[]).forEach(function(j){ if(j&&j.orNumber){ var m=/(\d+)/.exec(String(j.orNumber)); if(m) everyOr[Number(m[1])]=true; } });
+  var missing=[];
+  if(receipts.length){
+    for(var n=receipts[0].n; n<=receipts[receipts.length-1].n; n++){ if(!everyOr[n]) missing.push(n); }
+  }
+  return { from:from, to:to, txns:txns, byMethod:byMethod, collections:collections,
+           billed:billed, net:net, disc:disc, vs:vs, partsRev:partsRev, laborRev:laborRev,
+           receipts:receipts, voidCount:voidCount, missing:missing };
+}
+/* Receipts-by-series table shared by both screens and both printouts. */
+function eodReceiptRowsHTML(d, withDate, clickable){
+  if(!d.receipts.length) return '<tr><td colspan="'+(withDate?6:5)+'" class="muted center">No receipts issued.</td></tr>';
+  return d.receipts.map(function(r){
+    return '<tr'+(clickable?' onclick="go(\'job\',\''+r.id+'\')" style="cursor:pointer"':'')+(r.voided?' class="void-row"':'')+'>'+
+      '<td><b>'+esc(r.or)+'</b></td>'+
+      (withDate?'<td>'+esc(fmtDate(r.day))+'</td>':'')+
+      '<td>'+esc(r.jo)+'</td>'+
+      '<td>'+esc(r.owner)+(r.plate?' <span class="muted small">'+esc(r.plate)+'</span>':'')+'</td>'+
+      '<td>'+(r.voided?'<span class="chip">VOID</span>'+(r.voidReason?' <span class="muted small">'+esc(r.voidReason)+'</span>':''):'<span class="muted small">—</span>')+'</td>'+
+      '<td class="r">'+(r.voided?'<span class="muted">—</span>':peso(r.amount))+'</td></tr>';
+  }).join('');
+}
+function eodReceiptsCard(d, withDate){
+  var head=d.receipts.length
+    ? d.receipts.length+' receipt'+(d.receipts.length===1?'':'s')+
+      (d.voidCount?' · '+d.voidCount+' void':'')+
+      ' · '+esc(d.receipts[0].or)+(d.receipts.length>1?' → '+esc(d.receipts[d.receipts.length-1].or):'')
+    : 'None issued';
+  return '<div class="card"><h2>OR numbers by series</h2>'+
+    '<div class="muted small mb8">'+head+'</div>'+
+    (d.missing.length
+      ? '<div class="muted small" style="color:var(--brand)">⚠ '+d.missing.length+
+        ' number(s) in this range are on no job order: '+d.missing.map(function(n){return 'OR-'+n;}).join(', ')+'</div>'
+      : (d.receipts.length?'<div class="muted small">✓ Series is continuous for this range.</div>':''))+
+    '<div class="card pad0 mt8"><table class="tbl'+(d.receipts.length?' click':'')+'"><thead><tr><th>OR #</th>'+
+      (withDate?'<th>Date</th>':'')+'<th>JO #</th><th>Sold to</th><th>Status</th><th class="r">Amount</th></tr></thead>'+
+    '<tbody>'+eodReceiptRowsHTML(d, withDate, true)+'</tbody></table></div></div>';
+}
+
+/* ---- Daily Close ---------------------------------------------------------- */
+var DC_DATE=null;
+VIEWS.dailyclose = function(){
+  if(!DC_DATE) DC_DATE=todayISO();
+  var date=DC_DATE;
+  var d=eodData(date, date);
+
   return '<div class="page"><div class="page-head"><h1>Daily Close</h1>'+
     '<div class="row gap"><input type="date" value="'+attr(date)+'" onchange="DC_DATE=this.value;render()">'+
     '<button class="btn primary" onclick="printDailyClose()">⎙ Print EOD</button></div></div>'+
-    '<div class="kpis">'+kpi('Collections',peso(collections))+kpi('Net sales (billed)',peso(net))+
-      kpi('Output VAT',peso(vs.vat))+kpi('Discounts',peso(disc))+kpi('Transactions',txns.length)+'</div>'+
+    '<div class="kpis">'+kpi('Collections',peso(d.collections))+kpi('Net sales (billed)',peso(d.net))+
+      kpi('Output VAT',peso(d.vs.vat))+kpi('Discounts',peso(d.disc))+kpi('Transactions',d.txns.length)+'</div>'+
     '<div class="cols"><div class="colmain"><div class="card"><h2>Transactions · '+esc(fmtDate(date))+'</h2>'+
-      (txns.length?'<table class="tbl"><thead><tr><th>JO #</th><th>Customer</th><th>Method</th><th class="r">Amount</th></tr></thead><tbody>'+
-      txns.map(function(t){return '<tr><td>'+esc(t.job.no)+'</td><td>'+esc(t.job.owner)+'</td><td>'+esc(t.p.method)+'</td><td class="r">'+peso(t.p.amount)+'</td></tr>';}).join('')+
-      '</tbody></table>':emptyState('No collections on this date.'))+'</div></div>'+
+      (d.txns.length?'<table class="tbl"><thead><tr><th>JO #</th><th>Customer</th><th>Method</th><th class="r">Amount</th></tr></thead><tbody>'+
+      d.txns.map(function(t){return '<tr><td>'+esc(t.job.no)+'</td><td>'+esc(t.job.owner)+'</td><td>'+esc(t.p.method)+'</td><td class="r">'+peso(t.p.amount)+'</td></tr>';}).join('')+
+      '</tbody></table>':emptyState('No collections on this date.'))+'</div>'+
+      eodReceiptsCard(d, false)+'</div>'+
     '<div class="colside">'+
-      '<div class="card"><h2>Collections by method</h2>'+(Object.keys(byMethod).length?Object.keys(byMethod).map(function(m){return line2(m,peso(byMethod[m]));}).join(''):emptyState('—'))+'</div>'+
-      '<div class="card"><h2>Sales mix</h2>'+line2('Parts',peso(partsRev))+line2('Labor',peso(laborRev))+'</div>'+
+      '<div class="card"><h2>Collections by method</h2>'+(Object.keys(d.byMethod).length?Object.keys(d.byMethod).map(function(m){return line2(m,peso(d.byMethod[m]));}).join(''):emptyState('—'))+'</div>'+
+      '<div class="card"><h2>Sales mix</h2>'+line2('Parts',peso(d.partsRev))+line2('Labor',peso(d.laborRev))+'</div>'+
     '</div></div></div>';
 };
 
@@ -4949,26 +5063,62 @@ function docMechCommission(){
 function printMechCommission(){ printDoc(docMechCommission()); }
 
 /* ---- Daily Close report --------------------------------------------------- */
+/* Shared body for the printed EOD and the printed date-range report. Both come
+   from eodData(), so a range printout always reconciles against its days. */
+function docEodBody(d, title, withDate){
+  var vs=d.vs;
+  return docHeader(title)+
+    '<div class="totbox" style="width:340px;margin:0 0 14px"><div class="l2"><span>Net sales (billed)</span><span>'+peso(d.net)+'</span></div>'+
+    (vs.exempt?'<div class="l2"><span>VAT-Exempt</span><span>'+peso(vs.gross)+'</span></div>':'<div class="l2"><span>VATable</span><span>'+peso(vs.vatable)+'</span></div><div class="l2"><span>Output VAT</span><span>'+peso(vs.vat)+'</span></div>')+
+    (d.disc?'<div class="l2"><span>Discounts</span><span>'+peso(d.disc)+'</span></div>':'')+
+    '<div class="l2 grand"><span>Collections</span><span>'+peso(d.collections)+'</span></div></div>'+
+    '<div class="dtitle" style="font-size:12px">Collections by method</div><table><tbody>'+
+    (Object.keys(d.byMethod).length
+      ? Object.keys(d.byMethod).map(function(m){return '<tr><td>'+esc(m)+'</td><td class="r">'+peso(d.byMethod[m])+'</td></tr>';}).join('')
+      : '<tr><td colspan="2">None</td></tr>')+'</tbody></table>'+
+    '<div class="dtitle" style="font-size:12px">Sales mix</div><table><tbody>'+
+      '<tr><td>Parts</td><td class="r">'+peso(d.partsRev)+'</td></tr>'+
+      '<tr><td>Labor</td><td class="r">'+peso(d.laborRev)+'</td></tr></tbody></table>'+
+    /* OR numbers in series, voids shown in place — this is what gets ticked off
+       against the receipt booklet during reconciliation. */
+    '<div class="dtitle" style="font-size:12px">OR numbers by series'+
+      (d.receipts.length?' · '+esc(d.receipts[0].or)+(d.receipts.length>1?' → '+esc(d.receipts[d.receipts.length-1].or):'')+
+        ' ('+d.receipts.length+(d.voidCount?', '+d.voidCount+' void':'')+')':'')+'</div>'+
+    (d.missing.length?'<div class="notes"><b>Unaccounted:</b> '+d.missing.map(function(n){return 'OR-'+n;}).join(', ')+
+      ' — issued in this range but on no job order.</div>':'')+
+    '<table><thead><tr><th>OR #</th>'+(withDate?'<th>Date</th>':'')+'<th>JO #</th><th>Sold to</th><th>Status</th><th class="r">Amount</th></tr></thead><tbody>'+
+    (d.receipts.length
+      ? d.receipts.map(function(r){
+          return '<tr><td>'+esc(r.or)+'</td>'+(withDate?'<td>'+esc(fmtDate(r.day))+'</td>':'')+
+            '<td>'+esc(r.jo)+'</td><td>'+esc(r.owner)+'</td>'+
+            '<td>'+(r.voided?'VOID'+(r.voidReason?' — '+esc(r.voidReason):''):'')+'</td>'+
+            '<td class="r">'+(r.voided?'—':peso(r.amount))+'</td></tr>';
+        }).join('')
+      : '<tr><td colspan="'+(withDate?6:5)+'">No receipts issued.</td></tr>')+
+    '<tr class="tot"><td></td>'+(withDate?'<td></td>':'')+'<td></td><td></td><td class="r">Total</td><td class="r">'+
+      peso(round2(d.receipts.reduce(function(s,r){return s+(r.voided?0:r.amount);},0)))+'</td></tr>'+
+    '</tbody></table>'+
+    '<div class="dtitle" style="font-size:12px">Transactions</div><table><thead><tr><th>JO #</th>'+
+      (withDate?'<th>Date</th>':'')+'<th>Customer</th><th>Method</th><th class="r">Amount</th></tr></thead><tbody>'+
+    (d.txns.length
+      ? d.txns.map(function(t){return '<tr><td>'+esc(t.job.no)+'</td>'+(withDate?'<td>'+esc(fmtDate(t.day))+'</td>':'')+
+          '<td>'+esc(t.job.owner)+'</td><td>'+esc(t.p.method)+'</td><td class="r">'+peso(t.p.amount)+'</td></tr>';}).join('')
+      : '<tr><td colspan="'+(withDate?5:4)+'">No collections.</td></tr>')+'</tbody></table>'+
+    '<div class="sig-grid"><div class="sigline">Cashier</div><div class="sigline">Service Manager</div><div class="sigline">Verified by</div></div>';
+}
 function docDailyClose(){
   var date=DC_DATE||todayISO();
-  var txns=[]; S.jobs.forEach(function(j){ (j.payments||[]).forEach(function(p){ if(localDay(p.date)===date) txns.push({job:j,p:p}); }); });
-  var byMethod={}; txns.forEach(function(t){ byMethod[t.p.method]=round2((byMethod[t.p.method]||0)+t.p.amount); });
-  var collections=round2(txns.reduce(function(s,t){return s+t.p.amount;},0));
-  var billed=S.jobs.filter(function(j){return localDay(j.billedAt)===date;});
-  var net=round2(billed.reduce(function(s,j){return s+jobNet(j);},0));   // VATable base (ex-VAT)
-  var vs=vatSplit(net,S);
-  var body=docHeader('End-of-Day Report · '+fmtDate(date))+
-    '<div class="totbox" style="width:340px;margin:0 0 14px"><div class="l2"><span>Net sales (billed)</span><span>'+peso(net)+'</span></div>'+
-    (vs.exempt?'<div class="l2"><span>VAT-Exempt</span><span>'+peso(vs.gross)+'</span></div>':'<div class="l2"><span>VATable</span><span>'+peso(vs.vatable)+'</span></div><div class="l2"><span>Output VAT</span><span>'+peso(vs.vat)+'</span></div>')+
-    '<div class="l2 grand"><span>Collections</span><span>'+peso(collections)+'</span></div></div>'+
-    '<div class="dtitle" style="font-size:12px">Collections by method</div><table><tbody>'+
-    Object.keys(byMethod).map(function(m){return '<tr><td>'+esc(m)+'</td><td class="r">'+peso(byMethod[m])+'</td></tr>';}).join('')+'</tbody></table>'+
-    '<div class="dtitle" style="font-size:12px">Transactions</div><table><thead><tr><th>JO #</th><th>Customer</th><th>Method</th><th class="r">Amount</th></tr></thead><tbody>'+
-    txns.map(function(t){return '<tr><td>'+esc(t.job.no)+'</td><td>'+esc(t.job.owner)+'</td><td>'+esc(t.p.method)+'</td><td class="r">'+peso(t.p.amount)+'</td></tr>';}).join('')+'</tbody></table>'+
-    '<div class="sig-grid"><div class="sigline">Cashier</div><div class="sigline">Service Manager</div><div class="sigline">Verified by</div></div>';
-  return docShell('EOD '+date, body);
+  var d=eodData(date, date);
+  return docShell('EOD '+date, docEodBody(d, 'End-of-Day Report · '+fmtDate(date), false));
 }
 function printDailyClose(){ printDoc(docDailyClose()); }
+function docEodRange(){
+  var r=eodRange();
+  var d=eodData(r.from, r.to);
+  return docShell('Sales '+r.from+' to '+r.to,
+    docEodBody(d, 'Sales & Collections · '+fmtDate(r.from)+' – '+fmtDate(r.to), true));
+}
+function printEodRange(){ printDoc(docEodRange()); }
 
 /* ---- QR sticker (1.5in × 3in label stock) --------------------------------- */
 /* Self-contained doc sized to one physical label — NOT docShell (that's A4 page
@@ -5339,6 +5489,8 @@ if (typeof module!=='undefined' && module.exports){
     VIEWS:function(){ return VIEWS; },
     docJobOrder:docJobOrder, docPostJob:docPostJob, docBilling:docBilling, docEstimate:docEstimate,
     docPO:docPO, docStatement:docStatement, docPayout:docPayout, docDailyClose:docDailyClose,
+    eodData:eodData, docEodRange:docEodRange, setEodRange:function(f,t){ EOD_FROM=f; EOD_TO=t; },
+    setDcDate:function(d){ DC_DATE=d; },
     createJob:createJob, createJobFromAppt:createJobFromAppt, createEstimateFrom:createEstimateFrom,
     deductInventory:deductInventory, receivePO:receivePO,
     importPartsText:importPartsText, importPartsFromArray:importPartsFromArray, parseCSV:parseCSV,

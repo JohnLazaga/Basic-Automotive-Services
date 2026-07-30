@@ -318,26 +318,62 @@ function docMechCommission(){
 function printMechCommission(){ printDoc(docMechCommission()); }
 
 /* ---- Daily Close report --------------------------------------------------- */
+/* Shared body for the printed EOD and the printed date-range report. Both come
+   from eodData(), so a range printout always reconciles against its days. */
+function docEodBody(d, title, withDate){
+  var vs=d.vs;
+  return docHeader(title)+
+    '<div class="totbox" style="width:340px;margin:0 0 14px"><div class="l2"><span>Net sales (billed)</span><span>'+peso(d.net)+'</span></div>'+
+    (vs.exempt?'<div class="l2"><span>VAT-Exempt</span><span>'+peso(vs.gross)+'</span></div>':'<div class="l2"><span>VATable</span><span>'+peso(vs.vatable)+'</span></div><div class="l2"><span>Output VAT</span><span>'+peso(vs.vat)+'</span></div>')+
+    (d.disc?'<div class="l2"><span>Discounts</span><span>'+peso(d.disc)+'</span></div>':'')+
+    '<div class="l2 grand"><span>Collections</span><span>'+peso(d.collections)+'</span></div></div>'+
+    '<div class="dtitle" style="font-size:12px">Collections by method</div><table><tbody>'+
+    (Object.keys(d.byMethod).length
+      ? Object.keys(d.byMethod).map(function(m){return '<tr><td>'+esc(m)+'</td><td class="r">'+peso(d.byMethod[m])+'</td></tr>';}).join('')
+      : '<tr><td colspan="2">None</td></tr>')+'</tbody></table>'+
+    '<div class="dtitle" style="font-size:12px">Sales mix</div><table><tbody>'+
+      '<tr><td>Parts</td><td class="r">'+peso(d.partsRev)+'</td></tr>'+
+      '<tr><td>Labor</td><td class="r">'+peso(d.laborRev)+'</td></tr></tbody></table>'+
+    /* OR numbers in series, voids shown in place — this is what gets ticked off
+       against the receipt booklet during reconciliation. */
+    '<div class="dtitle" style="font-size:12px">OR numbers by series'+
+      (d.receipts.length?' · '+esc(d.receipts[0].or)+(d.receipts.length>1?' → '+esc(d.receipts[d.receipts.length-1].or):'')+
+        ' ('+d.receipts.length+(d.voidCount?', '+d.voidCount+' void':'')+')':'')+'</div>'+
+    (d.missing.length?'<div class="notes"><b>Unaccounted:</b> '+d.missing.map(function(n){return 'OR-'+n;}).join(', ')+
+      ' — issued in this range but on no job order.</div>':'')+
+    '<table><thead><tr><th>OR #</th>'+(withDate?'<th>Date</th>':'')+'<th>JO #</th><th>Sold to</th><th>Status</th><th class="r">Amount</th></tr></thead><tbody>'+
+    (d.receipts.length
+      ? d.receipts.map(function(r){
+          return '<tr><td>'+esc(r.or)+'</td>'+(withDate?'<td>'+esc(fmtDate(r.day))+'</td>':'')+
+            '<td>'+esc(r.jo)+'</td><td>'+esc(r.owner)+'</td>'+
+            '<td>'+(r.voided?'VOID'+(r.voidReason?' — '+esc(r.voidReason):''):'')+'</td>'+
+            '<td class="r">'+(r.voided?'—':peso(r.amount))+'</td></tr>';
+        }).join('')
+      : '<tr><td colspan="'+(withDate?6:5)+'">No receipts issued.</td></tr>')+
+    '<tr class="tot"><td></td>'+(withDate?'<td></td>':'')+'<td></td><td></td><td class="r">Total</td><td class="r">'+
+      peso(round2(d.receipts.reduce(function(s,r){return s+(r.voided?0:r.amount);},0)))+'</td></tr>'+
+    '</tbody></table>'+
+    '<div class="dtitle" style="font-size:12px">Transactions</div><table><thead><tr><th>JO #</th>'+
+      (withDate?'<th>Date</th>':'')+'<th>Customer</th><th>Method</th><th class="r">Amount</th></tr></thead><tbody>'+
+    (d.txns.length
+      ? d.txns.map(function(t){return '<tr><td>'+esc(t.job.no)+'</td>'+(withDate?'<td>'+esc(fmtDate(t.day))+'</td>':'')+
+          '<td>'+esc(t.job.owner)+'</td><td>'+esc(t.p.method)+'</td><td class="r">'+peso(t.p.amount)+'</td></tr>';}).join('')
+      : '<tr><td colspan="'+(withDate?5:4)+'">No collections.</td></tr>')+'</tbody></table>'+
+    '<div class="sig-grid"><div class="sigline">Cashier</div><div class="sigline">Service Manager</div><div class="sigline">Verified by</div></div>';
+}
 function docDailyClose(){
   var date=DC_DATE||todayISO();
-  var txns=[]; S.jobs.forEach(function(j){ (j.payments||[]).forEach(function(p){ if(localDay(p.date)===date) txns.push({job:j,p:p}); }); });
-  var byMethod={}; txns.forEach(function(t){ byMethod[t.p.method]=round2((byMethod[t.p.method]||0)+t.p.amount); });
-  var collections=round2(txns.reduce(function(s,t){return s+t.p.amount;},0));
-  var billed=S.jobs.filter(function(j){return localDay(j.billedAt)===date;});
-  var net=round2(billed.reduce(function(s,j){return s+jobNet(j);},0));   // VATable base (ex-VAT)
-  var vs=vatSplit(net,S);
-  var body=docHeader('End-of-Day Report · '+fmtDate(date))+
-    '<div class="totbox" style="width:340px;margin:0 0 14px"><div class="l2"><span>Net sales (billed)</span><span>'+peso(net)+'</span></div>'+
-    (vs.exempt?'<div class="l2"><span>VAT-Exempt</span><span>'+peso(vs.gross)+'</span></div>':'<div class="l2"><span>VATable</span><span>'+peso(vs.vatable)+'</span></div><div class="l2"><span>Output VAT</span><span>'+peso(vs.vat)+'</span></div>')+
-    '<div class="l2 grand"><span>Collections</span><span>'+peso(collections)+'</span></div></div>'+
-    '<div class="dtitle" style="font-size:12px">Collections by method</div><table><tbody>'+
-    Object.keys(byMethod).map(function(m){return '<tr><td>'+esc(m)+'</td><td class="r">'+peso(byMethod[m])+'</td></tr>';}).join('')+'</tbody></table>'+
-    '<div class="dtitle" style="font-size:12px">Transactions</div><table><thead><tr><th>JO #</th><th>Customer</th><th>Method</th><th class="r">Amount</th></tr></thead><tbody>'+
-    txns.map(function(t){return '<tr><td>'+esc(t.job.no)+'</td><td>'+esc(t.job.owner)+'</td><td>'+esc(t.p.method)+'</td><td class="r">'+peso(t.p.amount)+'</td></tr>';}).join('')+'</tbody></table>'+
-    '<div class="sig-grid"><div class="sigline">Cashier</div><div class="sigline">Service Manager</div><div class="sigline">Verified by</div></div>';
-  return docShell('EOD '+date, body);
+  var d=eodData(date, date);
+  return docShell('EOD '+date, docEodBody(d, 'End-of-Day Report · '+fmtDate(date), false));
 }
 function printDailyClose(){ printDoc(docDailyClose()); }
+function docEodRange(){
+  var r=eodRange();
+  var d=eodData(r.from, r.to);
+  return docShell('Sales '+r.from+' to '+r.to,
+    docEodBody(d, 'Sales & Collections · '+fmtDate(r.from)+' – '+fmtDate(r.to), true));
+}
+function printEodRange(){ printDoc(docEodRange()); }
 
 /* ---- QR sticker (1.5in × 3in label stock) --------------------------------- */
 /* Self-contained doc sized to one physical label — NOT docShell (that's A4 page
