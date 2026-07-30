@@ -264,7 +264,9 @@ function saveAppt(id){
   else { data.id=uid('ap'); data.jobId=null; S.appointments.push(data); }
   persist(); closeModal(); toast('Appointment saved'); render();
 }
-function delAppt(id){ S.appointments=S.appointments.filter(function(x){return x.id!==id;}); persist(); closeModal(); render(); }
+function delAppt(id){
+  if (typeof requireDelete==='function' && !requireDelete('appointments')) return;
+  S.appointments=S.appointments.filter(function(x){return x.id!==id;}); persist(); closeModal(); render(); }
 function checkInAppt(id){
   var a=S.appointments.find(function(x){return x.id===id;}); if(!a) return;
   createJobFromAppt(a).then(function(job){

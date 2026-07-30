@@ -313,6 +313,7 @@ if (typeof module!=='undefined' && module.exports){
     docJoSeries:docJoSeries, docOrSeries:docOrSeries,
     jobVoided:jobVoided, releasedJobs:releasedJobs, billedJobs:billedJobs,
     can:can, routeAllowed:routeAllowed, setCurrentUser:function(u){ CURRENT_USER=u; },
+    clearDataBlockers:clearDataBlockers,
     commissionTable:commissionTable, jobLaborCommission:jobLaborCommission, jobLaborCommissionMap:jobLaborCommissionMap, jobLaborCommissionMapAll:jobLaborCommissionMapAll, laborTotal:laborTotal,
     jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
     allocateSeriesNumber:allocateSeriesNumber, maxSeriesNo:maxSeriesNo, nextNo:nextNo,

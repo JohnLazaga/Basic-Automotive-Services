@@ -608,7 +608,7 @@ var BRANCH = {"id":"sudipen","slug":"sudipen","name":"Basic by JMSI — Sudipen"
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.2.0 · 2026-07-30 · 6097783';
+var APP_VERSION = 'v1.2.0 · 2026-07-30 · c9c6357';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -1932,7 +1932,9 @@ function saveAppt(id){
   else { data.id=uid('ap'); data.jobId=null; S.appointments.push(data); }
   persist(); closeModal(); toast('Appointment saved'); render();
 }
-function delAppt(id){ S.appointments=S.appointments.filter(function(x){return x.id!==id;}); persist(); closeModal(); render(); }
+function delAppt(id){
+  if (typeof requireDelete==='function' && !requireDelete('appointments')) return;
+  S.appointments=S.appointments.filter(function(x){return x.id!==id;}); persist(); closeModal(); render(); }
 function checkInAppt(id){
   var a=S.appointments.find(function(x){return x.id===id;}); if(!a) return;
   createJobFromAppt(a).then(function(job){
@@ -2498,7 +2500,7 @@ function confirmVoidReceipt(){
 /* Admin-only: delete an entire job order (with warning). A job carrying an OR
    number cannot be deleted at all — see jobVoided above. */
 function deleteJobConfirm(id){
-  if (typeof isAdminUser==='function' && !isAdminUser()){ toast('Admins only','err'); return; }
+  if (typeof requireDelete==='function' && !requireDelete('job orders')) return;
   var j=jobById(id); if(!j) return;
   if (j.orNumber){
     openModal('Cannot delete '+esc(j.no||'this job order'),
@@ -3397,7 +3399,7 @@ function vehicleModalOpts(id){
   return { onOk:'saveVehicle', width:'700px' };
 }
 function deleteVehicleConfirm(id){
-  if (typeof isAdminUser==='function' && !isAdminUser()){ toast('Admins only','err'); return; }
+  if (typeof requireDelete==='function' && !requireDelete('vehicles')) return;
   var v=vehicleById(id); if(!v) return;
   confirmModal('Delete this vehicle?',
     'This permanently removes '+(v.plate||'this vehicle')+' ('+(v.year+' '+v.make+' '+v.model).trim()+') from your records for everyone. Existing job orders keep their own copy of the details. This cannot be undone.',
@@ -3523,7 +3525,9 @@ function savePart(){
   if(ptCtx){ Object.assign(partById(ptCtx),data); } else { data.id=uid('pt'); S.parts.push(data); }
   persist(); closeModal(); render();
 }
-function delPart(id){ S.parts=S.parts.filter(function(p){return p.id!==id;}); persist(); render(); }
+function delPart(id){
+  if (typeof requireDelete==='function' && !requireDelete('parts')) return;
+  S.parts=S.parts.filter(function(p){return p.id!==id;}); persist(); render(); }
 
 /* tolerant field mapping for sync/import */
 function mapPartRow(r){
@@ -3611,6 +3615,7 @@ function saveLabor(){
   if(editing){ Object.assign(editing,data); } else { data.id=uid('lb'); S.labor.push(data); }
   persist(); closeModal(); render(); }
 function delLabor(id){
+  if (typeof requireDelete==='function' && !requireDelete('labor items')) return;
   var l=S.labor.find(function(x){return x.id===id;});
   if(isPmsLabor(l)){ toast('PMS LABOR is a standard item — it can’t be removed','err'); return; }
   S.labor=S.labor.filter(function(x){return x.id!==id;}); persist(); render(); }
@@ -3733,7 +3738,9 @@ function saveStaff(){ var data={ name:val('stName'), nickname:val('stNick'), rol
   if(admin && document.getElementById('stRate')){ var rv=val('stRate'); data.commissionRate = (rv===''||rv===null||rv===undefined) ? '' : Math.max(0,Number(rv)||0); }
   if(stCtx){ Object.assign(staffById(stCtx),data); } else { data.id=uid('st'); S.staff.push(data); }
   persist(); closeModal(); render(); }
-function delStaff(id){ S.staff=S.staff.filter(function(s){return s.id!==id;}); persist(); render(); }
+function delStaff(id){
+  if (typeof requireDelete==='function' && !requireDelete('staff records')) return;
+  S.staff=S.staff.filter(function(s){return s.id!==id;}); persist(); render(); }
 
 
 /* ===== */
@@ -4341,7 +4348,8 @@ VIEWS.settings = function(){
       (((typeof dataLocal==='function')&&dataLocal()&&isAdminUser())
         ? '<label class="btn ghost full mt8"><input type="file" accept=".json,application/json" style="display:none" onchange="importBranchBackup(this.files)">⬆ Import JSON backup to this branch</label>'
         : '')+
-      '<button class="btn danger full mt8" onclick="clearAllData()">Clear all data</button>'+
+      (((typeof isAdminUser!=='function')||isAdminUser())
+        ? '<button class="btn danger full mt8" onclick="clearAllData()">Clear all data</button>' : '')+
       '<p class="muted small">Backup downloads the full state. Clear wipes to a blank shop.'+
       (((typeof dataLocal==='function')&&dataLocal())?' Import replaces this branch server’s data with a backup (use it to move a shop off the cloud).':'')+'</p></div>'+
   '</div></div></div>';
@@ -4505,7 +4513,30 @@ function importBranchBackup(files){
   };
   r.readAsText(f);
 }
+/* What stands in the way of wiping the shop. Split out from clearAllData so the
+   rule is testable without a DOM. An issued OR number is BIR-accountable, so
+   clearing a shop that has any is refused outright — otherwise this would be a
+   back door around the void-instead-of-delete rule that protects receipts. */
+function clearDataBlockers(){
+  var withOR=(S.jobs||[]).filter(function(j){ return j && j.orNumber; })
+    .map(function(j){ return String(j.orNumber); }).sort();
+  return { orCount:withOR.length, firstOr:withOR[0]||'', lastOr:withOR[withOR.length-1]||'' };
+}
 function clearAllData(){
+  // Wiping everything is heavier than deleting one record: admin only, always.
+  if (typeof isAdminUser==='function' && !isAdminUser()){ toast('Admins only','err'); return; }
+  var b=clearDataBlockers();
+  if (b.orCount){
+    openModal('Cannot clear all data',
+      '<p>'+b.orCount+' job order'+(b.orCount===1?'':'s')+' carry an issued official receipt ('+
+        esc(b.firstOr)+(b.orCount>1?' → '+esc(b.lastOr):'')+'). Wiping them would destroy '+
+        'BIR-accountable records and leave your OR series unexplainable.</p>'+
+      '<p class="muted small">Clearing is meant for setting up a fresh shop, not for live books. '+
+        'Use <b>Export JSON backup</b> if you need a copy of everything, or void individual '+
+        'receipts from their job order if a sale should not stand.</p>',
+      { footer:'<button class="btn ghost" onclick="closeModal()">Close</button>' });
+    return;
+  }
   confirmModal('Clear all data?','This wipes every record to a blank shop. Export a backup first if needed.',function(){
     S=blankShop(); persist(); toast('All data cleared'); go('board');
   },'Clear everything',true);
@@ -5243,6 +5274,7 @@ if (typeof module!=='undefined' && module.exports){
     docJoSeries:docJoSeries, docOrSeries:docOrSeries,
     jobVoided:jobVoided, releasedJobs:releasedJobs, billedJobs:billedJobs,
     can:can, routeAllowed:routeAllowed, setCurrentUser:function(u){ CURRENT_USER=u; },
+    clearDataBlockers:clearDataBlockers,
     commissionTable:commissionTable, jobLaborCommission:jobLaborCommission, jobLaborCommissionMap:jobLaborCommissionMap, jobLaborCommissionMapAll:jobLaborCommissionMapAll, laborTotal:laborTotal,
     jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
     allocateSeriesNumber:allocateSeriesNumber, maxSeriesNo:maxSeriesNo, nextNo:nextNo,
@@ -6283,6 +6315,17 @@ function canSeeReports(){
   return !!CURRENT_USER.isAdmin;
 }
 
+/* Destroying a whole record — the "Delete / clear data" capability. Until now
+   that checkbox in Role Permissions was dead: nothing in the app ever read it,
+   so ticking it granted nothing and leaving it clear prevented nothing, while
+   several deletes (parts, labor, staff, appointments) had no check at all.
+   This is the gate it feeds. Admins always pass, and DEFAULT_PERMS grants the
+   capability to no role, so nothing loosens until an admin grants it. */
+function requireDelete(what){
+  if (can('delete')) return true;
+  toast('You don’t have permission to delete '+(what||'records'),'err');
+  return false;
+}
 /* The single access check used everywhere. */
 function can(cap){
   if (typeof CURRENT_USER==='undefined' || !CURRENT_USER) return true; // pre-auth / local / tests

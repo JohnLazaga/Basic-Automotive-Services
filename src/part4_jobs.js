@@ -547,7 +547,7 @@ function confirmVoidReceipt(){
 /* Admin-only: delete an entire job order (with warning). A job carrying an OR
    number cannot be deleted at all — see jobVoided above. */
 function deleteJobConfirm(id){
-  if (typeof isAdminUser==='function' && !isAdminUser()){ toast('Admins only','err'); return; }
+  if (typeof requireDelete==='function' && !requireDelete('job orders')) return;
   var j=jobById(id); if(!j) return;
   if (j.orNumber){
     openModal('Cannot delete '+esc(j.no||'this job order'),

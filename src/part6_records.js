@@ -137,7 +137,7 @@ function vehicleModalOpts(id){
   return { onOk:'saveVehicle', width:'700px' };
 }
 function deleteVehicleConfirm(id){
-  if (typeof isAdminUser==='function' && !isAdminUser()){ toast('Admins only','err'); return; }
+  if (typeof requireDelete==='function' && !requireDelete('vehicles')) return;
   var v=vehicleById(id); if(!v) return;
   confirmModal('Delete this vehicle?',
     'This permanently removes '+(v.plate||'this vehicle')+' ('+(v.year+' '+v.make+' '+v.model).trim()+') from your records for everyone. Existing job orders keep their own copy of the details. This cannot be undone.',
@@ -263,7 +263,9 @@ function savePart(){
   if(ptCtx){ Object.assign(partById(ptCtx),data); } else { data.id=uid('pt'); S.parts.push(data); }
   persist(); closeModal(); render();
 }
-function delPart(id){ S.parts=S.parts.filter(function(p){return p.id!==id;}); persist(); render(); }
+function delPart(id){
+  if (typeof requireDelete==='function' && !requireDelete('parts')) return;
+  S.parts=S.parts.filter(function(p){return p.id!==id;}); persist(); render(); }
 
 /* tolerant field mapping for sync/import */
 function mapPartRow(r){
@@ -351,6 +353,7 @@ function saveLabor(){
   if(editing){ Object.assign(editing,data); } else { data.id=uid('lb'); S.labor.push(data); }
   persist(); closeModal(); render(); }
 function delLabor(id){
+  if (typeof requireDelete==='function' && !requireDelete('labor items')) return;
   var l=S.labor.find(function(x){return x.id===id;});
   if(isPmsLabor(l)){ toast('PMS LABOR is a standard item — it can’t be removed','err'); return; }
   S.labor=S.labor.filter(function(x){return x.id!==id;}); persist(); render(); }
@@ -473,4 +476,6 @@ function saveStaff(){ var data={ name:val('stName'), nickname:val('stNick'), rol
   if(admin && document.getElementById('stRate')){ var rv=val('stRate'); data.commissionRate = (rv===''||rv===null||rv===undefined) ? '' : Math.max(0,Number(rv)||0); }
   if(stCtx){ Object.assign(staffById(stCtx),data); } else { data.id=uid('st'); S.staff.push(data); }
   persist(); closeModal(); render(); }
-function delStaff(id){ S.staff=S.staff.filter(function(s){return s.id!==id;}); persist(); render(); }
+function delStaff(id){
+  if (typeof requireDelete==='function' && !requireDelete('staff records')) return;
+  S.staff=S.staff.filter(function(s){return s.id!==id;}); persist(); render(); }

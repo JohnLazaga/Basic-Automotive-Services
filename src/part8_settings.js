@@ -58,7 +58,8 @@ VIEWS.settings = function(){
       (((typeof dataLocal==='function')&&dataLocal()&&isAdminUser())
         ? '<label class="btn ghost full mt8"><input type="file" accept=".json,application/json" style="display:none" onchange="importBranchBackup(this.files)">⬆ Import JSON backup to this branch</label>'
         : '')+
-      '<button class="btn danger full mt8" onclick="clearAllData()">Clear all data</button>'+
+      (((typeof isAdminUser!=='function')||isAdminUser())
+        ? '<button class="btn danger full mt8" onclick="clearAllData()">Clear all data</button>' : '')+
       '<p class="muted small">Backup downloads the full state. Clear wipes to a blank shop.'+
       (((typeof dataLocal==='function')&&dataLocal())?' Import replaces this branch server’s data with a backup (use it to move a shop off the cloud).':'')+'</p></div>'+
   '</div></div></div>';
@@ -222,7 +223,30 @@ function importBranchBackup(files){
   };
   r.readAsText(f);
 }
+/* What stands in the way of wiping the shop. Split out from clearAllData so the
+   rule is testable without a DOM. An issued OR number is BIR-accountable, so
+   clearing a shop that has any is refused outright — otherwise this would be a
+   back door around the void-instead-of-delete rule that protects receipts. */
+function clearDataBlockers(){
+  var withOR=(S.jobs||[]).filter(function(j){ return j && j.orNumber; })
+    .map(function(j){ return String(j.orNumber); }).sort();
+  return { orCount:withOR.length, firstOr:withOR[0]||'', lastOr:withOR[withOR.length-1]||'' };
+}
 function clearAllData(){
+  // Wiping everything is heavier than deleting one record: admin only, always.
+  if (typeof isAdminUser==='function' && !isAdminUser()){ toast('Admins only','err'); return; }
+  var b=clearDataBlockers();
+  if (b.orCount){
+    openModal('Cannot clear all data',
+      '<p>'+b.orCount+' job order'+(b.orCount===1?'':'s')+' carry an issued official receipt ('+
+        esc(b.firstOr)+(b.orCount>1?' → '+esc(b.lastOr):'')+'). Wiping them would destroy '+
+        'BIR-accountable records and leave your OR series unexplainable.</p>'+
+      '<p class="muted small">Clearing is meant for setting up a fresh shop, not for live books. '+
+        'Use <b>Export JSON backup</b> if you need a copy of everything, or void individual '+
+        'receipts from their job order if a sale should not stand.</p>',
+      { footer:'<button class="btn ghost" onclick="closeModal()">Close</button>' });
+    return;
+  }
   confirmModal('Clear all data?','This wipes every record to a blank shop. Export a backup first if needed.',function(){
     S=blankShop(); persist(); toast('All data cleared'); go('board');
   },'Clear everything',true);

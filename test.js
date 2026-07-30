@@ -371,6 +371,51 @@ section('OR series: gaps in the receipt sequence are detected');
   ok('unbilled jobs are ignored', M.orSeriesRows().length===2 && M.seriesGaps(M.orSeriesRows()).length===0);
 })();
 
+/* --------------------------------------------- Delete capability + clear guard */
+section('Delete/clear-data permission is real, and clearing is blocked by receipts');
+(function(){
+  const s=fresh(); M.setS(s);
+  // The capability grants nothing by default — no role has it in DEFAULT_PERMS.
+  M.setCurrentUser({uid:'u1',isAdmin:false,role:'Mechanic',active:true});
+  ok('mechanic cannot delete', M.can('delete')===false);
+  M.setCurrentUser({uid:'u2',isAdmin:false,role:'SV',active:true});
+  ok('supervisor cannot delete by default', M.can('delete')===false);
+  M.setCurrentUser({uid:'u3',isAdmin:false,role:'Secretary',active:true});
+  ok('secretary cannot delete by default', M.can('delete')===false);
+  // Admin always passes.
+  M.setCurrentUser({uid:'u4',isAdmin:true,role:'SV',active:true});
+  ok('admin can delete', M.can('delete')===true);
+  // An admin granting it explicitly makes it work — the point of wiring it up.
+  s.shop.permissions=JSON.parse(JSON.stringify(s.shop.permissions||{}));
+  s.shop.permissions.SV=Object.assign({}, (s.shop.permissions.SV||{}), {delete:1});
+  M.setS(s);
+  M.setCurrentUser({uid:'u2',isAdmin:false,role:'SV',active:true});
+  ok('granted role can delete', M.can('delete')===true);
+  ok('other roles still cannot', (M.setCurrentUser({uid:'u1',isAdmin:false,role:'Mechanic',active:true}), M.can('delete')===false));
+
+  // Clearing all data must refuse while any receipt exists.
+  const s2=fresh();
+  s2.jobs=[{ id:'j1', no:'JO-0001', orNumber:'OR-1207', lines:[], payments:[],
+             discount:{parts:0,labor:0,other:0}, mechanicIds:[] }];
+  M.setS(s2);
+  let b=M.clearDataBlockers();
+  ok('receipt blocks clearing', b.orCount===1 && b.firstOr==='OR-1207');
+  s2.jobs.push({ id:'j2', no:'JO-0002', orNumber:'OR-1208', lines:[], payments:[],
+                 discount:{parts:0,labor:0,other:0}, mechanicIds:[] });
+  M.setS(s2);
+  b=M.clearDataBlockers();
+  ok('counts every receipt', b.orCount===2 && b.lastOr==='OR-1208');
+  // No receipts -> clearing is allowed (fresh-setup case).
+  const s3=fresh();
+  s3.jobs=[{ id:'j1', no:'JO-0001', orNumber:null, lines:[], payments:[],
+             discount:{parts:0,labor:0,other:0}, mechanicIds:[] }];
+  M.setS(s3);
+  ok('unbilled jobs do not block clearing', M.clearDataBlockers().orCount===0);
+  const s4=fresh(); s4.jobs=[]; M.setS(s4);
+  ok('empty shop does not block clearing', M.clearDataBlockers().orCount===0);
+  M.setCurrentUser(null);
+})();
+
 /* --------------------------------------------- Voided receipts */
 section('Voided receipt: number stays accounted for, sale does not count');
 (function(){

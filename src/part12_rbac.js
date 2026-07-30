@@ -77,6 +77,17 @@ function canSeeReports(){
   return !!CURRENT_USER.isAdmin;
 }
 
+/* Destroying a whole record — the "Delete / clear data" capability. Until now
+   that checkbox in Role Permissions was dead: nothing in the app ever read it,
+   so ticking it granted nothing and leaving it clear prevented nothing, while
+   several deletes (parts, labor, staff, appointments) had no check at all.
+   This is the gate it feeds. Admins always pass, and DEFAULT_PERMS grants the
+   capability to no role, so nothing loosens until an admin grants it. */
+function requireDelete(what){
+  if (can('delete')) return true;
+  toast('You don’t have permission to delete '+(what||'records'),'err');
+  return false;
+}
 /* The single access check used everywhere. */
 function can(cap){
   if (typeof CURRENT_USER==='undefined' || !CURRENT_USER) return true; // pre-auth / local / tests
