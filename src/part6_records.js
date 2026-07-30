@@ -368,14 +368,16 @@ VIEWS.purchaseorders = function(){
     '<button class="btn primary" onclick="newPO()">＋ New PO</button></div></div>'+
     (S.purchaseOrders.length?'<div class="card pad0"><table class="tbl click"><thead><tr><th>PO #</th><th>Supplier</th><th>Status</th><th>Date</th><th class="r">Total</th></tr></thead><tbody>'+rows+'</tbody></table></div>':emptyState('No purchase orders.'))+'</div>';
 };
-function newPO(){ allocateSeriesNumber('po','PO-',4).then(function(no){
-  var po={ id:uid('po'), no:no, date:todayISO(), supplier:'', status:'Draft', lines:[], notes:'', receivedDate:null };
+function newPO(){ var poId=uid('po');   // hoisted so the number can be claimed against it
+  allocateSeriesNumber('po','PO-',4, poId).then(function(no){
+  var po={ id:poId, no:no, date:todayISO(), supplier:'', status:'Draft', lines:[], notes:'', receivedDate:null };
   S.purchaseOrders.unshift(po); persist(); go('po', po.id); }); }
 function suggestReorder(){
   var low=S.parts.filter(function(p){return (p.stock||0)<=(p.reorder||0);});
   if(!low.length){ toast('Nothing below reorder level'); return; }
-  allocateSeriesNumber('po','PO-',4).then(function(no){
-    var po={ id:uid('po'), no:no, date:todayISO(), supplier:'', status:'Draft',
+  var poId=uid('po');   // hoisted so the number can be claimed against it
+  allocateSeriesNumber('po','PO-',4, poId).then(function(no){
+    var po={ id:poId, no:no, date:todayISO(), supplier:'', status:'Draft',
       lines:low.map(function(p){ return { partId:p.id, name:p.name, qty:Math.max((p.reorder||0)*2-(p.stock||0),(p.reorder||0)), cost:p.cost||0 }; }),
       notes:'Auto-generated from low-stock parts.', receivedDate:null };
     S.purchaseOrders.unshift(po); persist(); toast('Draft PO built from '+low.length+' low-stock parts'); go('po', po.id);

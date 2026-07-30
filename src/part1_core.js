@@ -342,7 +342,15 @@ function nextNo(kind, prefix, pad){
    even across simultaneous devices. Offline (or if the transaction fails / is not
    permitted) it falls back to the local seed-from-max path, so creation never
    blocks. Returns a Promise. */
-function allocateSeriesNumber(kind, prefix, pad){
+/* claimId: the id of the record being numbered. The counter transaction commits
+   instantly but the RECORD is written afterwards by a debounced persist() whose
+   errors are swallowed — so a tab closed, a sleeping tablet or a dropped network
+   in between spends a number that nothing ends up carrying, leaving a permanent
+   hole in the series. Recording the claim in the SAME transaction makes
+   allocation idempotent per record: a retry hands back the number already
+   issued to that record instead of burning the next one. Callers that pass no
+   claimId still work, they just keep the old at-most-once-per-attempt behaviour. */
+function allocateSeriesNumber(kind, prefix, pad, claimId){
   var seed = Math.max((Number((S.counters||{})[kind])||0), maxSeriesNo(kind)) + 1;
   function local(){
     if(!S.counters) S.counters={};
@@ -357,17 +365,27 @@ function allocateSeriesNumber(kind, prefix, pad){
   }
   if (typeof cloudOn==='function' && cloudOn() && typeof FB!=='undefined' && FB && FB.ready && FB.db && FB.user){
     var ref = bcol('meta').doc(kind+'counter');
+    var claimRef = claimId ? bcol('seriesclaims').doc(kind+'_'+String(claimId)) : null;
     return FB.db.runTransaction(function(t){
-      return t.get(ref).then(function(doc){
-        var stored = (doc.exists && Number(doc.data().next)>0) ? Number(doc.data().next) : 0;
-        var issue = Math.max(stored, seed);                 // never reuse / never go backward
-        t.set(ref, { next: issue+1, updatedAt:new Date().toISOString() }, { merge:true });
-        return issue;
+      /* Every read must precede every write in a Firestore transaction. */
+      return (claimRef ? t.get(claimRef) : Promise.resolve(null)).then(function(cdoc){
+        var prior = (cdoc && cdoc.exists) ? (cdoc.data()||{}) : null;
+        if (prior && prior.no) return { no:prior.no };      // already issued to this record
+        return t.get(ref).then(function(doc){
+          var stored = (doc.exists && Number(doc.data().next)>0) ? Number(doc.data().next) : 0;
+          var issue = Math.max(stored, seed);               // never reuse / never go backward
+          var no = prefix + String(issue).padStart(pad||4,'0');
+          t.set(ref, { next: issue+1, updatedAt:new Date().toISOString() }, { merge:true });
+          if (claimRef) t.set(claimRef, { kind:kind, claimId:String(claimId), no:no, issue:issue,
+                                          at:new Date().toISOString(),
+                                          by:(typeof CURRENT_USER!=='undefined' && CURRENT_USER) ? (CURRENT_USER.uid||'') : '' });
+          return { no:no, issue:issue };
+        });
       });
-    }).then(function(issue){
+    }).then(function(r){
       if(!S.counters) S.counters={};
-      S.counters[kind] = issue;
-      return prefix + String(issue).padStart(pad||4,'0');
+      if(r.issue) S.counters[kind] = r.issue;
+      return r.no;
     }).catch(function(){ return local(); });               // permission/offline → safe local seed
   }
   return Promise.resolve(local());

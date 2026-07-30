@@ -4,7 +4,8 @@
 
 async function createEstimateFrom(base){
   var v = vehicleByPlate(base.plate);
-  var e = { id:uid('est'), no:await allocateSeriesNumber('est','EST-',4), date:todayISO(),
+  var estId = uid('est');   // hoisted so the number can be claimed against it
+  var e = { id:estId, no:await allocateSeriesNumber('est','EST-',4, estId), date:todayISO(),
     plate:base.plate||'', owner:base.owner||(v&&v.owner)||'', contactPerson:base.contactPerson||'', contactNumber:base.contactNumber||'',
     address:base.address||(v&&v.address)||'',
     year:base.year||(v&&v.year)||'', make:base.make||(v&&v.make)||'', model:base.model||(v&&v.model)||'',

@@ -283,6 +283,12 @@ await (async function(){
   // Estimates share the same allocator
   s.counters.est=0; const e1=await M.createEstimateFrom({plate:'ZZZ 111'}); const e2=await M.createEstimateFrom({plate:'ZZZ 222'});
   ok('consecutive EST #s are unique', e1.no!==e2.no);
+  // The record id is what a series number is now claimed against, so it must
+  // exist and be distinct per record (the estimate id is hoisted for this).
+  ok('estimate keeps a unique id', !!e1.id && !!e2.id && e1.id!==e2.id);
+  ok('job keeps a unique id', !!j1.id && !!j2.id && j1.id!==j2.id);
+  ok('EST # is still formatted', /^EST-\d{4}$/.test(e1.no));
+  ok('JO # is still formatted', /^JO-\d{4}$/.test(j1.no));
 })();
 
 /* --------------------------------------------- Duplicate plate gate */
@@ -330,6 +336,38 @@ section('Job Orders search: finds a job by its Final Billing OR number');
   ok('vehicle still searchable',       find('VIOS').length===1);
   ok('nonsense matches nothing',       find('ZZZQQQ').length===0);
   M.setJobQ('');
+})();
+
+/* --------------------------------------------- OR series gaps */
+section('OR series: gaps in the receipt sequence are detected');
+(function(){
+  const s=fresh();
+  const mk=(no,or)=>({ id:'j'+no, no:'JO-'+no, plate:'A', owner:'X', lines:[], payments:[],
+                       discount:{parts:0,labor:0,other:0}, mechanicIds:[], orNumber:or,
+                       billedAt:'2026-07-01T00:00:00.000Z' });
+  // The reported case: OR-1209 and OR-1235 missing from an otherwise clean run.
+  s.jobs=[mk('1','OR-1207'), mk('2','OR-1208'), mk('3','OR-1210'),
+          mk('4','OR-1234'), mk('5','OR-1236')];
+  M.setS(s);
+  const rows=M.orSeriesRows();
+  ok('rows sorted by series', rows.map(r=>r.n).join(',')==='1207,1208,1210,1234,1236');
+  const gaps=M.orSeriesGaps(rows);
+  ok('three gap ranges found', gaps.length===3);
+  ok('single missing number reported as 1209', gaps[0].from===1209 && gaps[0].to===1209 && gaps[0].count===1);
+  ok('the 1211-1233 block is reported', gaps[1].from===1211 && gaps[1].to===1233 && gaps[1].count===23);
+  ok('trailing single gap reported as 1235', gaps[2].from===1235 && gaps[2].to===1235 && gaps[2].count===1);
+  ok('total missing counted', gaps.reduce((a,g)=>a+g.count,0)===25);
+
+  // A continuous series must report nothing.
+  const s2=fresh(); s2.jobs=[mk('1','OR-1207'), mk('2','OR-1208'), mk('3','OR-1209')]; M.setS(s2);
+  ok('continuous series has no gaps', M.orSeriesGaps(M.orSeriesRows()).length===0);
+  // Degenerate inputs must not crash or invent gaps.
+  const s3=fresh(); s3.jobs=[]; M.setS(s3);
+  ok('no receipts -> no gaps', M.orSeriesGaps(M.orSeriesRows()).length===0);
+  const s4=fresh(); s4.jobs=[mk('1','OR-1300')]; M.setS(s4);
+  ok('one receipt -> no gaps', M.orSeriesGaps(M.orSeriesRows()).length===0);
+  const s5=fresh(); s5.jobs=[mk('1','OR-1207'), mk('2',null), mk('3','OR-1208')]; M.setS(s5);
+  ok('unbilled jobs are ignored', M.orSeriesRows().length===2 && M.orSeriesGaps(M.orSeriesRows()).length===0);
 })();
 
 /* --------------------------------------------- Public portal snapshot */

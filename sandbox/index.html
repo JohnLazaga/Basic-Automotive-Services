@@ -602,7 +602,7 @@ var BRANCH = {"id":"sandbox","slug":"sandbox","name":"Basic by JMSI — Sandbox 
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.2.0 · 2026-07-30 · c1dafc1';
+var APP_VERSION = 'v1.2.0 · 2026-07-30 · a54c564';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -935,7 +935,15 @@ function nextNo(kind, prefix, pad){
    even across simultaneous devices. Offline (or if the transaction fails / is not
    permitted) it falls back to the local seed-from-max path, so creation never
    blocks. Returns a Promise. */
-function allocateSeriesNumber(kind, prefix, pad){
+/* claimId: the id of the record being numbered. The counter transaction commits
+   instantly but the RECORD is written afterwards by a debounced persist() whose
+   errors are swallowed — so a tab closed, a sleeping tablet or a dropped network
+   in between spends a number that nothing ends up carrying, leaving a permanent
+   hole in the series. Recording the claim in the SAME transaction makes
+   allocation idempotent per record: a retry hands back the number already
+   issued to that record instead of burning the next one. Callers that pass no
+   claimId still work, they just keep the old at-most-once-per-attempt behaviour. */
+function allocateSeriesNumber(kind, prefix, pad, claimId){
   var seed = Math.max((Number((S.counters||{})[kind])||0), maxSeriesNo(kind)) + 1;
   function local(){
     if(!S.counters) S.counters={};
@@ -950,17 +958,27 @@ function allocateSeriesNumber(kind, prefix, pad){
   }
   if (typeof cloudOn==='function' && cloudOn() && typeof FB!=='undefined' && FB && FB.ready && FB.db && FB.user){
     var ref = bcol('meta').doc(kind+'counter');
+    var claimRef = claimId ? bcol('seriesclaims').doc(kind+'_'+String(claimId)) : null;
     return FB.db.runTransaction(function(t){
-      return t.get(ref).then(function(doc){
-        var stored = (doc.exists && Number(doc.data().next)>0) ? Number(doc.data().next) : 0;
-        var issue = Math.max(stored, seed);                 // never reuse / never go backward
-        t.set(ref, { next: issue+1, updatedAt:new Date().toISOString() }, { merge:true });
-        return issue;
+      /* Every read must precede every write in a Firestore transaction. */
+      return (claimRef ? t.get(claimRef) : Promise.resolve(null)).then(function(cdoc){
+        var prior = (cdoc && cdoc.exists) ? (cdoc.data()||{}) : null;
+        if (prior && prior.no) return { no:prior.no };      // already issued to this record
+        return t.get(ref).then(function(doc){
+          var stored = (doc.exists && Number(doc.data().next)>0) ? Number(doc.data().next) : 0;
+          var issue = Math.max(stored, seed);               // never reuse / never go backward
+          var no = prefix + String(issue).padStart(pad||4,'0');
+          t.set(ref, { next: issue+1, updatedAt:new Date().toISOString() }, { merge:true });
+          if (claimRef) t.set(claimRef, { kind:kind, claimId:String(claimId), no:no, issue:issue,
+                                          at:new Date().toISOString(),
+                                          by:(typeof CURRENT_USER!=='undefined' && CURRENT_USER) ? (CURRENT_USER.uid||'') : '' });
+          return { no:no, issue:issue };
+        });
       });
-    }).then(function(issue){
+    }).then(function(r){
       if(!S.counters) S.counters={};
-      S.counters[kind] = issue;
-      return prefix + String(issue).padStart(pad||4,'0');
+      if(r.issue) S.counters[kind] = r.issue;
+      return r.no;
     }).catch(function(){ return local(); });               // permission/offline → safe local seed
   }
   return Promise.resolve(local());
@@ -1967,7 +1985,7 @@ async function createJob(base){
   var depAmt = Number(base.depositAmount)||0, depM = base.depositMethod||'Cash';
   delete base.depositAmount; delete base.depositMethod;   // not job fields — recorded as a payment below
   var j = Object.assign(blankJob(), base);
-  j.no = await allocateSeriesNumber('jo','JO-',4);          // atomic, unique
+  j.no = await allocateSeriesNumber('jo','JO-',4, j.id);    // atomic, unique, idempotent per job
   if (!j.statusLog.length) j.statusLog=[{ time:new Date().toISOString(), code:j.status||'A1', by:j.saId||'', note:'Job Order created.' }];
   var v = ensureVehicle(j);
   j.vehicleId = v.id;
@@ -2942,21 +2960,43 @@ function orSeed(){
    meta/orcounter hands out each number exactly once — even with several cashiers
    billing at the same instant there can be NO duplicates. Offline falls back to a
    local monotonic counter. */
-function allocateOrNumber(){
+function allocateOrNumber(jobId){
   var seed = orSeed();
   if (typeof cloudOn==='function' && cloudOn() && typeof FB!=='undefined' && FB && FB.ready && FB.db && FB.user){
     var ref = bcol('meta').doc('orcounter');
+    /* Per-job claim ledger. The counter commits the instant the transaction
+       lands, but the JOB is saved afterwards by a debounced persist() whose
+       errors are swallowed. If anything interrupts that gap — tab closed,
+       device asleep, network drop, denied write — the number was spent and no
+       job carries it: a permanent hole in the OR series.
+       Recording the claim in the SAME transaction makes allocation idempotent
+       per job, so a retry hands back the number already issued to this job
+       instead of burning the next one. It also leaves an auditable record of
+       every number ever issued (see orNumberAudit). */
+    var claimRef = bcol('orclaims').doc(String(jobId||'nojob'));
     return FB.db.runTransaction(function(t){
-      return t.get(ref).then(function(doc){
-        var stored = (doc.exists && Number(doc.data().next)>0) ? Number(doc.data().next) : 0;
-        var issue = Math.max(stored, seed);                 // never reuse / never go backward
-        t.set(ref, { next: issue+1, updatedAt:new Date().toISOString() }, { merge:true });
-        return issue;
+      /* Every read must precede every write in a Firestore transaction. */
+      return t.get(claimRef).then(function(cdoc){
+        var prior = cdoc.exists ? (cdoc.data()||{}) : null;
+        if (prior && prior.orNumber) return { or:prior.orNumber, reused:true };
+        return t.get(ref).then(function(doc){
+          var stored = (doc.exists && Number(doc.data().next)>0) ? Number(doc.data().next) : 0;
+          var issue = Math.max(stored, seed);               // never reuse / never go backward
+          var orNo = 'OR-'+String(issue);
+          t.set(ref, { next: issue+1, updatedAt:new Date().toISOString() }, { merge:true });
+          t.set(claimRef, { jobId:String(jobId||''), orNumber:orNo, issue:issue,
+                            at:new Date().toISOString(),
+                            by:(typeof CURRENT_USER!=='undefined' && CURRENT_USER) ? (CURRENT_USER.uid||'') : '' });
+          return { or:orNo, reused:false };
+        });
       });
-    }).then(function(issue){
-      if(S.counters) S.counters.or=issue;                   // keep local mirrors current
-      S.shop.orNext = issue+1;
-      return 'OR-'+String(issue);
+    }).then(function(r){
+      var n = Number(String(r.or).replace(/\D/g,'')) || 0;
+      if(n){
+        if(S.counters) S.counters.or=n;                     // keep local mirrors current
+        S.shop.orNext = n+1;
+      }
+      return r.or;
     });
   }
   if(!S.counters) S.counters={};
@@ -2975,7 +3015,7 @@ function advanceBilling(id){
   if(_issuingOR[id]) return;                                     // in-flight guard (prevents double-click gaps)
   _issuingOR[id]=true;
   if(document.getElementById('dscParts')) j.discount=readDiscount('dsc');
-  allocateOrNumber().then(function(orNo){
+  allocateOrNumber(id).then(function(orNo){
     j.orNumber=orNo; j.billedAt=new Date().toISOString(); j.stage='Final Billing';
     delete _issuingOR[id]; persist(); toast('Final Billing issued · '+orNo); render();
   }).catch(function(err){
@@ -3032,7 +3072,8 @@ function afterRender(){}
 
 async function createEstimateFrom(base){
   var v = vehicleByPlate(base.plate);
-  var e = { id:uid('est'), no:await allocateSeriesNumber('est','EST-',4), date:todayISO(),
+  var estId = uid('est');   // hoisted so the number can be claimed against it
+  var e = { id:estId, no:await allocateSeriesNumber('est','EST-',4, estId), date:todayISO(),
     plate:base.plate||'', owner:base.owner||(v&&v.owner)||'', contactPerson:base.contactPerson||'', contactNumber:base.contactNumber||'',
     address:base.address||(v&&v.address)||'',
     year:base.year||(v&&v.year)||'', make:base.make||(v&&v.make)||'', model:base.model||(v&&v.model)||'',
@@ -3523,14 +3564,16 @@ VIEWS.purchaseorders = function(){
     '<button class="btn primary" onclick="newPO()">＋ New PO</button></div></div>'+
     (S.purchaseOrders.length?'<div class="card pad0"><table class="tbl click"><thead><tr><th>PO #</th><th>Supplier</th><th>Status</th><th>Date</th><th class="r">Total</th></tr></thead><tbody>'+rows+'</tbody></table></div>':emptyState('No purchase orders.'))+'</div>';
 };
-function newPO(){ allocateSeriesNumber('po','PO-',4).then(function(no){
-  var po={ id:uid('po'), no:no, date:todayISO(), supplier:'', status:'Draft', lines:[], notes:'', receivedDate:null };
+function newPO(){ var poId=uid('po');   // hoisted so the number can be claimed against it
+  allocateSeriesNumber('po','PO-',4, poId).then(function(no){
+  var po={ id:poId, no:no, date:todayISO(), supplier:'', status:'Draft', lines:[], notes:'', receivedDate:null };
   S.purchaseOrders.unshift(po); persist(); go('po', po.id); }); }
 function suggestReorder(){
   var low=S.parts.filter(function(p){return (p.stock||0)<=(p.reorder||0);});
   if(!low.length){ toast('Nothing below reorder level'); return; }
-  allocateSeriesNumber('po','PO-',4).then(function(no){
-    var po={ id:uid('po'), no:no, date:todayISO(), supplier:'', status:'Draft',
+  var poId=uid('po');   // hoisted so the number can be claimed against it
+  allocateSeriesNumber('po','PO-',4, poId).then(function(no){
+    var po={ id:poId, no:no, date:todayISO(), supplier:'', status:'Draft',
       lines:low.map(function(p){ return { partId:p.id, name:p.name, qty:Math.max((p.reorder||0)*2-(p.stock||0),(p.reorder||0)), cost:p.cost||0 }; }),
       notes:'Auto-generated from low-stock parts.', receivedDate:null };
     S.purchaseOrders.unshift(po); persist(); toast('Draft PO built from '+low.length+' low-stock parts'); go('po', po.id);
@@ -5037,6 +5080,7 @@ if (typeof module!=='undefined' && module.exports){
     LOGO_URI:function(){ return LOGO_URI; }, LOGO_LOCKUP:function(){ return LOGO_LOCKUP; },
     arJobs:arJobs, jobByNo:jobByNo, vehicleByPlate:vehicleByPlate, vehDupe:vehDupe, partById:partById,
     jobMatch:jobMatch, setJobQ:function(q){ JOB_Q=q; },
+    orSeriesRows:orSeriesRows, orSeriesGaps:orSeriesGaps,
     can:can, routeAllowed:routeAllowed, setCurrentUser:function(u){ CURRENT_USER=u; },
     commissionTable:commissionTable, jobLaborCommission:jobLaborCommission, jobLaborCommissionMap:jobLaborCommissionMap, jobLaborCommissionMapAll:jobLaborCommissionMapAll, laborTotal:laborTotal,
     jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,

@@ -40,7 +40,7 @@ async function createJob(base){
   var depAmt = Number(base.depositAmount)||0, depM = base.depositMethod||'Cash';
   delete base.depositAmount; delete base.depositMethod;   // not job fields — recorded as a payment below
   var j = Object.assign(blankJob(), base);
-  j.no = await allocateSeriesNumber('jo','JO-',4);          // atomic, unique
+  j.no = await allocateSeriesNumber('jo','JO-',4, j.id);    // atomic, unique, idempotent per job
   if (!j.statusLog.length) j.statusLog=[{ time:new Date().toISOString(), code:j.status||'A1', by:j.saId||'', note:'Job Order created.' }];
   var v = ensureVehicle(j);
   j.vehicleId = v.id;
@@ -1015,21 +1015,43 @@ function orSeed(){
    meta/orcounter hands out each number exactly once — even with several cashiers
    billing at the same instant there can be NO duplicates. Offline falls back to a
    local monotonic counter. */
-function allocateOrNumber(){
+function allocateOrNumber(jobId){
   var seed = orSeed();
   if (typeof cloudOn==='function' && cloudOn() && typeof FB!=='undefined' && FB && FB.ready && FB.db && FB.user){
     var ref = bcol('meta').doc('orcounter');
+    /* Per-job claim ledger. The counter commits the instant the transaction
+       lands, but the JOB is saved afterwards by a debounced persist() whose
+       errors are swallowed. If anything interrupts that gap — tab closed,
+       device asleep, network drop, denied write — the number was spent and no
+       job carries it: a permanent hole in the OR series.
+       Recording the claim in the SAME transaction makes allocation idempotent
+       per job, so a retry hands back the number already issued to this job
+       instead of burning the next one. It also leaves an auditable record of
+       every number ever issued (see orNumberAudit). */
+    var claimRef = bcol('orclaims').doc(String(jobId||'nojob'));
     return FB.db.runTransaction(function(t){
-      return t.get(ref).then(function(doc){
-        var stored = (doc.exists && Number(doc.data().next)>0) ? Number(doc.data().next) : 0;
-        var issue = Math.max(stored, seed);                 // never reuse / never go backward
-        t.set(ref, { next: issue+1, updatedAt:new Date().toISOString() }, { merge:true });
-        return issue;
+      /* Every read must precede every write in a Firestore transaction. */
+      return t.get(claimRef).then(function(cdoc){
+        var prior = cdoc.exists ? (cdoc.data()||{}) : null;
+        if (prior && prior.orNumber) return { or:prior.orNumber, reused:true };
+        return t.get(ref).then(function(doc){
+          var stored = (doc.exists && Number(doc.data().next)>0) ? Number(doc.data().next) : 0;
+          var issue = Math.max(stored, seed);               // never reuse / never go backward
+          var orNo = 'OR-'+String(issue);
+          t.set(ref, { next: issue+1, updatedAt:new Date().toISOString() }, { merge:true });
+          t.set(claimRef, { jobId:String(jobId||''), orNumber:orNo, issue:issue,
+                            at:new Date().toISOString(),
+                            by:(typeof CURRENT_USER!=='undefined' && CURRENT_USER) ? (CURRENT_USER.uid||'') : '' });
+          return { or:orNo, reused:false };
+        });
       });
-    }).then(function(issue){
-      if(S.counters) S.counters.or=issue;                   // keep local mirrors current
-      S.shop.orNext = issue+1;
-      return 'OR-'+String(issue);
+    }).then(function(r){
+      var n = Number(String(r.or).replace(/\D/g,'')) || 0;
+      if(n){
+        if(S.counters) S.counters.or=n;                     // keep local mirrors current
+        S.shop.orNext = n+1;
+      }
+      return r.or;
     });
   }
   if(!S.counters) S.counters={};
@@ -1048,7 +1070,7 @@ function advanceBilling(id){
   if(_issuingOR[id]) return;                                     // in-flight guard (prevents double-click gaps)
   _issuingOR[id]=true;
   if(document.getElementById('dscParts')) j.discount=readDiscount('dsc');
-  allocateOrNumber().then(function(orNo){
+  allocateOrNumber(id).then(function(orNo){
     j.orNumber=orNo; j.billedAt=new Date().toISOString(); j.stage='Final Billing';
     delete _issuingOR[id]; persist(); toast('Final Billing issued · '+orNo); render();
   }).catch(function(err){
