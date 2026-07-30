@@ -359,11 +359,22 @@ function eodData(from, to){
      its place in the series, not a hole where a number used to be. */
   var receipts=S.jobs.filter(function(j){ return inPeriod(j) && j.orNumber; }).map(function(j){
     var m=/(\d+)/.exec(String(j.orNumber));
+    /* Amount is what was BILLED — a receipt is listed here whether or not anyone
+       paid it, so each row also carries how much of it is still outstanding.
+       Without that, a reader has to cross-check every number against the
+       Transactions list to tell billings from cash. */
+    var gross=jobGross(j), pd=jobPaid(j), due=round2(gross-pd), vd=jobVoided(j);
     return { n:m?Number(m[1]):0, or:j.orNumber, jo:j.no, owner:j.owner||'', plate:j.plate||'',
-             day:localDay(j.billedAt), amount:jobGross(j), voided:jobVoided(j),
+             day:localDay(j.billedAt), amount:gross, voided:vd,
+             paid:pd, due:due,
+             status: vd ? 'void' : (due<=0.001 ? 'paid' : (pd>0.001 ? 'part' : 'unpaid')),
              voidReason:(j.orVoid&&j.orVoid.reason)||'', id:j.id };
   }).sort(function(a,b){ return a.n-b.n; });
   var voidCount=receipts.filter(function(r){ return r.voided; }).length;
+  var owing=receipts.filter(function(r){ return r.status==='unpaid' || r.status==='part'; });
+  var unpaidCount=owing.length;
+  var unpaidTotal=round2(owing.reduce(function(s,r){ return s+r.due; },0));
+  var billedTotal=round2(receipts.reduce(function(s,r){ return s+(r.voided?0:r.amount); },0));
   /* Numbers inside the period's range that NO job carries anywhere in the shop.
      Checked against every job, not just this period's, so a receipt issued on an
      adjacent day is not mistaken for a missing one. */
@@ -375,7 +386,8 @@ function eodData(from, to){
   }
   return { from:from, to:to, txns:txns, byMethod:byMethod, collections:collections, refunds:refunds,
            billed:billed, net:net, disc:disc, vs:vs, partsRev:partsRev, laborRev:laborRev, addlRev:addlRev,
-           receipts:receipts, voidCount:voidCount, missing:missing };
+           receipts:receipts, voidCount:voidCount, missing:missing,
+           billedTotal:billedTotal, unpaidCount:unpaidCount, unpaidTotal:unpaidTotal };
 }
 /* Receipts-by-series table shared by both screens and both printouts. */
 function eodReceiptRowsHTML(d, withDate, clickable){
@@ -386,7 +398,11 @@ function eodReceiptRowsHTML(d, withDate, clickable){
       (withDate?'<td>'+esc(fmtDate(r.day))+'</td>':'')+
       '<td>'+esc(r.jo)+'</td>'+
       '<td>'+esc(r.owner)+(r.plate?' <span class="muted small">'+esc(r.plate)+'</span>':'')+'</td>'+
-      '<td>'+(r.voided?'<span class="chip">VOID</span>'+(r.voidReason?' <span class="muted small">'+esc(r.voidReason)+'</span>':''):'<span class="muted small">—</span>')+'</td>'+
+      '<td>'+(r.voided
+        ? '<span class="chip">VOID</span>'+(r.voidReason?' <span class="muted small">'+esc(r.voidReason)+'</span>':'')
+        : r.status==='unpaid' ? '<span class="chip due">UNPAID</span> <span class="muted small">'+peso(r.due)+' due</span>'
+        : r.status==='part'   ? '<span class="chip due">PART-PAID</span> <span class="muted small">'+peso(r.due)+' still due</span>'
+        : '<span class="muted small">Paid</span>')+'</td>'+
       '<td class="r">'+(r.voided?'<span class="muted">—</span>':peso(r.amount))+'</td></tr>';
   }).join('');
 }
@@ -394,10 +410,15 @@ function eodReceiptsCard(d, withDate){
   var head=d.receipts.length
     ? d.receipts.length+' receipt'+(d.receipts.length===1?'':'s')+
       (d.voidCount?' · '+d.voidCount+' void':'')+
+      (d.unpaidCount?' · '+d.unpaidCount+' unpaid':'')+
       ' · '+esc(d.receipts[0].or)+(d.receipts.length>1?' → '+esc(d.receipts[d.receipts.length-1].or):'')
     : 'None issued';
+  /* Amounts here are BILLED, not collected — the cash figure is the Collections
+     KPI. Saying so on the card is what stops the two being read as one. */
   return '<div class="card"><h2>OR numbers by series</h2>'+
     '<div class="muted small mb8">'+head+'</div>'+
+    (d.receipts.length?'<div class="muted small mb8">Amounts are <b>billed</b>, not collected'+
+      (d.unpaidTotal?' — '+peso(d.unpaidTotal)+' of this is still uncollected':'')+'.</div>':'')+
     (d.missing.length
       ? '<div class="muted small" style="color:var(--brand)">⚠ '+d.missing.length+
         ' number(s) in this range are on no job order: '+d.missing.map(function(n){return 'OR-'+n;}).join(', ')+'</div>'

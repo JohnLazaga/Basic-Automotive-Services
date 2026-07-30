@@ -608,7 +608,7 @@ var BRANCH = {"id":"main","slug":"fairview","name":"Basic by JMSI — Fairview (
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.2.0 · 2026-07-30 · 685d1c4';
+var APP_VERSION = 'v1.2.0 · 2026-07-30 · 26f0ed2';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -4247,11 +4247,22 @@ function eodData(from, to){
      its place in the series, not a hole where a number used to be. */
   var receipts=S.jobs.filter(function(j){ return inPeriod(j) && j.orNumber; }).map(function(j){
     var m=/(\d+)/.exec(String(j.orNumber));
+    /* Amount is what was BILLED — a receipt is listed here whether or not anyone
+       paid it, so each row also carries how much of it is still outstanding.
+       Without that, a reader has to cross-check every number against the
+       Transactions list to tell billings from cash. */
+    var gross=jobGross(j), pd=jobPaid(j), due=round2(gross-pd), vd=jobVoided(j);
     return { n:m?Number(m[1]):0, or:j.orNumber, jo:j.no, owner:j.owner||'', plate:j.plate||'',
-             day:localDay(j.billedAt), amount:jobGross(j), voided:jobVoided(j),
+             day:localDay(j.billedAt), amount:gross, voided:vd,
+             paid:pd, due:due,
+             status: vd ? 'void' : (due<=0.001 ? 'paid' : (pd>0.001 ? 'part' : 'unpaid')),
              voidReason:(j.orVoid&&j.orVoid.reason)||'', id:j.id };
   }).sort(function(a,b){ return a.n-b.n; });
   var voidCount=receipts.filter(function(r){ return r.voided; }).length;
+  var owing=receipts.filter(function(r){ return r.status==='unpaid' || r.status==='part'; });
+  var unpaidCount=owing.length;
+  var unpaidTotal=round2(owing.reduce(function(s,r){ return s+r.due; },0));
+  var billedTotal=round2(receipts.reduce(function(s,r){ return s+(r.voided?0:r.amount); },0));
   /* Numbers inside the period's range that NO job carries anywhere in the shop.
      Checked against every job, not just this period's, so a receipt issued on an
      adjacent day is not mistaken for a missing one. */
@@ -4263,7 +4274,8 @@ function eodData(from, to){
   }
   return { from:from, to:to, txns:txns, byMethod:byMethod, collections:collections, refunds:refunds,
            billed:billed, net:net, disc:disc, vs:vs, partsRev:partsRev, laborRev:laborRev, addlRev:addlRev,
-           receipts:receipts, voidCount:voidCount, missing:missing };
+           receipts:receipts, voidCount:voidCount, missing:missing,
+           billedTotal:billedTotal, unpaidCount:unpaidCount, unpaidTotal:unpaidTotal };
 }
 /* Receipts-by-series table shared by both screens and both printouts. */
 function eodReceiptRowsHTML(d, withDate, clickable){
@@ -4274,7 +4286,11 @@ function eodReceiptRowsHTML(d, withDate, clickable){
       (withDate?'<td>'+esc(fmtDate(r.day))+'</td>':'')+
       '<td>'+esc(r.jo)+'</td>'+
       '<td>'+esc(r.owner)+(r.plate?' <span class="muted small">'+esc(r.plate)+'</span>':'')+'</td>'+
-      '<td>'+(r.voided?'<span class="chip">VOID</span>'+(r.voidReason?' <span class="muted small">'+esc(r.voidReason)+'</span>':''):'<span class="muted small">—</span>')+'</td>'+
+      '<td>'+(r.voided
+        ? '<span class="chip">VOID</span>'+(r.voidReason?' <span class="muted small">'+esc(r.voidReason)+'</span>':'')
+        : r.status==='unpaid' ? '<span class="chip due">UNPAID</span> <span class="muted small">'+peso(r.due)+' due</span>'
+        : r.status==='part'   ? '<span class="chip due">PART-PAID</span> <span class="muted small">'+peso(r.due)+' still due</span>'
+        : '<span class="muted small">Paid</span>')+'</td>'+
       '<td class="r">'+(r.voided?'<span class="muted">—</span>':peso(r.amount))+'</td></tr>';
   }).join('');
 }
@@ -4282,10 +4298,15 @@ function eodReceiptsCard(d, withDate){
   var head=d.receipts.length
     ? d.receipts.length+' receipt'+(d.receipts.length===1?'':'s')+
       (d.voidCount?' · '+d.voidCount+' void':'')+
+      (d.unpaidCount?' · '+d.unpaidCount+' unpaid':'')+
       ' · '+esc(d.receipts[0].or)+(d.receipts.length>1?' → '+esc(d.receipts[d.receipts.length-1].or):'')
     : 'None issued';
+  /* Amounts here are BILLED, not collected — the cash figure is the Collections
+     KPI. Saying so on the card is what stops the two being read as one. */
   return '<div class="card"><h2>OR numbers by series</h2>'+
     '<div class="muted small mb8">'+head+'</div>'+
+    (d.receipts.length?'<div class="muted small mb8">Amounts are <b>billed</b>, not collected'+
+      (d.unpaidTotal?' — '+peso(d.unpaidTotal)+' of this is still uncollected':'')+'.</div>':'')+
     (d.missing.length
       ? '<div class="muted small" style="color:var(--brand)">⚠ '+d.missing.length+
         ' number(s) in this range are on no job order: '+d.missing.map(function(n){return 'OR-'+n;}).join(', ')+'</div>'
@@ -4887,8 +4908,9 @@ function printCSS(){
     '.eod th,.eod td{padding:3px 6px;vertical-align:top}'+
     '.eod thead{display:table-header-group}'+          /* column heads repeat on every page of a long range */
     '.eod tr{page-break-inside:avoid}'+
-    '.eod .vd{color:#CC0F0F;font-weight:700;font-size:9.5px;letter-spacing:.03em}'+
-    '.eod .vd i{color:#6E6E73;font-weight:500;font-style:normal;letter-spacing:0}'+
+    '.eod .vd,.eod .up{color:#CC0F0F;font-weight:700;font-size:9.5px;letter-spacing:.03em}'+
+    '.eod .vd i,.eod .up i{color:#6E6E73;font-weight:500;font-style:normal;letter-spacing:0}'+
+    '.eod tr.due td{font-weight:700;color:#CC0F0F}'+
     '.eod .notes{margin:6px 0 0;padding:6px 8px;font-size:11px;border-left:3px solid #F21717}'+
     '.eod .sig-grid{margin-top:16px;font-size:11px}.eod .sigline{margin-top:26px}'+
   '</style>';
@@ -5183,8 +5205,17 @@ function docEodBody(d, title, withDate){
      taking a line of their own. */
   var series=d.receipts.length
     ? esc(d.receipts[0].or)+(d.receipts.length>1?' → '+esc(d.receipts[d.receipts.length-1].or):'')+
-      ' · '+d.receipts.length+' issued'+(d.voidCount?' · '+d.voidCount+' void':'')
+      ' · '+d.receipts.length+' issued'+(d.voidCount?' · '+d.voidCount+' void':'')+
+      (d.unpaidCount?' · '+d.unpaidCount+' unpaid':'')
     : 'none issued';
+  /* Flag only what needs attention — a fully paid receipt says nothing, so the
+     exceptions are what the eye lands on. */
+  function recTag(r){
+    if(r.voided) return '<span class="vd">VOID'+(r.voidReason?' <i>'+esc(r.voidReason)+'</i>':'')+'</span>';
+    if(r.status==='unpaid') return '<span class="up">UNPAID <i>'+peso(r.due)+' due</i></span>';
+    if(r.status==='part')   return '<span class="up">PART-PAID <i>'+peso(r.due)+' still due</i></span>';
+    return '';
+  }
 
   return '<div class="eod">'+docHeader(title)+
     /* Sales, collections and mix side by side: the three columns that used to be
@@ -5217,14 +5248,19 @@ function docEodBody(d, title, withDate){
     '<table><thead><tr><th>OR #</th>'+(withDate?'<th>Date</th>':'')+'<th>JO #</th><th>Sold to</th><th class="r">Amount</th></tr></thead><tbody>'+
     (d.receipts.length
       ? d.receipts.map(function(r){
-          return '<tr><td><b>'+esc(r.or)+'</b>'+
-            (r.voided?'<br><span class="vd">VOID'+(r.voidReason?' <i>'+esc(r.voidReason)+'</i>':'')+'</span>':'')+'</td>'+
+          var tag=recTag(r);
+          return '<tr><td><b>'+esc(r.or)+'</b>'+(tag?'<br>'+tag:'')+'</td>'+
             (withDate?'<td>'+esc(fmtDate(r.day))+'</td>':'')+
             '<td>'+esc(r.jo)+'</td><td>'+esc(r.owner)+'</td>'+
             '<td class="r">'+(r.voided?'—':peso(r.amount))+'</td></tr>';
         }).join('')
       : '<tr><td colspan="'+cols+'">No receipts issued.</td></tr>')+
-    '<tr class="tot"><td colspan="'+(cols-1)+'" class="r">Total (excl. void)</td><td class="r">'+peso(recTotal)+'</td></tr>'+
+    /* "billed" — this column is what was invoiced, NOT what came in. The cash
+       figure is Total collected, under Transactions. */
+    '<tr class="tot"><td colspan="'+(cols-1)+'" class="r">Total billed (excl. void)</td><td class="r">'+peso(recTotal)+'</td></tr>'+
+    (d.unpaidTotal
+      ? '<tr class="due"><td colspan="'+(cols-1)+'" class="r">Of which still uncollected</td><td class="r">'+peso(d.unpaidTotal)+'</td></tr>'
+      : '')+
     '</tbody></table>'+
     /* The line-by-line backing for Collections — this is the list you walk down
        while counting the drawer, so it carries its own total. Refunds sit in it
@@ -6643,14 +6679,17 @@ var CAPS = [
   { key:'delete',       label:'Delete / clear data' }
 ];
 
-/* Default matrix (Admin always has everything via isAdmin). Admin-editable. */
+/* Default matrix (Admin always has everything via isAdmin). Admin-editable.
+   `refunds` is held to the two roles that actually handle the till — Supervisor
+   and Secretary. Service Adviser bills but does not hand money back, so it is
+   deliberately not granted there. */
 var DEFAULT_PERMS = {
-  SV:               { appointments:1, estimates:1, prices:1, part_cost:1, discounts:1, billing:1, billing_edit:1, receivables:1, dailyclose:1, parts_manage:1 },
+  SV:               { appointments:1, estimates:1, prices:1, part_cost:1, discounts:1, billing:1, billing_edit:1, refunds:1, receivables:1, dailyclose:1, parts_manage:1 },
   SA:               { appointments:1, estimates:1, prices:1, billing:1, receivables:1 },
   SM:               { estimates:1, prices:1 },
   Mechanic:         {},
   'Parts Salesman': { prices:1, parts_manage:1 },
-  Secretary:        { appointments:1, prices:1, billing:1, receivables:1 }
+  Secretary:        { appointments:1, prices:1, billing:1, refunds:1, receivables:1 }
 };
 
 function permsMatrix(){
@@ -6701,8 +6740,8 @@ function requireDelete(what){
 }
 /* Money going back OUT of the till. Gated on its own capability rather than on
    `billing`, because taking payment and handing cash back are different levels
-   of trust — and like `delete`, DEFAULT_PERMS grants it to no role, so only
-   Admin can refund until an admin deliberately grants it. */
+   of trust: Service Adviser bills but cannot refund. Granted by default to the
+   roles that work the till — Supervisor and Secretary. */
 function requireRefund(){
   if (can('refunds')) return true;
   toast('You don’t have permission to record refunds','err');

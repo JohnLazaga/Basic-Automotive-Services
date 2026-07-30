@@ -435,6 +435,52 @@ section('EOD & range report: OR series with void status, one shared aggregator')
   M.setCurrentUser(null);
 })();
 
+/* --------------------------------------------- Billed vs collected on the OR table */
+section('OR series: receipts carry payment status; amounts are billed, not collected');
+(function(){
+  const s=fresh();
+  const day='2026-07-01';
+  const mk=(id,no,or,price,paid,voided)=>({ id:id, no:no, plate:'AAA 111', owner:'CUST '+id,
+    stage:'Final Billing', dateIn:day, billedAt:day+'T02:00:00.000Z',
+    lines:[{id:'l1',type:'labor',desc:'Service',qty:1,price:price}],
+    payments: paid? [{id:'p1',amount:paid,method:'Cash',date:day+'T03:00:00.000Z'}] : [],
+    discount:{parts:0,labor:0,other:0}, mechanicIds:[], orNumber:or,
+    orVoid: voided?{at:day+'T04:00:00.000Z',by:'u1',byName:'Admin',reason:'duplicate'}:null });
+
+  // 1000 net -> 1120 gross. Paid / unpaid / part-paid / voided.
+  s.jobs=[ mk('a','JO-0253','OR-1339',1000,1120,false),
+           mk('b','JO-0254','OR-1340',1000,0,false),
+           mk('c','JO-0255','OR-1341',1000,500,false),
+           mk('d','JO-0256','OR-1342',1000,0,true) ];
+  M.setS(s);
+  const d=M.eodData(day,day);
+
+  const by=o=>d.receipts.find(r=>r.or===o);
+  ok('paid receipt flagged paid', by('OR-1339').status==='paid' && by('OR-1339').due===0);
+  ok('unpaid receipt flagged unpaid', by('OR-1340').status==='unpaid' && by('OR-1340').due===1120);
+  ok('part-paid receipt flagged part', by('OR-1341').status==='part' && by('OR-1341').due===620);
+  ok('voided receipt still flagged void', by('OR-1342').status==='void');
+  ok('unpaid count excludes paid and void', d.unpaidCount===2);
+  ok('uncollected total sums the dues', d.unpaidTotal===1740);
+  ok('billed total excludes the void', d.billedTotal===3360);
+
+  // The whole point: billed and collected are different numbers.
+  ok('collected is only the cash', d.collections===1620);
+  ok('billed is not collected', d.billedTotal!==d.collections);
+  ok('unpaid receipt is absent from transactions', !d.txns.some(t=>t.job.no==='JO-0254'));
+  ok('unpaid receipt IS in the OR series', !!by('OR-1340'));
+
+  M.setCurrentUser({uid:'u1',isAdmin:true,role:'SV',active:true});
+  M.setDcDate(day);
+  const doc=M.docDailyClose();
+  ok('printout marks the unpaid receipt', doc.indexOf('UNPAID')>0);
+  ok('printout marks the part-paid receipt', doc.indexOf('PART-PAID')>0);
+  ok('printout labels the total as billed', doc.indexOf('Total billed (excl. void)')>0);
+  ok('printout states the uncollected amount', doc.indexOf('Of which still uncollected')>0);
+  ok('screen marks unpaid too', M.VIEWS().dailyclose().indexOf('UNPAID')>0);
+  M.setCurrentUser(null);
+})();
+
 /* --------------------------------------------- Refunds */
 section('Refunds: negative payment, nets through collections, guarded');
 (function(){
@@ -503,6 +549,26 @@ section('Refunds: negative payment, nets through collections, guarded');
   ok('refund on the old job accepted', M.addRefund(s2.jobs[0],1120,'Cash','customer returned').ok===true);
   ok('closed day is left alone', M.eodData(old,old).collections===1120);
   ok('payout day carries the refund', M.eodData(day,day).collections===-1120);
+
+  /* Who may refund, by default. Held to the roles that work the till. */
+  const roleCan=r=>{ M.setCurrentUser({uid:'u9',isAdmin:false,role:r,active:true}); const v=M.can('refunds'); M.setCurrentUser(null); return v; };
+  ok('Supervisor may refund', roleCan('SV')===true);
+  ok('Secretary may refund', roleCan('Secretary')===true);
+  ok('Service Adviser may not refund', roleCan('SA')===false);
+  ok('Mechanic may not refund', roleCan('Mechanic')===false);
+  ok('Parts Salesman may not refund', roleCan('Parts Salesman')===false);
+  ok('SM may not refund', roleCan('SM')===false);
+  M.setCurrentUser({uid:'u9',isAdmin:true,role:'SA',active:true});
+  ok('Admin always may refund', M.can('refunds')===true);
+  M.setCurrentUser(null);
+
+  /* A shop that has SAVED its own matrix keeps it — the stored one wins over
+     DEFAULT_PERMS, so a new capability does not appear there until an admin
+     ticks it. This is the case that needs doing in the UI, per branch. */
+  const s3=fresh(); s3.shop.permissions={ SV:{ billing:1 }, Secretary:{ billing:1 } }; M.setS(s3);
+  M.setCurrentUser({uid:'u9',isAdmin:false,role:'SV',active:true});
+  ok('saved matrix wins over the new default', M.can('refunds')===false);
+  M.setCurrentUser(null);
 })();
 
 /* --------------------------------------------- Delete capability + clear guard */

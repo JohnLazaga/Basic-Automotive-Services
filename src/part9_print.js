@@ -56,8 +56,9 @@ function printCSS(){
     '.eod th,.eod td{padding:3px 6px;vertical-align:top}'+
     '.eod thead{display:table-header-group}'+          /* column heads repeat on every page of a long range */
     '.eod tr{page-break-inside:avoid}'+
-    '.eod .vd{color:#CC0F0F;font-weight:700;font-size:9.5px;letter-spacing:.03em}'+
-    '.eod .vd i{color:#6E6E73;font-weight:500;font-style:normal;letter-spacing:0}'+
+    '.eod .vd,.eod .up{color:#CC0F0F;font-weight:700;font-size:9.5px;letter-spacing:.03em}'+
+    '.eod .vd i,.eod .up i{color:#6E6E73;font-weight:500;font-style:normal;letter-spacing:0}'+
+    '.eod tr.due td{font-weight:700;color:#CC0F0F}'+
     '.eod .notes{margin:6px 0 0;padding:6px 8px;font-size:11px;border-left:3px solid #F21717}'+
     '.eod .sig-grid{margin-top:16px;font-size:11px}.eod .sigline{margin-top:26px}'+
   '</style>';
@@ -352,8 +353,17 @@ function docEodBody(d, title, withDate){
      taking a line of their own. */
   var series=d.receipts.length
     ? esc(d.receipts[0].or)+(d.receipts.length>1?' → '+esc(d.receipts[d.receipts.length-1].or):'')+
-      ' · '+d.receipts.length+' issued'+(d.voidCount?' · '+d.voidCount+' void':'')
+      ' · '+d.receipts.length+' issued'+(d.voidCount?' · '+d.voidCount+' void':'')+
+      (d.unpaidCount?' · '+d.unpaidCount+' unpaid':'')
     : 'none issued';
+  /* Flag only what needs attention — a fully paid receipt says nothing, so the
+     exceptions are what the eye lands on. */
+  function recTag(r){
+    if(r.voided) return '<span class="vd">VOID'+(r.voidReason?' <i>'+esc(r.voidReason)+'</i>':'')+'</span>';
+    if(r.status==='unpaid') return '<span class="up">UNPAID <i>'+peso(r.due)+' due</i></span>';
+    if(r.status==='part')   return '<span class="up">PART-PAID <i>'+peso(r.due)+' still due</i></span>';
+    return '';
+  }
 
   return '<div class="eod">'+docHeader(title)+
     /* Sales, collections and mix side by side: the three columns that used to be
@@ -386,14 +396,19 @@ function docEodBody(d, title, withDate){
     '<table><thead><tr><th>OR #</th>'+(withDate?'<th>Date</th>':'')+'<th>JO #</th><th>Sold to</th><th class="r">Amount</th></tr></thead><tbody>'+
     (d.receipts.length
       ? d.receipts.map(function(r){
-          return '<tr><td><b>'+esc(r.or)+'</b>'+
-            (r.voided?'<br><span class="vd">VOID'+(r.voidReason?' <i>'+esc(r.voidReason)+'</i>':'')+'</span>':'')+'</td>'+
+          var tag=recTag(r);
+          return '<tr><td><b>'+esc(r.or)+'</b>'+(tag?'<br>'+tag:'')+'</td>'+
             (withDate?'<td>'+esc(fmtDate(r.day))+'</td>':'')+
             '<td>'+esc(r.jo)+'</td><td>'+esc(r.owner)+'</td>'+
             '<td class="r">'+(r.voided?'—':peso(r.amount))+'</td></tr>';
         }).join('')
       : '<tr><td colspan="'+cols+'">No receipts issued.</td></tr>')+
-    '<tr class="tot"><td colspan="'+(cols-1)+'" class="r">Total (excl. void)</td><td class="r">'+peso(recTotal)+'</td></tr>'+
+    /* "billed" — this column is what was invoiced, NOT what came in. The cash
+       figure is Total collected, under Transactions. */
+    '<tr class="tot"><td colspan="'+(cols-1)+'" class="r">Total billed (excl. void)</td><td class="r">'+peso(recTotal)+'</td></tr>'+
+    (d.unpaidTotal
+      ? '<tr class="due"><td colspan="'+(cols-1)+'" class="r">Of which still uncollected</td><td class="r">'+peso(d.unpaidTotal)+'</td></tr>'
+      : '')+
     '</tbody></table>'+
     /* The line-by-line backing for Collections — this is the list you walk down
        while counting the drawer, so it carries its own total. Refunds sit in it

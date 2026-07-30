@@ -33,14 +33,17 @@ var CAPS = [
   { key:'delete',       label:'Delete / clear data' }
 ];
 
-/* Default matrix (Admin always has everything via isAdmin). Admin-editable. */
+/* Default matrix (Admin always has everything via isAdmin). Admin-editable.
+   `refunds` is held to the two roles that actually handle the till — Supervisor
+   and Secretary. Service Adviser bills but does not hand money back, so it is
+   deliberately not granted there. */
 var DEFAULT_PERMS = {
-  SV:               { appointments:1, estimates:1, prices:1, part_cost:1, discounts:1, billing:1, billing_edit:1, receivables:1, dailyclose:1, parts_manage:1 },
+  SV:               { appointments:1, estimates:1, prices:1, part_cost:1, discounts:1, billing:1, billing_edit:1, refunds:1, receivables:1, dailyclose:1, parts_manage:1 },
   SA:               { appointments:1, estimates:1, prices:1, billing:1, receivables:1 },
   SM:               { estimates:1, prices:1 },
   Mechanic:         {},
   'Parts Salesman': { prices:1, parts_manage:1 },
-  Secretary:        { appointments:1, prices:1, billing:1, receivables:1 }
+  Secretary:        { appointments:1, prices:1, billing:1, refunds:1, receivables:1 }
 };
 
 function permsMatrix(){
@@ -91,8 +94,8 @@ function requireDelete(what){
 }
 /* Money going back OUT of the till. Gated on its own capability rather than on
    `billing`, because taking payment and handing cash back are different levels
-   of trust — and like `delete`, DEFAULT_PERMS grants it to no role, so only
-   Admin can refund until an admin deliberately grants it. */
+   of trust: Service Adviser bills but cannot refund. Granted by default to the
+   roles that work the till — Supervisor and Secretary. */
 function requireRefund(){
   if (can('refunds')) return true;
   toast('You don’t have permission to record refunds','err');
