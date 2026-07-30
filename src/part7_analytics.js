@@ -87,6 +87,7 @@ VIEWS.reports = function(){
         '</tbody></table>':emptyState('No commissions yet.'))+'</div>'+
     '</div></div>'+
     orSeriesCard()+
+    joSeriesCard()+
   '</div>';
 };
 
@@ -100,13 +101,23 @@ function orSeriesRows(){
              owner:j.owner||'', plate:j.plate||'', amount:jobGross(j), id:j.id };
   }).sort(function(a,b){ return a.n-b.n || String(a.or).localeCompare(String(b.or)); });
 }
-function orSeriesGaps(rows){
+/* Holes in a numbered series. Shared by the OR and JO cards — it only reads the
+   numeric `n` of each row, so any series that parses a number can use it. Rows
+   must already be sorted ascending. */
+function seriesGaps(rows){
   var gaps=[];
   for (var i=1;i<rows.length;i++){
     var prev=rows[i-1].n, cur=rows[i].n;
     if (cur-prev>1){ gaps.push({ from:prev+1, to:cur-1, count:cur-prev-1 }); }
   }
   return gaps;
+}
+function gapNoteHTML(gaps, label, hint){
+  if(!gaps.length) return '<div class="muted small">✓ No gaps — series is continuous.</div>';
+  var total=gaps.reduce(function(s,g){return s+g.count;},0);
+  return '<div class="muted small" style="color:var(--brand)">⚠ '+total+' missing '+esc(label)+
+    ' number(s): '+gaps.map(function(g){ return g.count===1?(g.from):(g.from+'–'+g.to); }).join(', ')+'</div>'+
+    (hint?'<div class="muted small">'+hint+'</div>':'');
 }
 var OR_Q='';
 function orSeriesMatch(r){
@@ -129,7 +140,7 @@ function orSeriesSearch(v){ OR_Q=v; var el=document.getElementById('orSeriesBody
 function orSeriesCard(){
   var rows=orSeriesRows();
   if (!rows.length) return '<div class="card"><h2>OR numbers by series</h2>'+emptyState('No OR numbers issued yet.')+'</div>';
-  var gaps=orSeriesGaps(rows);
+  var gaps=seriesGaps(rows);
   var gapNote = gaps.length
     ? '<div class="muted small" style="color:var(--brand)">⚠ '+gaps.reduce(function(s,g){return s+g.count;},0)+
       ' missing OR number(s): '+gaps.map(function(g){ return g.count===1?('OR-'+g.from):('OR-'+g.from+'–OR-'+g.to); }).join(', ')+'</div>'
@@ -155,6 +166,77 @@ function docOrSeries(){
   return docShell('OR numbers by series', body);
 }
 function printOrSeries(){ printDoc(docOrSeries()); }
+
+/* ---- JO numbers by series ------------------------------------------------- */
+/* Same audit as the OR card, for Job Order numbers. Unlike an OR, a JO number
+   can also go missing because the job order was DELETED — so a hole here is not
+   automatically a lost number. Both causes are worth seeing. */
+/* JO numbers are zero-padded to 4 digits, so gap labels must be too — otherwise
+   "JO-40" won't match the "JO-0040" on the paperwork being reconciled. */
+function joNoLabel(n){ return 'JO-'+String(n).padStart(4,'0'); }
+function joGapLabels(gaps){
+  return gaps.map(function(g){ return g.count===1 ? joNoLabel(g.from) : (joNoLabel(g.from)+'–'+joNoLabel(g.to)); }).join(', ');
+}
+function joSeriesRows(){
+  return (S.jobs||[]).filter(function(j){ return j && j.no; }).map(function(j){
+    var m=/(\d+)/.exec(String(j.no));
+    return { n:m?Number(m[1]):0, jo:j.no, or:j.orNumber||'', stage:j.stage||'',
+             date:j.dateIn||'', owner:j.owner||'', plate:j.plate||'',
+             amount:jobGross(j), id:j.id };
+  }).sort(function(a,b){ return a.n-b.n || String(a.jo).localeCompare(String(b.jo)); });
+}
+var JOSER_Q='';
+function joSeriesMatch(r){
+  if(!JOSER_Q) return true; var q=JOSER_Q.toLowerCase();
+  return [r.jo,r.or,r.owner,r.plate,r.stage].some(function(x){ return String(x||'').toLowerCase().indexOf(q)>=0; });
+}
+function joSeriesFiltered(){ return joSeriesRows().filter(joSeriesMatch); }
+function joSeriesRowsHTML(){
+  var rows=joSeriesFiltered();
+  if(!rows.length) return '<tr><td colspan="5" class="muted center">No JO numbers match “'+esc(JOSER_Q)+'”.</td></tr>';
+  return rows.map(function(r){
+    return '<tr onclick="go(\'job\',\''+r.id+'\')" style="cursor:pointer">'+
+      '<td><b>'+esc(r.jo)+'</b></td>'+
+      '<td>'+esc(r.or||'—')+'</td>'+
+      '<td>'+esc(fmtDate(r.date))+'</td>'+
+      '<td>'+esc(r.owner)+(r.plate?' <span class="muted small">'+esc(r.plate)+'</span>':'')+'</td>'+
+      '<td class="r">'+peso(r.amount)+'</td></tr>';
+  }).join('');
+}
+function joSeriesSearch(v){ JOSER_Q=v; var el=document.getElementById('joSeriesBody'); if(el) el.innerHTML=joSeriesRowsHTML(); }
+function joSeriesCard(){
+  var rows=joSeriesRows();
+  if (!rows.length) return '<div class="card"><h2>JO numbers by series</h2>'+emptyState('No job orders yet.')+'</div>';
+  var gaps=seriesGaps(rows);
+  var gapNote = gaps.length
+    ? '<div class="muted small" style="color:var(--brand)">⚠ '+gaps.reduce(function(s,g){return s+g.count;},0)+
+      ' missing JO number(s): '+joGapLabels(gaps)+'</div>'+
+      '<div class="muted small">A hole means the number was issued but its job order is gone — either deleted, or lost before it saved.</div>'
+    : '<div class="muted small">✓ No gaps — series is continuous.</div>';
+  return '<div class="card"><div class="card-head"><h2>JO numbers by series</h2>'+
+    '<button class="btn sm ghost" onclick="printJoSeries()">⎙ Print</button></div>'+
+    '<div class="muted small mb8">'+rows.length+' job orders · '+esc(rows[0].jo)+' → '+esc(rows[rows.length-1].jo)+'</div>'+
+    gapNote+
+    '<input class="searchbox mt8" id="joSeriesSearch" value="'+attr(JOSER_Q)+'" oninput="joSeriesSearch(this.value)" placeholder="Search JO # / OR # / customer / plate / stage…" autocomplete="off">'+
+    '<div class="card pad0 mt8"><table class="tbl click"><thead><tr><th>JO #</th><th>OR #</th><th>Date in</th><th>Customer</th><th class="r">Bill</th></tr></thead>'+
+    '<tbody id="joSeriesBody">'+joSeriesRowsHTML()+'</tbody></table></div></div>';
+}
+function docJoSeries(){
+  var rows=joSeriesFiltered();
+  var tot=round2(rows.reduce(function(s,r){return s+r.amount;},0));
+  var gaps=seriesGaps(joSeriesRows());
+  var body=docHeader('JO Numbers by Series')+
+    '<div class="meta"><div><b>Job orders</b>'+rows.length+'</div>'+
+      '<div><b>Range</b>'+(rows.length?esc(rows[0].jo)+' → '+esc(rows[rows.length-1].jo):'—')+'</div>'+
+      '<div><b>Missing</b>'+(gaps.length?gaps.reduce(function(s,g){return s+g.count;},0)+' ('+
+        esc(joGapLabels(gaps))+')':'none')+'</div></div>'+
+    '<table><thead><tr><th>JO #</th><th>OR #</th><th>Date in</th><th>Customer</th><th class="r">Bill</th></tr></thead><tbody>'+
+    rows.map(function(r){ return '<tr><td>'+esc(r.jo)+'</td><td>'+esc(r.or||'—')+'</td><td>'+esc(fmtDate(r.date))+'</td><td>'+esc(r.owner)+'</td><td class="r">'+peso(r.amount)+'</td></tr>'; }).join('')+
+    '<tr class="tot"><td></td><td></td><td></td><td class="r">Total</td><td class="r">'+peso(tot)+'</td></tr>'+
+    '</tbody></table>';
+  return docShell('JO numbers by series', body);
+}
+function printJoSeries(){ printDoc(docJoSeries()); }
 
 /* Commission across a set of jobs.
    Mechanics (Mechanic[s] field only): shop rate × labor ÷ #mechanics, split evenly.

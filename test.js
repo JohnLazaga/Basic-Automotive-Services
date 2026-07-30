@@ -351,8 +351,9 @@ section('OR series: gaps in the receipt sequence are detected');
   M.setS(s);
   const rows=M.orSeriesRows();
   ok('rows sorted by series', rows.map(r=>r.n).join(',')==='1207,1208,1210,1234,1236');
-  const gaps=M.orSeriesGaps(rows);
+  const gaps=M.seriesGaps(rows);
   ok('three gap ranges found', gaps.length===3);
+  ok('same detector serves JO numbers', typeof M.joSeriesRows==='function');
   ok('single missing number reported as 1209', gaps[0].from===1209 && gaps[0].to===1209 && gaps[0].count===1);
   ok('the 1211-1233 block is reported', gaps[1].from===1211 && gaps[1].to===1233 && gaps[1].count===23);
   ok('trailing single gap reported as 1235', gaps[2].from===1235 && gaps[2].to===1235 && gaps[2].count===1);
@@ -360,14 +361,49 @@ section('OR series: gaps in the receipt sequence are detected');
 
   // A continuous series must report nothing.
   const s2=fresh(); s2.jobs=[mk('1','OR-1207'), mk('2','OR-1208'), mk('3','OR-1209')]; M.setS(s2);
-  ok('continuous series has no gaps', M.orSeriesGaps(M.orSeriesRows()).length===0);
+  ok('continuous series has no gaps', M.seriesGaps(M.orSeriesRows()).length===0);
   // Degenerate inputs must not crash or invent gaps.
   const s3=fresh(); s3.jobs=[]; M.setS(s3);
-  ok('no receipts -> no gaps', M.orSeriesGaps(M.orSeriesRows()).length===0);
+  ok('no receipts -> no gaps', M.seriesGaps(M.orSeriesRows()).length===0);
   const s4=fresh(); s4.jobs=[mk('1','OR-1300')]; M.setS(s4);
-  ok('one receipt -> no gaps', M.orSeriesGaps(M.orSeriesRows()).length===0);
+  ok('one receipt -> no gaps', M.seriesGaps(M.orSeriesRows()).length===0);
   const s5=fresh(); s5.jobs=[mk('1','OR-1207'), mk('2',null), mk('3','OR-1208')]; M.setS(s5);
-  ok('unbilled jobs are ignored', M.orSeriesRows().length===2 && M.orSeriesGaps(M.orSeriesRows()).length===0);
+  ok('unbilled jobs are ignored', M.orSeriesRows().length===2 && M.seriesGaps(M.orSeriesRows()).length===0);
+})();
+
+/* --------------------------------------------- JO series gaps */
+section('JO series: gaps in the job-order sequence are detected');
+(function(){
+  const s=fresh();
+  const mk=(n,or)=>({ id:'j'+n, no:'JO-'+String(n).padStart(4,'0'), plate:'A', owner:'X',
+                      stage:'Released', dateIn:'2026-07-01', lines:[], payments:[],
+                      discount:{parts:0,labor:0,other:0}, mechanicIds:[], orNumber:or||null });
+  s.jobs=[mk(38), mk(39), mk(41), mk(45)];      // JO-0040 and JO-0042..0044 missing
+  M.setS(s);
+  const rows=M.joSeriesRows();
+  ok('rows sorted by series', rows.map(r=>r.n).join(',')==='38,39,41,45');
+  ok('every job order is listed (billed or not)', rows.length===4);
+  const gaps=M.seriesGaps(rows);
+  ok('two JO gap ranges found', gaps.length===2);
+  ok('single missing JO reported', gaps[0].from===40 && gaps[0].to===40 && gaps[0].count===1);
+  ok('missing JO block reported', gaps[1].from===42 && gaps[1].to===44 && gaps[1].count===3);
+  ok('total missing JO counted', gaps.reduce((a,g)=>a+g.count,0)===4);
+  // Unbilled jobs must still appear (unlike the OR audit, which needs a receipt).
+  ok('unbilled job shows a blank OR', rows.filter(r=>!r.or).length===4);
+  s.jobs.push(mk(46,'OR-1300')); M.setS(s);
+  ok('billed job carries its OR', M.joSeriesRows().slice(-1)[0].or==='OR-1300');
+  // Continuous and degenerate cases.
+  const s2=fresh(); s2.jobs=[mk(1),mk(2),mk(3)]; M.setS(s2);
+  ok('continuous JO series has no gaps', M.seriesGaps(M.joSeriesRows()).length===0);
+  const s3=fresh(); s3.jobs=[]; M.setS(s3);
+  ok('no job orders -> no gaps', M.seriesGaps(M.joSeriesRows()).length===0);
+  // The printable version must render.
+  const s4=fresh(); s4.jobs=[mk(38),mk(41)]; M.setS(s4);
+  const doc=M.docJoSeries();
+  ok('printable JO series renders', typeof doc==='string' && doc.indexOf('JO Numbers by Series')>0);
+  // Gap labels must be zero-padded so they match the JO numbers on paperwork.
+  ok('printable JO series names the missing number', doc.indexOf('JO-0039')>0 && doc.indexOf('JO-0040')>0);
+  ok('gap labels are zero-padded, not JO-39', doc.indexOf('JO-39<')<0 && doc.indexOf('(JO-39')<0);
 })();
 
 /* --------------------------------------------- Public portal snapshot */
