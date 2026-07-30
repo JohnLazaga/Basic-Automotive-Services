@@ -192,8 +192,17 @@ function createJobAnyway(){ var b=_ingressDraft||{}; _ingressDraft=null; closeMo
 var JOB_Q='';
 function jobMatch(j){
   if(!JOB_Q) return true; var q=JOB_Q.toLowerCase();
+  /* Also match with every separator stripped, so a number read off a printed
+     receipt pulls up its job however it gets typed: "OR-1234", "OR 1234",
+     "or1234" and plain "1234" all find OR-1234. Same for JO numbers. */
+  var qLoose=q.replace(/[^a-z0-9]/g,'');
   var staffTxt=staffSearchStr((j.mechanicIds||[]).concat([j.saId,j.assessedBy,j.partsSalesman]));
-  return [j.no,j.plate,j.owner,j.contactPerson,j.make+' '+j.model,j.siRef,j.pmsRef,staffTxt].some(function(x){ return String(x||'').toLowerCase().indexOf(q)>=0; });
+  /* orNumber = the Final Billing receipt (OR) number. */
+  return [j.no,j.plate,j.owner,j.contactPerson,j.make+' '+j.model,j.orNumber,j.siRef,j.pmsRef,staffTxt].some(function(x){
+    var s=String(x||'').toLowerCase();
+    if(s.indexOf(q)>=0) return true;
+    return !!qLoose && s.replace(/[^a-z0-9]/g,'').indexOf(qLoose)>=0;
+  });
 }
 function jobsBodyHTML(){
   var jobs=S.jobs.filter(jobMatch);
@@ -202,7 +211,7 @@ function jobsBodyHTML(){
   var rows = jobs.map(function(j){
     var veh=(j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:'');
     return '<tr onclick="go(\'job\',\''+j.id+'\')">'+
-      '<td><b>'+esc(j.no)+'</b></td>'+
+      '<td><b>'+esc(j.no)+'</b>'+(j.orNumber?'<div class="muted small">'+esc(j.orNumber)+'</div>':'')+'</td>'+
       '<td><b>'+esc(j.plate)+'</b>'+(veh?' <span class="muted small">'+esc(veh)+'</span>':'')+'</td>'+
       '<td>'+chip(j.stage, j.stage==='Released'?'ok':j.stage==='Job Order'?'':'gold')+'</td>'+
       '<td>'+statusBadge(j.status)+'</td>'+
@@ -218,7 +227,7 @@ function jobsBodyHTML(){
 }
 function jobsSearch(v){ JOB_Q=v; var el=document.getElementById('jobsBody'); if(el) el.innerHTML=jobsBodyHTML(); }
 VIEWS.jobs = function(){
-  var search='<input class="searchbox" id="jobsSearch" value="'+attr(JOB_Q)+'" oninput="jobsSearch(this.value)" placeholder="Search JO# / plate / owner / contact…" autocomplete="off">';
+  var search='<input class="searchbox" id="jobsSearch" value="'+attr(JOB_Q)+'" oninput="jobsSearch(this.value)" placeholder="Search JO# / OR# / plate / owner / contact…" autocomplete="off">';
   return '<div class="page"><div class="page-head"><h1>Job Orders</h1><div class="row gap wrap">'+search+
     '<button class="btn primary" onclick="openIntake()">＋ New Ingress</button></div></div>'+
     '<div id="jobsBody">'+jobsBodyHTML()+'</div>'+

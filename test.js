@@ -300,6 +300,38 @@ section('New vehicle: duplicate plate is detected (case/space-insensitive)');
   ok('editing into ANOTHER record\'s plate is flagged', M.vehDupe('DEF 5678', 'vh_a') && M.vehDupe('DEF 5678','vh_a').id==='vh_b');
 })();
 
+/* --------------------------------------------- Job Orders search */
+section('Job Orders search: finds a job by its Final Billing OR number');
+(function(){
+  const s=fresh();
+  s.jobs=[
+    { id:'j1', no:'JO-0001', plate:'ABC 1234', owner:'JUAN DELA CRUZ', make:'TOYOTA', model:'VIOS',
+      orNumber:'OR-1042', siRef:'', pmsRef:'', mechanicIds:[] },
+    { id:'j2', no:'JO-0002', plate:'XYZ 9999', owner:'PEDRO SANTOS', make:'HONDA', model:'CITY',
+      orNumber:null, siRef:'', pmsRef:'', mechanicIds:[] }
+  ];
+  M.setS(s);
+  const find = function(q){ M.setJobQ(q); return s.jobs.filter(M.jobMatch); };
+
+  ok('blank query returns everything', find('').length===2);
+  // The point of the feature: type what is printed on the receipt.
+  ok('full OR number finds the job',   find('OR-1042').length===1 && find('OR-1042')[0].id==='j1');
+  ok('bare digits find the job',       find('1042').length===1 && find('1042')[0].id==='j1');
+  ok('lowercase finds the job',        find('or-1042').length===1);
+  ok('space instead of dash matches',  find('OR 1042').length===1);
+  ok('no separator matches',           find('or1042').length===1);
+  ok('partial OR digits match',        find('104').length===1 && find('104')[0].id==='j1');
+  ok('an unissued OR is not matched',  find('OR-9999').length===0);
+  ok('unbilled job stays findable by JO#', find('JO-0002').length===1 && find('JO-0002')[0].id==='j2');
+  ok('JO# tolerates a space too',      find('JO 0002').length===1);
+  // Existing search behaviour must not regress.
+  ok('plate still searchable',         find('XYZ').length===1 && find('XYZ')[0].id==='j2');
+  ok('owner still searchable',         find('juan').length===1 && find('juan')[0].id==='j1');
+  ok('vehicle still searchable',       find('VIOS').length===1);
+  ok('nonsense matches nothing',       find('ZZZQQQ').length===0);
+  M.setJobQ('');
+})();
+
 /* --------------------------------------------- Public portal snapshot */
 section('Public portal doc: minimal, no sensitive fields');
 await (async function(){
