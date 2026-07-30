@@ -128,7 +128,8 @@ function eodRangeCard(){
     '<div class="kpis">'+kpi('Collections',peso(d.collections))+kpi('Net sales (billed)',peso(d.net))+
       kpi('Output VAT',peso(d.vs.vat))+kpi('Discounts',peso(d.disc))+kpi('Transactions',d.txns.length)+'</div>'+
     '<div class="grid2cards">'+
-      '<div class="card"><h2>Collections by method</h2>'+(Object.keys(d.byMethod).length?Object.keys(d.byMethod).map(function(m){return line2(m,peso(d.byMethod[m]));}).join(''):emptyState('—'))+'</div>'+
+      '<div class="card"><h2>Collections by method</h2>'+(Object.keys(d.byMethod).length?Object.keys(d.byMethod).map(function(m){return line2(m,peso(d.byMethod[m]));}).join(''):emptyState('—'))+
+        (d.refunds?'<div class="muted small mt8">Net of '+peso(d.refunds)+' refunded — each line is the real movement of that tender.</div>':'')+'</div>'+
       '<div class="card"><h2>Sales mix</h2>'+line2('Parts',peso(d.partsRev))+line2('Labor',peso(d.laborRev))+
         '<div class="bill-sep"></div>'+line2('Receipts issued',String(d.receipts.length)+(d.voidCount?' ('+d.voidCount+' void)':''))+'</div>'+
     '</div>'+
@@ -332,7 +333,12 @@ function eodData(from, to){
   txns.sort(function(a,b){ return a.day<b.day?-1:a.day>b.day?1:0; });
   var byMethod={};
   txns.forEach(function(t){ byMethod[t.p.method]=round2((byMethod[t.p.method]||0)+t.p.amount); });
+  /* Refunds are negative payments, so both figures below net them out on their
+     own — a method line is the real movement of that tender for the day, which
+     is what the drawer and the terminal batch are counted against. `refunds` is
+     carried separately only so the report can say WHY a line looks low. */
   var collections=round2(txns.reduce(function(s,t){return s+t.p.amount;},0));
+  var refunds=round2(txns.reduce(function(s,t){ return s + (t.p.amount<0 ? -t.p.amount : 0); },0));
 
   function inPeriod(j){ var d=localDay(j.billedAt); return !!d && d>=from && d<=to; }
   /* Voided receipts are not sales, so they are out of every figure below.
@@ -367,7 +373,7 @@ function eodData(from, to){
   if(receipts.length){
     for(var n=receipts[0].n; n<=receipts[receipts.length-1].n; n++){ if(!everyOr[n]) missing.push(n); }
   }
-  return { from:from, to:to, txns:txns, byMethod:byMethod, collections:collections,
+  return { from:from, to:to, txns:txns, byMethod:byMethod, collections:collections, refunds:refunds,
            billed:billed, net:net, disc:disc, vs:vs, partsRev:partsRev, laborRev:laborRev, addlRev:addlRev,
            receipts:receipts, voidCount:voidCount, missing:missing };
 }
@@ -415,11 +421,19 @@ VIEWS.dailyclose = function(){
       kpi('Output VAT',peso(d.vs.vat))+kpi('Discounts',peso(d.disc))+kpi('Transactions',d.txns.length)+'</div>'+
     '<div class="cols"><div class="colmain"><div class="card"><h2>Transactions · '+esc(fmtDate(date))+'</h2>'+
       (d.txns.length?'<table class="tbl"><thead><tr><th>JO #</th><th>Customer</th><th>Method</th><th class="r">Amount</th></tr></thead><tbody>'+
-      d.txns.map(function(t){return '<tr><td>'+esc(t.job.no)+'</td><td>'+esc(t.job.owner)+'</td><td>'+esc(t.p.method)+'</td><td class="r">'+peso(t.p.amount)+'</td></tr>';}).join('')+
+      d.txns.map(function(t){
+        var isR=t.p.amount<0;
+        return '<tr'+(isR?' class="void-row"':'')+'><td>'+esc(t.job.no)+
+          (isR?' <span class="chip">REFUND</span>':'')+'</td><td>'+esc(t.job.owner)+
+          (isR&&t.p.reason?' <span class="muted small">'+esc(t.p.reason)+'</span>':'')+
+          '</td><td>'+esc(t.p.method)+'</td><td class="r">'+peso(t.p.amount)+'</td></tr>';
+      }).join('')+
+      '<tr class="tot"><td colspan="3" class="r"><b>Total collected</b></td><td class="r"><b>'+peso(d.collections)+'</b></td></tr>'+
       '</tbody></table>':emptyState('No collections on this date.'))+'</div>'+
       eodReceiptsCard(d, false)+'</div>'+
     '<div class="colside">'+
-      '<div class="card"><h2>Collections by method</h2>'+(Object.keys(d.byMethod).length?Object.keys(d.byMethod).map(function(m){return line2(m,peso(d.byMethod[m]));}).join(''):emptyState('—'))+'</div>'+
+      '<div class="card"><h2>Collections by method</h2>'+(Object.keys(d.byMethod).length?Object.keys(d.byMethod).map(function(m){return line2(m,peso(d.byMethod[m]));}).join(''):emptyState('—'))+
+        (d.refunds?'<div class="muted small mt8">Net of '+peso(d.refunds)+' refunded — each line is the real movement of that tender.</div>':'')+'</div>'+
       '<div class="card"><h2>Sales mix</h2>'+line2('Parts',peso(d.partsRev))+line2('Labor',peso(d.laborRev))+
         (d.addlRev?line2('Additional work',peso(d.addlRev)):'')+line2('Net sales',peso(d.net))+'</div>'+
     '</div></div></div>';

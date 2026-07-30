@@ -584,7 +584,9 @@ function voidReceiptDialog(id){
       esc(j.orNumber)+' stays listed in the OR series marked <b>VOID</b>, so the number is still '+
       'accounted for and your series keeps no hole.</p>'+
     '<p class="muted small">The sale is removed from revenue, receivables and commissions. '+
-      'Payments already recorded are left alone — refund them as a separate entry if money changed hands. '+
+      'Payments already recorded are left alone, because the cash really was collected. '+
+      'If money went back to the customer, use <b>Record refund</b> on the job order — otherwise '+
+      'the day’s collections will still show cash you no longer have. '+
       '<b>This cannot be undone.</b></p>'+
     field('Reason','<input id="vdReason" placeholder="e.g. wrong customer, duplicate receipt, cancelled sale" autocomplete="off">',
       'Recorded against the receipt so it can be explained later.'),
@@ -1212,8 +1214,16 @@ function advanceBilling(id){
 
 function jobPaymentBlock(j,b){
   var showPrice = canSeeJobPrices();
-  var pays=showPrice?(j.payments||[]).map(function(p){return '<div class="l2"><span>'+esc(fmtDate(p.date))+' · '+esc(p.method)+'</span><span>'+peso(p.amount)+'</span></div>';}).join(''):'';
+  var pays=showPrice?(j.payments||[]).map(function(p){
+    var isR=Number(p.amount)<0;
+    return '<div class="l2"><span>'+esc(fmtDate(p.date))+' · '+esc(p.method)+
+      (isR?' · <b>REFUND</b>'+(p.reason?' <span class="muted small">'+esc(p.reason)+'</span>':''):'')+
+      '</span><span>'+peso(p.amount)+'</span></div>';
+  }).join(''):'';
   var paid = b.balance<=0;
+  /* Refunding is possible whether or not the balance is settled — in fact it is
+     usually needed exactly when it IS settled and the receipt was then voided. */
+  var canRefund = showPrice && jobPaid(j)>0 && (typeof can!=='function' || can('refunds'));
   return (showPrice?'<div class="bill-mini">'+line2('Total due', peso(b.gross),'tot')+line2('Paid', peso(b.paid))+line2('<b>Balance</b>','<b>'+peso(b.balance)+'</b>','tot')+'</div>':'')+
     '<div class="grid2 mt8">'+
       field('Approved for release by (Supervisor)','<select onchange="setJobField(\''+j.id+'\',\'approvedReleaseBy\',this.value)">'+optionList(staffByRole('SV'),j.approvedReleaseBy,true)+'</select>')+
@@ -1223,6 +1233,7 @@ function jobPaymentBlock(j,b){
     ((paid||!showPrice)? '' : '<div class="grid2 mt8">'+field('Amount','<input id="pyAmt" type="number" step="0.01" value="'+attr(b.balance)+'">')+
       field('Method','<select id="pyMethod"><option>Cash</option><option>GCash</option><option>Card</option><option>Bank transfer</option><option>Charge account</option></select>')+'</div>'+
       '<button class="btn sm" onclick="recordPayment(\''+j.id+'\')">Record payment</button>')+
+    (canRefund?'<button class="btn sm ghost mt8" onclick="refundDialog(\''+j.id+'\')">Record refund…</button>':'')+
     field('Last service odometer','<input id="relOdo" type="number" value="'+attr(j.lastServiceOdo||j.odometer||'')+'" placeholder="reading at release">','Recorded on release; updates the vehicle’s last service odometer.')+
     '<button class="btn primary full mt8" '+(paid?'':'disabled title="Balance must be fully paid"')+' onclick="releaseJob(\''+j.id+'\')">Release vehicle →</button>'+
     (paid?'':'<div class="muted small center">Balance must be fully paid to release.</div>');
@@ -1231,6 +1242,63 @@ function recordPayment(id){
   var j=jobById(id); var amt=Number(val('pyAmt'))||0; if(amt<=0){toast('Enter amount','err');return;}
   j.payments.push({ amount:amt, method:val('pyMethod'), date:new Date().toISOString() });
   persist(); toast('Payment recorded'); render();
+}
+
+/* ---- Refunds ---------------------------------------------------------------
+   Money handed back is a NEGATIVE payment on the same job, not a deleted one.
+   Two reasons. The original payment really happened and its record has to stand
+   — cash was in the drawer on the day it was taken. And a negative entry nets
+   through every collections figure automatically (byMethod, collections, the
+   Transactions table), so the day's Cash line matches the drawer without any
+   figure needing to know refunds exist.
+
+   Kept as a plain function taking the job so it is testable without a DOM; the
+   dialog below is only the wrapper that collects the fields. Returns
+   {ok:true} or {ok:false, err:'...'}. */
+function addRefund(j, amt, method, reason){
+  if(!j) return { ok:false, err:'No job order' };
+  amt = round2(Number(amt)||0);
+  if(amt<=0) return { ok:false, err:'Enter the amount refunded' };
+  var paid = jobPaid(j);
+  /* Never hand back more than came in — that would be an outright disbursement,
+     not a refund, and it would drive the day's collections negative. */
+  if(amt > paid + 0.001) return { ok:false, err:'Cannot refund more than the '+peso(paid)+' collected on this job order' };
+  reason = String(reason||'').trim();
+  if(reason.length<3) return { ok:false, err:'Give a reason — it is what explains the refund later' };
+  var me=(typeof CURRENT_USER!=='undefined' && CURRENT_USER) ? CURRENT_USER : null;
+  j.payments = j.payments || [];
+  j.payments.push({ amount:round2(-amt), method:method||'Cash', date:new Date().toISOString(),
+    refund:true, reason:reason, by:(me&&me.uid)||'', byName:(me&&(me.name||me.username||me.email))||'' });
+  return { ok:true, amount:amt };
+}
+var _refundCtx=null;
+function refundDialog(id){
+  if (typeof requireRefund==='function' && !requireRefund()) return;
+  var j=jobById(id); if(!j) return;
+  var paid=jobPaid(j);
+  if(paid<=0){ toast('Nothing has been collected on this job order','err'); return; }
+  openModal('Record refund · '+esc(j.no),
+    '<p class="muted small">Refunds are recorded <b>against the day they are paid out</b>, not against the '+
+      'original payment — that one stays on file, because the cash really was collected then. '+
+      'The refund shows as its own line in Transactions and nets out of Collections, so the day’s '+
+      'cash figure still matches the drawer.</p>'+
+    (jobVoided(j)?'<p class="muted small">Receipt <b>'+esc(j.orNumber)+'</b> is voided, so the sale is already out of revenue. This returns the money.</p>':'')+
+    '<div class="grid2">'+
+      field('Amount refunded','<input id="rfAmt" type="number" step="0.01" min="0" max="'+attr(paid)+'" value="'+attr(paid)+'">','Collected so far: '+peso(paid))+
+      field('Method','<select id="rfMethod"><option>Cash</option><option>GCash</option><option>Card</option><option>Bank transfer</option></select>','How the money went back out.')+
+    '</div>'+
+    field('Reason','<input id="rfReason" placeholder="e.g. voided receipt, overpayment, cancelled work" autocomplete="off">',
+      'Recorded against the refund so it can be explained later.'),
+    { onOk:'confirmRefund', okText:'Record refund' });
+  setTimeout(function(){ _refundCtx=id; },10);
+}
+function confirmRefund(){
+  if (typeof requireRefund==='function' && !requireRefund()) return;
+  var j=jobById(_refundCtx); if(!j){ closeModal(); return; }
+  var r=addRefund(j, val('rfAmt'), val('rfMethod'), val('rfReason'));
+  if(!r.ok){ toast(r.err,'err'); return; }
+  _refundCtx=null; persist(); closeModal();
+  toast('Refund of '+peso(r.amount)+' recorded'); render();
 }
 function releaseJob(id){
   var j=jobById(id);

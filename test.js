@@ -435,6 +435,76 @@ section('EOD & range report: OR series with void status, one shared aggregator')
   M.setCurrentUser(null);
 })();
 
+/* --------------------------------------------- Refunds */
+section('Refunds: negative payment, nets through collections, guarded');
+(function(){
+  const s=fresh();
+  /* A refund is stamped with the moment it is paid out, so the scenario has to
+     sit on today for the refund and the original payment to share a day. The
+     "dated to the payout day" case below covers the other way round. */
+  const day=M.todayISO();
+  s.jobs=[{ id:'r1', no:'JO-9001', plate:'XYZ 999', owner:'REFUND TEST', stage:'Released',
+    dateIn:day, billedAt:day+'T02:00:00.000Z',
+    lines:[{id:'l1',type:'labor',desc:'Service',qty:1,price:5000}],
+    payments:[{id:'p1',amount:5600,method:'Cash',date:day+'T03:00:00.000Z'}],
+    discount:{parts:0,labor:0,other:0}, mechanicIds:[], orNumber:'OR-2001', orVoid:null }];
+  M.setS(s);
+  const j=s.jobs[0];
+
+  ok('starts fully collected', M.jobPaid(j)===5600);
+  let before=M.eodData(day,day);
+  ok('collections before refund', before.collections===5600 && before.refunds===0);
+
+  // Guards
+  ok('rejects zero', M.addRefund(j,0,'Cash','voided receipt').ok===false);
+  ok('rejects blank reason', M.addRefund(j,100,'Cash','').ok===false);
+  ok('rejects short reason', M.addRefund(j,100,'Cash','ab').ok===false);
+  ok('rejects more than collected', M.addRefund(j,5600.01,'Cash','voided receipt').ok===false);
+  ok('nothing was recorded by the rejects', j.payments.length===1);
+
+  // A real refund
+  const r=M.addRefund(j,2600,'Cash','voided receipt');
+  ok('refund accepted', r.ok===true && r.amount===2600);
+  ok('stored as a negative payment', j.payments.length===2 && j.payments[1].amount===-2600);
+  ok('flagged with its reason', j.payments[1].refund===true && j.payments[1].reason==='voided receipt');
+  ok('paid total drops', M.jobPaid(j)===3000);
+
+  const d=M.eodData(day,day);
+  ok('collections net the refund', d.collections===3000);
+  ok('method line nets the refund', d.byMethod.Cash===3000);
+  ok('refund total carried separately', d.refunds===2600);
+  ok('refund is its own transaction line', d.txns.length===2);
+  ok('sales untouched by the refund', d.net===5000 && d.billed.length===1);
+
+  // Refunding the rest is fine; refunding past it is not.
+  ok('cannot over-refund cumulatively', M.addRefund(j,3000.01,'Cash','second try').ok===false);
+  ok('can refund the remainder', M.addRefund(j,3000,'Cash','balance returned').ok===true);
+  ok('collections back to zero', M.eodData(day,day).collections===0);
+
+  // Printed EOD shows the refund and totals the transactions.
+  M.setCurrentUser({uid:'u1',isAdmin:true,role:'SV',active:true});
+  M.setDcDate(day);
+  const doc=M.docDailyClose();
+  ok('printout marks the refund', doc.indexOf('REFUND')>0 && doc.indexOf('voided receipt')>0);
+  ok('printout totals the transactions', doc.indexOf('Total collected')>0);
+  M.setCurrentUser(null);
+
+  /* Refunding an OLD payment must not reach back and rewrite a day that has
+     already been closed and signed — the money leaves the till today. */
+  const s2=fresh();
+  const old='2026-06-15';
+  s2.jobs=[{ id:'r2', no:'JO-9002', plate:'XYZ 888', owner:'OLD PAYMENT', stage:'Released',
+    dateIn:old, billedAt:old+'T02:00:00.000Z',
+    lines:[{id:'l1',type:'labor',desc:'Service',qty:1,price:1000}],
+    payments:[{id:'p1',amount:1120,method:'Cash',date:old+'T03:00:00.000Z'}],
+    discount:{parts:0,labor:0,other:0}, mechanicIds:[], orNumber:'OR-2002', orVoid:null }];
+  M.setS(s2);
+  ok('old day starts at its collected figure', M.eodData(old,old).collections===1120);
+  ok('refund on the old job accepted', M.addRefund(s2.jobs[0],1120,'Cash','customer returned').ok===true);
+  ok('closed day is left alone', M.eodData(old,old).collections===1120);
+  ok('payout day carries the refund', M.eodData(day,day).collections===-1120);
+})();
+
 /* --------------------------------------------- Delete capability + clear guard */
 section('Delete/clear-data permission is real, and clearing is blocked by receipts');
 (function(){

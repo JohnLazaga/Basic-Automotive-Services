@@ -608,7 +608,7 @@ var BRANCH = {"id":"main","slug":"fairview","name":"Basic by JMSI — Fairview (
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.2.0 · 2026-07-30 · dbe86f4';
+var APP_VERSION = 'v1.2.0 · 2026-07-30 · 685d1c4';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -2537,7 +2537,9 @@ function voidReceiptDialog(id){
       esc(j.orNumber)+' stays listed in the OR series marked <b>VOID</b>, so the number is still '+
       'accounted for and your series keeps no hole.</p>'+
     '<p class="muted small">The sale is removed from revenue, receivables and commissions. '+
-      'Payments already recorded are left alone — refund them as a separate entry if money changed hands. '+
+      'Payments already recorded are left alone, because the cash really was collected. '+
+      'If money went back to the customer, use <b>Record refund</b> on the job order — otherwise '+
+      'the day’s collections will still show cash you no longer have. '+
       '<b>This cannot be undone.</b></p>'+
     field('Reason','<input id="vdReason" placeholder="e.g. wrong customer, duplicate receipt, cancelled sale" autocomplete="off">',
       'Recorded against the receipt so it can be explained later.'),
@@ -3165,8 +3167,16 @@ function advanceBilling(id){
 
 function jobPaymentBlock(j,b){
   var showPrice = canSeeJobPrices();
-  var pays=showPrice?(j.payments||[]).map(function(p){return '<div class="l2"><span>'+esc(fmtDate(p.date))+' · '+esc(p.method)+'</span><span>'+peso(p.amount)+'</span></div>';}).join(''):'';
+  var pays=showPrice?(j.payments||[]).map(function(p){
+    var isR=Number(p.amount)<0;
+    return '<div class="l2"><span>'+esc(fmtDate(p.date))+' · '+esc(p.method)+
+      (isR?' · <b>REFUND</b>'+(p.reason?' <span class="muted small">'+esc(p.reason)+'</span>':''):'')+
+      '</span><span>'+peso(p.amount)+'</span></div>';
+  }).join(''):'';
   var paid = b.balance<=0;
+  /* Refunding is possible whether or not the balance is settled — in fact it is
+     usually needed exactly when it IS settled and the receipt was then voided. */
+  var canRefund = showPrice && jobPaid(j)>0 && (typeof can!=='function' || can('refunds'));
   return (showPrice?'<div class="bill-mini">'+line2('Total due', peso(b.gross),'tot')+line2('Paid', peso(b.paid))+line2('<b>Balance</b>','<b>'+peso(b.balance)+'</b>','tot')+'</div>':'')+
     '<div class="grid2 mt8">'+
       field('Approved for release by (Supervisor)','<select onchange="setJobField(\''+j.id+'\',\'approvedReleaseBy\',this.value)">'+optionList(staffByRole('SV'),j.approvedReleaseBy,true)+'</select>')+
@@ -3176,6 +3186,7 @@ function jobPaymentBlock(j,b){
     ((paid||!showPrice)? '' : '<div class="grid2 mt8">'+field('Amount','<input id="pyAmt" type="number" step="0.01" value="'+attr(b.balance)+'">')+
       field('Method','<select id="pyMethod"><option>Cash</option><option>GCash</option><option>Card</option><option>Bank transfer</option><option>Charge account</option></select>')+'</div>'+
       '<button class="btn sm" onclick="recordPayment(\''+j.id+'\')">Record payment</button>')+
+    (canRefund?'<button class="btn sm ghost mt8" onclick="refundDialog(\''+j.id+'\')">Record refund…</button>':'')+
     field('Last service odometer','<input id="relOdo" type="number" value="'+attr(j.lastServiceOdo||j.odometer||'')+'" placeholder="reading at release">','Recorded on release; updates the vehicle’s last service odometer.')+
     '<button class="btn primary full mt8" '+(paid?'':'disabled title="Balance must be fully paid"')+' onclick="releaseJob(\''+j.id+'\')">Release vehicle →</button>'+
     (paid?'':'<div class="muted small center">Balance must be fully paid to release.</div>');
@@ -3184,6 +3195,63 @@ function recordPayment(id){
   var j=jobById(id); var amt=Number(val('pyAmt'))||0; if(amt<=0){toast('Enter amount','err');return;}
   j.payments.push({ amount:amt, method:val('pyMethod'), date:new Date().toISOString() });
   persist(); toast('Payment recorded'); render();
+}
+
+/* ---- Refunds ---------------------------------------------------------------
+   Money handed back is a NEGATIVE payment on the same job, not a deleted one.
+   Two reasons. The original payment really happened and its record has to stand
+   — cash was in the drawer on the day it was taken. And a negative entry nets
+   through every collections figure automatically (byMethod, collections, the
+   Transactions table), so the day's Cash line matches the drawer without any
+   figure needing to know refunds exist.
+
+   Kept as a plain function taking the job so it is testable without a DOM; the
+   dialog below is only the wrapper that collects the fields. Returns
+   {ok:true} or {ok:false, err:'...'}. */
+function addRefund(j, amt, method, reason){
+  if(!j) return { ok:false, err:'No job order' };
+  amt = round2(Number(amt)||0);
+  if(amt<=0) return { ok:false, err:'Enter the amount refunded' };
+  var paid = jobPaid(j);
+  /* Never hand back more than came in — that would be an outright disbursement,
+     not a refund, and it would drive the day's collections negative. */
+  if(amt > paid + 0.001) return { ok:false, err:'Cannot refund more than the '+peso(paid)+' collected on this job order' };
+  reason = String(reason||'').trim();
+  if(reason.length<3) return { ok:false, err:'Give a reason — it is what explains the refund later' };
+  var me=(typeof CURRENT_USER!=='undefined' && CURRENT_USER) ? CURRENT_USER : null;
+  j.payments = j.payments || [];
+  j.payments.push({ amount:round2(-amt), method:method||'Cash', date:new Date().toISOString(),
+    refund:true, reason:reason, by:(me&&me.uid)||'', byName:(me&&(me.name||me.username||me.email))||'' });
+  return { ok:true, amount:amt };
+}
+var _refundCtx=null;
+function refundDialog(id){
+  if (typeof requireRefund==='function' && !requireRefund()) return;
+  var j=jobById(id); if(!j) return;
+  var paid=jobPaid(j);
+  if(paid<=0){ toast('Nothing has been collected on this job order','err'); return; }
+  openModal('Record refund · '+esc(j.no),
+    '<p class="muted small">Refunds are recorded <b>against the day they are paid out</b>, not against the '+
+      'original payment — that one stays on file, because the cash really was collected then. '+
+      'The refund shows as its own line in Transactions and nets out of Collections, so the day’s '+
+      'cash figure still matches the drawer.</p>'+
+    (jobVoided(j)?'<p class="muted small">Receipt <b>'+esc(j.orNumber)+'</b> is voided, so the sale is already out of revenue. This returns the money.</p>':'')+
+    '<div class="grid2">'+
+      field('Amount refunded','<input id="rfAmt" type="number" step="0.01" min="0" max="'+attr(paid)+'" value="'+attr(paid)+'">','Collected so far: '+peso(paid))+
+      field('Method','<select id="rfMethod"><option>Cash</option><option>GCash</option><option>Card</option><option>Bank transfer</option></select>','How the money went back out.')+
+    '</div>'+
+    field('Reason','<input id="rfReason" placeholder="e.g. voided receipt, overpayment, cancelled work" autocomplete="off">',
+      'Recorded against the refund so it can be explained later.'),
+    { onOk:'confirmRefund', okText:'Record refund' });
+  setTimeout(function(){ _refundCtx=id; },10);
+}
+function confirmRefund(){
+  if (typeof requireRefund==='function' && !requireRefund()) return;
+  var j=jobById(_refundCtx); if(!j){ closeModal(); return; }
+  var r=addRefund(j, val('rfAmt'), val('rfMethod'), val('rfReason'));
+  if(!r.ok){ toast(r.err,'err'); return; }
+  _refundCtx=null; persist(); closeModal();
+  toast('Refund of '+peso(r.amount)+' recorded'); render();
 }
 function releaseJob(id){
   var j=jobById(id);
@@ -3948,7 +4016,8 @@ function eodRangeCard(){
     '<div class="kpis">'+kpi('Collections',peso(d.collections))+kpi('Net sales (billed)',peso(d.net))+
       kpi('Output VAT',peso(d.vs.vat))+kpi('Discounts',peso(d.disc))+kpi('Transactions',d.txns.length)+'</div>'+
     '<div class="grid2cards">'+
-      '<div class="card"><h2>Collections by method</h2>'+(Object.keys(d.byMethod).length?Object.keys(d.byMethod).map(function(m){return line2(m,peso(d.byMethod[m]));}).join(''):emptyState('—'))+'</div>'+
+      '<div class="card"><h2>Collections by method</h2>'+(Object.keys(d.byMethod).length?Object.keys(d.byMethod).map(function(m){return line2(m,peso(d.byMethod[m]));}).join(''):emptyState('—'))+
+        (d.refunds?'<div class="muted small mt8">Net of '+peso(d.refunds)+' refunded — each line is the real movement of that tender.</div>':'')+'</div>'+
       '<div class="card"><h2>Sales mix</h2>'+line2('Parts',peso(d.partsRev))+line2('Labor',peso(d.laborRev))+
         '<div class="bill-sep"></div>'+line2('Receipts issued',String(d.receipts.length)+(d.voidCount?' ('+d.voidCount+' void)':''))+'</div>'+
     '</div>'+
@@ -4152,7 +4221,12 @@ function eodData(from, to){
   txns.sort(function(a,b){ return a.day<b.day?-1:a.day>b.day?1:0; });
   var byMethod={};
   txns.forEach(function(t){ byMethod[t.p.method]=round2((byMethod[t.p.method]||0)+t.p.amount); });
+  /* Refunds are negative payments, so both figures below net them out on their
+     own — a method line is the real movement of that tender for the day, which
+     is what the drawer and the terminal batch are counted against. `refunds` is
+     carried separately only so the report can say WHY a line looks low. */
   var collections=round2(txns.reduce(function(s,t){return s+t.p.amount;},0));
+  var refunds=round2(txns.reduce(function(s,t){ return s + (t.p.amount<0 ? -t.p.amount : 0); },0));
 
   function inPeriod(j){ var d=localDay(j.billedAt); return !!d && d>=from && d<=to; }
   /* Voided receipts are not sales, so they are out of every figure below.
@@ -4187,7 +4261,7 @@ function eodData(from, to){
   if(receipts.length){
     for(var n=receipts[0].n; n<=receipts[receipts.length-1].n; n++){ if(!everyOr[n]) missing.push(n); }
   }
-  return { from:from, to:to, txns:txns, byMethod:byMethod, collections:collections,
+  return { from:from, to:to, txns:txns, byMethod:byMethod, collections:collections, refunds:refunds,
            billed:billed, net:net, disc:disc, vs:vs, partsRev:partsRev, laborRev:laborRev, addlRev:addlRev,
            receipts:receipts, voidCount:voidCount, missing:missing };
 }
@@ -4235,11 +4309,19 @@ VIEWS.dailyclose = function(){
       kpi('Output VAT',peso(d.vs.vat))+kpi('Discounts',peso(d.disc))+kpi('Transactions',d.txns.length)+'</div>'+
     '<div class="cols"><div class="colmain"><div class="card"><h2>Transactions · '+esc(fmtDate(date))+'</h2>'+
       (d.txns.length?'<table class="tbl"><thead><tr><th>JO #</th><th>Customer</th><th>Method</th><th class="r">Amount</th></tr></thead><tbody>'+
-      d.txns.map(function(t){return '<tr><td>'+esc(t.job.no)+'</td><td>'+esc(t.job.owner)+'</td><td>'+esc(t.p.method)+'</td><td class="r">'+peso(t.p.amount)+'</td></tr>';}).join('')+
+      d.txns.map(function(t){
+        var isR=t.p.amount<0;
+        return '<tr'+(isR?' class="void-row"':'')+'><td>'+esc(t.job.no)+
+          (isR?' <span class="chip">REFUND</span>':'')+'</td><td>'+esc(t.job.owner)+
+          (isR&&t.p.reason?' <span class="muted small">'+esc(t.p.reason)+'</span>':'')+
+          '</td><td>'+esc(t.p.method)+'</td><td class="r">'+peso(t.p.amount)+'</td></tr>';
+      }).join('')+
+      '<tr class="tot"><td colspan="3" class="r"><b>Total collected</b></td><td class="r"><b>'+peso(d.collections)+'</b></td></tr>'+
       '</tbody></table>':emptyState('No collections on this date.'))+'</div>'+
       eodReceiptsCard(d, false)+'</div>'+
     '<div class="colside">'+
-      '<div class="card"><h2>Collections by method</h2>'+(Object.keys(d.byMethod).length?Object.keys(d.byMethod).map(function(m){return line2(m,peso(d.byMethod[m]));}).join(''):emptyState('—'))+'</div>'+
+      '<div class="card"><h2>Collections by method</h2>'+(Object.keys(d.byMethod).length?Object.keys(d.byMethod).map(function(m){return line2(m,peso(d.byMethod[m]));}).join(''):emptyState('—'))+
+        (d.refunds?'<div class="muted small mt8">Net of '+peso(d.refunds)+' refunded — each line is the real movement of that tender.</div>':'')+'</div>'+
       '<div class="card"><h2>Sales mix</h2>'+line2('Parts',peso(d.partsRev))+line2('Labor',peso(d.laborRev))+
         (d.addlRev?line2('Additional work',peso(d.addlRev)):'')+line2('Net sales',peso(d.net))+'</div>'+
     '</div></div></div>';
@@ -4797,6 +4879,7 @@ function printCSS(){
     '.eod-sum h4{margin:0 0 4px;font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:#6E6E73;font-weight:700}'+
     '.eod-sum .l2{display:flex;justify-content:space-between;gap:8px;font-size:11.5px;padding:1.5px 0}'+
     '.eod-sum .l2.g{border-top:1.5px solid #1D1D1F;margin-top:4px;padding-top:4px;font-weight:800;font-size:12.5px}'+
+    '.eod-sum .memo{font-size:9.5px;color:#6E6E73;text-align:right;margin-top:2px}'+
     '.eod-h{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#CC0F0F;'+
       'border-bottom:1px solid #E5E5EA;padding-bottom:3px;margin:14px 0 0;overflow:hidden;page-break-after:avoid}'+
     '.eod-h span{float:right;font-weight:600;text-transform:none;letter-spacing:0;color:#6E6E73}'+
@@ -5115,7 +5198,11 @@ function docEodBody(d, title, withDate){
       '<div class="b"><h4>Collections by method</h4>'+
         (methods.length ? methods.map(function(m){return sl(esc(m), peso(d.byMethod[m]));}).join('')
                         : sl('None','—'))+
-        sl('Total collected', peso(d.collections), true)+'</div>'+
+        sl('Total collected', peso(d.collections), true)+
+        /* A method line is already net of refunds, which is what the drawer and
+           the card batch are counted against. Say so, or a low Cash line reads
+           as a shortage. */
+        (d.refunds?'<div class="memo">net of '+peso(d.refunds)+' refunded</div>':'')+'</div>'+
       '<div class="b"><h4>Sales mix</h4>'+
         sl('Parts', peso(d.partsRev))+sl('Labor', peso(d.laborRev))+
         (d.addlRev?sl('Additional work', peso(d.addlRev)):'')+
@@ -5139,13 +5226,24 @@ function docEodBody(d, title, withDate){
       : '<tr><td colspan="'+cols+'">No receipts issued.</td></tr>')+
     '<tr class="tot"><td colspan="'+(cols-1)+'" class="r">Total (excl. void)</td><td class="r">'+peso(recTotal)+'</td></tr>'+
     '</tbody></table>'+
-    '<div class="eod-h">Transactions<span>'+d.txns.length+' payment'+(d.txns.length===1?'':'s')+'</span></div>'+
+    /* The line-by-line backing for Collections — this is the list you walk down
+       while counting the drawer, so it carries its own total. Refunds sit in it
+       as negative lines and net into that total. */
+    '<div class="eod-h">Transactions<span>'+d.txns.length+' payment'+(d.txns.length===1?'':'s')+
+      (d.refunds?' · incl. refunds':'')+'</span></div>'+
     '<table><thead><tr><th>JO #</th>'+(withDate?'<th>Date</th>':'')+
       '<th>Customer</th><th>Method</th><th class="r">Amount</th></tr></thead><tbody>'+
     (d.txns.length
-      ? d.txns.map(function(t){return '<tr><td>'+esc(t.job.no)+'</td>'+(withDate?'<td>'+esc(fmtDate(t.day))+'</td>':'')+
-          '<td>'+esc(t.job.owner)+'</td><td>'+esc(t.p.method)+'</td><td class="r">'+peso(t.p.amount)+'</td></tr>';}).join('')
-      : '<tr><td colspan="'+cols+'">No collections.</td></tr>')+'</tbody></table>'+
+      ? d.txns.map(function(t){
+          var isR=t.p.amount<0;
+          return '<tr><td>'+esc(t.job.no)+
+            (isR?'<br><span class="vd">REFUND'+(t.p.reason?' <i>'+esc(t.p.reason)+'</i>':'')+'</span>':'')+'</td>'+
+            (withDate?'<td>'+esc(fmtDate(t.day))+'</td>':'')+
+            '<td>'+esc(t.job.owner)+'</td><td>'+esc(t.p.method)+'</td><td class="r">'+peso(t.p.amount)+'</td></tr>';
+        }).join('')
+      : '<tr><td colspan="'+cols+'">No collections.</td></tr>')+
+    '<tr class="tot"><td colspan="'+(cols-1)+'" class="r">Total collected</td><td class="r">'+peso(d.collections)+'</td></tr>'+
+    '</tbody></table>'+
     '<div class="sig-grid"><div class="sigline">Cashier</div><div class="sigline">Service Manager</div><div class="sigline">Verified by</div></div></div>';
 }
 function docDailyClose(){
@@ -5532,6 +5630,7 @@ if (typeof module!=='undefined' && module.exports){
     docJobOrder:docJobOrder, docPostJob:docPostJob, docBilling:docBilling, docEstimate:docEstimate,
     docPO:docPO, docStatement:docStatement, docPayout:docPayout, docDailyClose:docDailyClose,
     eodData:eodData, docEodRange:docEodRange, setEodRange:function(f,t){ EOD_FROM=f; EOD_TO=t; },
+    addRefund:addRefund, jobPaid:jobPaid, todayISO:todayISO,
     setDcDate:function(d){ DC_DATE=d; },
     createJob:createJob, createJobFromAppt:createJobFromAppt, createEstimateFrom:createEstimateFrom,
     deductInventory:deductInventory, receivePO:receivePO,
@@ -6534,6 +6633,7 @@ var CAPS = [
   { key:'discounts',    label:'Apply discounts' },
   { key:'billing',      label:'Final billing / OR #' },
   { key:'billing_edit', label:'Edit billing after it is done' },
+  { key:'refunds',      label:'Record refunds' },
   { key:'receivables',  label:'Receivables (A/R)' },
   { key:'dailyclose',   label:'Daily Close' },
   { key:'productivity', label:'Productivity & commissions' },
@@ -6597,6 +6697,15 @@ function canSeeReports(){
 function requireDelete(what){
   if (can('delete')) return true;
   toast('You don’t have permission to delete '+(what||'records'),'err');
+  return false;
+}
+/* Money going back OUT of the till. Gated on its own capability rather than on
+   `billing`, because taking payment and handing cash back are different levels
+   of trust — and like `delete`, DEFAULT_PERMS grants it to no role, so only
+   Admin can refund until an admin deliberately grants it. */
+function requireRefund(){
+  if (can('refunds')) return true;
+  toast('You don’t have permission to record refunds','err');
   return false;
 }
 /* The single access check used everywhere. */

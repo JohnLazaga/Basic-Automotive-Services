@@ -23,6 +23,7 @@ var CAPS = [
   { key:'discounts',    label:'Apply discounts' },
   { key:'billing',      label:'Final billing / OR #' },
   { key:'billing_edit', label:'Edit billing after it is done' },
+  { key:'refunds',      label:'Record refunds' },
   { key:'receivables',  label:'Receivables (A/R)' },
   { key:'dailyclose',   label:'Daily Close' },
   { key:'productivity', label:'Productivity & commissions' },
@@ -86,6 +87,15 @@ function canSeeReports(){
 function requireDelete(what){
   if (can('delete')) return true;
   toast('You don’t have permission to delete '+(what||'records'),'err');
+  return false;
+}
+/* Money going back OUT of the till. Gated on its own capability rather than on
+   `billing`, because taking payment and handing cash back are different levels
+   of trust — and like `delete`, DEFAULT_PERMS grants it to no role, so only
+   Admin can refund until an admin deliberately grants it. */
+function requireRefund(){
+  if (can('refunds')) return true;
+  toast('You don’t have permission to record refunds','err');
   return false;
 }
 /* The single access check used everywhere. */

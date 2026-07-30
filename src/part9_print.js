@@ -48,6 +48,7 @@ function printCSS(){
     '.eod-sum h4{margin:0 0 4px;font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:#6E6E73;font-weight:700}'+
     '.eod-sum .l2{display:flex;justify-content:space-between;gap:8px;font-size:11.5px;padding:1.5px 0}'+
     '.eod-sum .l2.g{border-top:1.5px solid #1D1D1F;margin-top:4px;padding-top:4px;font-weight:800;font-size:12.5px}'+
+    '.eod-sum .memo{font-size:9.5px;color:#6E6E73;text-align:right;margin-top:2px}'+
     '.eod-h{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#CC0F0F;'+
       'border-bottom:1px solid #E5E5EA;padding-bottom:3px;margin:14px 0 0;overflow:hidden;page-break-after:avoid}'+
     '.eod-h span{float:right;font-weight:600;text-transform:none;letter-spacing:0;color:#6E6E73}'+
@@ -366,7 +367,11 @@ function docEodBody(d, title, withDate){
       '<div class="b"><h4>Collections by method</h4>'+
         (methods.length ? methods.map(function(m){return sl(esc(m), peso(d.byMethod[m]));}).join('')
                         : sl('None','—'))+
-        sl('Total collected', peso(d.collections), true)+'</div>'+
+        sl('Total collected', peso(d.collections), true)+
+        /* A method line is already net of refunds, which is what the drawer and
+           the card batch are counted against. Say so, or a low Cash line reads
+           as a shortage. */
+        (d.refunds?'<div class="memo">net of '+peso(d.refunds)+' refunded</div>':'')+'</div>'+
       '<div class="b"><h4>Sales mix</h4>'+
         sl('Parts', peso(d.partsRev))+sl('Labor', peso(d.laborRev))+
         (d.addlRev?sl('Additional work', peso(d.addlRev)):'')+
@@ -390,13 +395,24 @@ function docEodBody(d, title, withDate){
       : '<tr><td colspan="'+cols+'">No receipts issued.</td></tr>')+
     '<tr class="tot"><td colspan="'+(cols-1)+'" class="r">Total (excl. void)</td><td class="r">'+peso(recTotal)+'</td></tr>'+
     '</tbody></table>'+
-    '<div class="eod-h">Transactions<span>'+d.txns.length+' payment'+(d.txns.length===1?'':'s')+'</span></div>'+
+    /* The line-by-line backing for Collections — this is the list you walk down
+       while counting the drawer, so it carries its own total. Refunds sit in it
+       as negative lines and net into that total. */
+    '<div class="eod-h">Transactions<span>'+d.txns.length+' payment'+(d.txns.length===1?'':'s')+
+      (d.refunds?' · incl. refunds':'')+'</span></div>'+
     '<table><thead><tr><th>JO #</th>'+(withDate?'<th>Date</th>':'')+
       '<th>Customer</th><th>Method</th><th class="r">Amount</th></tr></thead><tbody>'+
     (d.txns.length
-      ? d.txns.map(function(t){return '<tr><td>'+esc(t.job.no)+'</td>'+(withDate?'<td>'+esc(fmtDate(t.day))+'</td>':'')+
-          '<td>'+esc(t.job.owner)+'</td><td>'+esc(t.p.method)+'</td><td class="r">'+peso(t.p.amount)+'</td></tr>';}).join('')
-      : '<tr><td colspan="'+cols+'">No collections.</td></tr>')+'</tbody></table>'+
+      ? d.txns.map(function(t){
+          var isR=t.p.amount<0;
+          return '<tr><td>'+esc(t.job.no)+
+            (isR?'<br><span class="vd">REFUND'+(t.p.reason?' <i>'+esc(t.p.reason)+'</i>':'')+'</span>':'')+'</td>'+
+            (withDate?'<td>'+esc(fmtDate(t.day))+'</td>':'')+
+            '<td>'+esc(t.job.owner)+'</td><td>'+esc(t.p.method)+'</td><td class="r">'+peso(t.p.amount)+'</td></tr>';
+        }).join('')
+      : '<tr><td colspan="'+cols+'">No collections.</td></tr>')+
+    '<tr class="tot"><td colspan="'+(cols-1)+'" class="r">Total collected</td><td class="r">'+peso(d.collections)+'</td></tr>'+
+    '</tbody></table>'+
     '<div class="sig-grid"><div class="sigline">Cashier</div><div class="sigline">Service Manager</div><div class="sigline">Verified by</div></div></div>';
 }
 function docDailyClose(){
