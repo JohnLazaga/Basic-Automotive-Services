@@ -364,6 +364,12 @@ textarea{resize:vertical} .chk{display:flex;align-items:center;gap:8px;font-size
 @keyframes tmpulse{0%,100%{opacity:1}50%{opacity:.35}}
 .cb-badges{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
 a.lnk{color:var(--brand);cursor:pointer;font-weight:600}
+/* ---- Voided receipt row (OR series) ---- */
+/* Reads as cancelled without disappearing: the row must stay visible, because
+   that is what keeps the OR series free of holes. */
+.void-row{opacity:.6}
+.void-row td:first-child b{text-decoration:line-through}
+
 /* ---- Show-once password (admin reset) ---- */
 .pw-once{display:flex;align-items:center;gap:12px;margin:10px 0;padding:12px 14px;border:1px dashed var(--brand);border-radius:10px;background:var(--canvas)}
 .pw-once code{flex:1;font:700 18px ui-monospace,Menlo,Consolas,monospace;letter-spacing:.02em;word-break:break-all;color:var(--ink)}

@@ -3,8 +3,11 @@
    Commission logic uses jobLaborCommission() everywhere (single source).
    ========================================================================== */
 
-function releasedJobs(){ return S.jobs.filter(function(j){return j.stage==='Released';}); }
-function billedJobs(){ return S.jobs.filter(function(j){return j.stage==='Final Billing'||j.stage==='Released';}); }
+/* A voided receipt is not a sale, so it is excluded everywhere money is counted
+   — revenue, profit, commissions and receivables. The job itself stays on file
+   and keeps its OR number so the series has no hole (see jobVoided). */
+function releasedJobs(){ return S.jobs.filter(function(j){return j.stage==='Released' && !jobVoided(j);}); }
+function billedJobs(){ return S.jobs.filter(function(j){return (j.stage==='Final Billing'||j.stage==='Released') && !jobVoided(j);}); }
 
 function jobCostOfParts(j){
   return round2((j.lines||[]).reduce(function(s,l){
@@ -98,7 +101,8 @@ function orSeriesRows(){
   return (S.jobs||[]).filter(function(j){ return j.orNumber; }).map(function(j){
     var m=/(\d+)/.exec(String(j.orNumber));
     return { n:m?Number(m[1]):0, or:j.orNumber, jo:j.no, date:j.billedAt||j.dateIn||'',
-             owner:j.owner||'', plate:j.plate||'', amount:jobGross(j), id:j.id };
+             owner:j.owner||'', plate:j.plate||'', amount:jobGross(j), id:j.id,
+             voided:jobVoided(j), voidReason:(j.orVoid&&j.orVoid.reason)||'' };
   }).sort(function(a,b){ return a.n-b.n || String(a.or).localeCompare(String(b.or)); });
 }
 /* Holes in a numbered series. Shared by the OR and JO cards — it only reads the
@@ -129,11 +133,14 @@ function orSeriesRowsHTML(){
   var rows=orSeriesFiltered();
   if(!rows.length) return '<tr><td colspan="5" class="muted center">No OR numbers match “'+esc(OR_Q)+'”.</td></tr>';
   return rows.map(function(r){
-    return '<tr onclick="go(\'job\',\''+r.id+'\')" style="cursor:pointer">'+
-      '<td><b>'+esc(r.or)+'</b></td><td>'+esc(r.jo)+'</td>'+
+    /* A voided receipt keeps its row — that is what keeps the series gapless —
+       but reads as cancelled and contributes nothing to the total. */
+    return '<tr onclick="go(\'job\',\''+r.id+'\')" style="cursor:pointer"'+(r.voided?' class="void-row"':'')+'>'+
+      '<td><b>'+esc(r.or)+'</b>'+(r.voided?' <span class="chip">VOID</span>':'')+'</td><td>'+esc(r.jo)+'</td>'+
       '<td>'+esc(fmtDate(r.date))+'</td>'+
-      '<td>'+esc(r.owner)+(r.plate?' <span class="muted small">'+esc(r.plate)+'</span>':'')+'</td>'+
-      '<td class="r">'+peso(r.amount)+'</td></tr>';
+      '<td>'+esc(r.owner)+(r.plate?' <span class="muted small">'+esc(r.plate)+'</span>':'')+
+        (r.voided&&r.voidReason?'<div class="muted small">'+esc(r.voidReason)+'</div>':'')+'</td>'+
+      '<td class="r">'+(r.voided?'<span class="muted">—</span>':peso(r.amount))+'</td></tr>';
   }).join('');
 }
 function orSeriesSearch(v){ OR_Q=v; var el=document.getElementById('orSeriesBody'); if(el) el.innerHTML=orSeriesRowsHTML(); }
@@ -147,7 +154,9 @@ function orSeriesCard(){
     : '<div class="muted small">✓ No gaps — series is continuous.</div>';
   return '<div class="card"><div class="card-head"><h2>OR numbers by series</h2>'+
     '<button class="btn sm ghost" onclick="printOrSeries()">⎙ Print</button></div>'+
-    '<div class="muted small mb8">'+rows.length+' receipts · '+esc(rows[0].or)+' → '+esc(rows[rows.length-1].or)+'</div>'+
+    '<div class="muted small mb8">'+rows.length+' receipts'+
+      (rows.filter(function(r){return r.voided;}).length?' ('+rows.filter(function(r){return r.voided;}).length+' void)':'')+
+      ' · '+esc(rows[0].or)+' → '+esc(rows[rows.length-1].or)+'</div>'+
     gapNote+
     '<input class="searchbox mt8" id="orSeriesSearch" value="'+attr(OR_Q)+'" oninput="orSeriesSearch(this.value)" placeholder="Search OR # / JO # / customer / plate…" autocomplete="off">'+
     '<div class="card pad0 mt8"><table class="tbl click"><thead><tr><th>OR #</th><th>JO #</th><th>Date</th><th>Sold to</th><th class="r">Amount</th></tr></thead>'+
@@ -155,12 +164,14 @@ function orSeriesCard(){
 }
 function docOrSeries(){
   var rows=orSeriesFiltered();
-  var tot=round2(rows.reduce(function(s,r){return s+r.amount;},0));
+  var voided=rows.filter(function(r){ return r.voided; }).length;
+  /* Voided receipts are listed (so the series reads as complete) but add nothing. */
+  var tot=round2(rows.reduce(function(s,r){return s+(r.voided?0:r.amount);},0));
   var body=docHeader('OR Numbers by Series')+
-    '<div class="meta"><div><b>Receipts</b>'+rows.length+'</div>'+
+    '<div class="meta"><div><b>Receipts</b>'+rows.length+(voided?' ('+voided+' void)':'')+'</div>'+
       '<div><b>Range</b>'+(rows.length?esc(rows[0].or)+' → '+esc(rows[rows.length-1].or):'—')+'</div></div>'+
     '<table><thead><tr><th>OR #</th><th>JO #</th><th>Date</th><th>Sold to</th><th class="r">Amount</th></tr></thead><tbody>'+
-    rows.map(function(r){ return '<tr><td>'+esc(r.or)+'</td><td>'+esc(r.jo)+'</td><td>'+esc(fmtDate(r.date))+'</td><td>'+esc(r.owner)+'</td><td class="r">'+peso(r.amount)+'</td></tr>'; }).join('')+
+    rows.map(function(r){ return '<tr><td>'+esc(r.or)+(r.voided?' — VOID':'')+'</td><td>'+esc(r.jo)+'</td><td>'+esc(fmtDate(r.date))+'</td><td>'+esc(r.owner)+(r.voided&&r.voidReason?' ('+esc(r.voidReason)+')':'')+'</td><td class="r">'+(r.voided?'—':peso(r.amount))+'</td></tr>'; }).join('')+
     '<tr class="tot"><td></td><td></td><td></td><td class="r">Total</td><td class="r">'+peso(tot)+'</td></tr>'+
     '</tbody></table>';
   return docShell('OR numbers by series', body);
@@ -267,7 +278,9 @@ VIEWS.dailyclose = function(){
   txns.forEach(function(t){ byMethod[t.p.method]=round2((byMethod[t.p.method]||0)+t.p.amount); });
   var collections=round2(txns.reduce(function(s,t){return s+t.p.amount;},0));
   // jobs billed that day -> net sales / vat / discounts
-  var billed=S.jobs.filter(function(j){return localDay(j.billedAt)===date;});
+  // Voided receipts are not sales. Collections above are left untouched: a void
+  // does not un-receive cash, so a refund is entered as its own payment.
+  var billed=S.jobs.filter(function(j){return localDay(j.billedAt)===date && !jobVoided(j);});
   var net=round2(billed.reduce(function(s,j){return s+jobNet(j);},0));   // VATable base (ex-VAT)
   var disc=round2(billed.reduce(function(s,j){return s+discountAmount(j);},0));
   var vs=vatSplit(net,S);
@@ -488,7 +501,7 @@ VIEWS.productivity = function(){
 };
 
 /* ---- Receivables (A/R) ---------------------------------------------------- */
-function arJobs(){ return S.jobs.filter(function(j){return (j.stage==='Final Billing'||j.stage==='Released') && jobBalance(j)>0.001;}); }
+function arJobs(){ return S.jobs.filter(function(j){return (j.stage==='Final Billing'||j.stage==='Released') && !jobVoided(j) && jobBalance(j)>0.001;}); }
 function agingBucket(days){ if(days<=30) return '0-30'; if(days<=60) return '31-60'; if(days<=90) return '61-90'; return '90+'; }
 VIEWS.receivables = function(){
   var ar=arJobs();

@@ -371,6 +371,44 @@ section('OR series: gaps in the receipt sequence are detected');
   ok('unbilled jobs are ignored', M.orSeriesRows().length===2 && M.seriesGaps(M.orSeriesRows()).length===0);
 })();
 
+/* --------------------------------------------- Voided receipts */
+section('Voided receipt: number stays accounted for, sale does not count');
+(function(){
+  const s=fresh();
+  const mk=(n,or,voided)=>({ id:'j'+n, no:'JO-'+String(n).padStart(4,'0'), plate:'ABC 123', owner:'JUAN',
+    stage:'Released', dateIn:'2026-07-01', billedAt:'2026-07-01T02:00:00.000Z',
+    lines:[{id:'l1',type:'labor',desc:'Service',qty:1,price:1000}], payments:[],
+    discount:{parts:0,labor:0,other:0}, mechanicIds:[], orNumber:or,
+    orVoid: voided ? { at:'2026-07-02T00:00:00.000Z', by:'u1', byName:'Admin', reason:'duplicate receipt' } : null });
+
+  s.jobs=[mk(1,'OR-1207'), mk(2,'OR-1208',true), mk(3,'OR-1209')];
+  M.setS(s);
+  ok('jobVoided detects a void', M.jobVoided(s.jobs[1])===true);
+  ok('jobVoided is false otherwise', M.jobVoided(s.jobs[0])===false);
+  ok('null orVoid is not a void', M.jobVoided({orVoid:null})===false);
+
+  // The whole point: the number is still listed, so no gap appears.
+  const rows=M.orSeriesRows();
+  ok('voided receipt still listed', rows.length===3);
+  ok('voided row is flagged', rows.filter(r=>r.voided).length===1 && rows[1].voided===true);
+  ok('void reason carried', rows[1].voidReason==='duplicate receipt');
+  ok('voiding creates NO gap in the series', M.seriesGaps(rows).length===0);
+
+  // ...but the money must not count anywhere.
+  ok('excluded from released jobs', M.releasedJobs().length===2);
+  ok('excluded from billed jobs', M.billedJobs().length===2);
+  ok('excluded from receivables', M.arJobs().every(j=>!M.jobVoided(j)));
+
+  // Printed series lists it as VOID and leaves it out of the total.
+  const doc=M.docOrSeries();
+  ok('printed series marks it VOID', doc.indexOf('VOID')>0);
+  ok('printed series counts the void', doc.indexOf('(1 void)')>0);
+
+  // A void with no timestamp is not a void (guards half-written data).
+  const s2=fresh(); s2.jobs=[mk(1,'OR-1207')]; s2.jobs[0].orVoid={reason:'x'}; M.setS(s2);
+  ok('orVoid without a timestamp is ignored', M.jobVoided(s2.jobs[0])===false && M.releasedJobs().length===1);
+})();
+
 /* --------------------------------------------- JO series gaps */
 section('JO series: gaps in the job-order sequence are detected');
 (function(){

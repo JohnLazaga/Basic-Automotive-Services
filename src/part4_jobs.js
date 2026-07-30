@@ -32,6 +32,7 @@ function blankJob(){
     workLog:[],     // per-mechanic labor timer segments: {id,mechId,start,end|null}
     status:'A1', statusLog:[], addlWork:[], approvedReleaseBy:null, paymentReceivedBy:null,
     discount:{ parts:0, labor:0, other:0, otherNote:'' }, payments:[], orNumber:null, billedAt:null, releaseSignature:null,
+    orVoid:null,     // {at,by,byName,reason} — receipt voided; the job and its OR number are KEPT
     photos:[], inventoryDeducted:false };
 }
 
@@ -252,8 +253,15 @@ VIEWS.job = function(id){
     '<div class="page-head"><div><a class="back" onclick="go(\'jobs\')">‹ Job Orders</a>'+
       '<h1>'+esc(j.no)+' · '+esc(j.plate)+((j.year+' '+j.make+' '+j.model).trim()?' · '+esc((j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:'')):'')+' '+statusBadge(j.status)+'</h1></div>'+
       '<div class="row gap">'+jobPrintButtons(j)+
+        ((((typeof isAdminUser!=='function')||isAdminUser()) && j.orNumber && !jobVoided(j))
+          ? '<button class="btn danger ghost" onclick="voidReceiptDialog(\''+j.id+'\')" title="Keep the record, cancel the sale">⊘ Void receipt</button>' : '')+
         (((typeof isAdminUser!=='function')||isAdminUser())?'<button class="btn danger ghost" onclick="deleteJobConfirm(\''+j.id+'\')">🗑 Delete</button>':'')+
       '</div></div>'+
+    (jobVoided(j)
+      ? '<div class="lg-msg err" style="margin:0 0 12px">⊘ Receipt '+esc(j.orNumber||'')+' is VOID — '+esc(j.orVoid.reason||'')+
+        '<div class="muted small">Voided '+esc(fmtDateTime(j.orVoid.at))+(j.orVoid.byName?' by '+esc(j.orVoid.byName):'')+
+        '. The number stays accounted for; this sale is excluded from revenue, receivables and commissions.</div></div>'
+      : '')+
     stageStep(j)+
     '<div class="cols">'+
       '<div class="colmain">'+
@@ -498,10 +506,60 @@ function delLine(id,lid){
   j.lines=j.lines.filter(function(x){return x.id!==lid;}); persist(); render();
 }
 
-/* Admin-only: delete an entire job order (with warning). */
+/* ---- Voiding an issued receipt --------------------------------------------
+   An Official Receipt number is accountable to the BIR: once issued it must
+   stay explainable. So a job carrying an OR number is never deleted — it is
+   VOIDED, which keeps both the job and the number. The number goes on showing
+   in the OR series marked VOID, so the series has no hole, while the sale is
+   taken out of revenue, receivables and commissions. */
+function jobVoided(j){ return !!(j && j.orVoid && j.orVoid.at); }
+var _voidCtx=null;
+function voidReceiptDialog(id){
+  if (typeof isAdminUser==='function' && !isAdminUser()){ toast('Admins only','err'); return; }
+  var j=jobById(id); if(!j) return;
+  if(!j.orNumber){ toast('No receipt has been issued for this job order','err'); return; }
+  if(jobVoided(j)){ toast('Receipt '+j.orNumber+' is already void'); return; }
+  openModal('Void receipt '+esc(j.orNumber)+'?',
+    '<p class="muted small">The job order and the receipt number are <b>kept on purpose</b>. '+
+      esc(j.orNumber)+' stays listed in the OR series marked <b>VOID</b>, so the number is still '+
+      'accounted for and your series keeps no hole.</p>'+
+    '<p class="muted small">The sale is removed from revenue, receivables and commissions. '+
+      'Payments already recorded are left alone — refund them as a separate entry if money changed hands. '+
+      '<b>This cannot be undone.</b></p>'+
+    field('Reason','<input id="vdReason" placeholder="e.g. wrong customer, duplicate receipt, cancelled sale" autocomplete="off">',
+      'Recorded against the receipt so it can be explained later.'),
+    { onOk:'confirmVoidReceipt', okText:'Void receipt' });
+  setTimeout(function(){ _voidCtx=id; },10);
+}
+function confirmVoidReceipt(){
+  if (typeof isAdminUser==='function' && !isAdminUser()){ toast('Admins only','err'); return; }
+  var j=jobById(_voidCtx); if(!j){ closeModal(); return; }
+  var reason=(val('vdReason')||'').trim();
+  if(reason.length<3){ toast('Give a reason — it is what explains the void later','err'); return; }
+  if(jobVoided(j)){ closeModal(); return; }
+  var me=(typeof CURRENT_USER!=='undefined' && CURRENT_USER) ? CURRENT_USER : null;
+  j.orVoid={ at:new Date().toISOString(), by:(me&&me.uid)||'', byName:(me&&(me.name||me.username||me.email))||'', reason:reason };
+  _voidCtx=null; persist(); closeModal();
+  toast('Receipt '+j.orNumber+' voided — the number stays accounted for');
+  render();
+}
+
+/* Admin-only: delete an entire job order (with warning). A job carrying an OR
+   number cannot be deleted at all — see jobVoided above. */
 function deleteJobConfirm(id){
   if (typeof isAdminUser==='function' && !isAdminUser()){ toast('Admins only','err'); return; }
   var j=jobById(id); if(!j) return;
+  if (j.orNumber){
+    openModal('Cannot delete '+esc(j.no||'this job order'),
+      '<p>Official receipt <b>'+esc(j.orNumber)+'</b> was issued against this job order, so the record has to be kept. '+
+        'Deleting it would leave an unexplained hole in your OR series.</p>'+
+      (jobVoided(j)
+        ? '<p class="muted small">This receipt is already voided ('+esc(j.orVoid.reason||'')+'). It stays on file so the number remains accounted for.</p>'
+        : '<p class="muted small">If the sale should not stand, <b>void the receipt</b> instead — the number stays accounted for and the sale comes out of revenue.</p>'),
+      { footer:'<button class="btn ghost" onclick="closeModal()">Close</button>'+
+        (jobVoided(j)?'':'<span style="flex:1"></span><button class="btn danger" onclick="closeModal();voidReceiptDialog(\''+id+'\')">Void receipt…</button>') });
+    return;
+  }
   confirmModal('Delete this job order?',
     'This permanently deletes '+(j.no||'')+' ('+(j.plate||'')+') and everything in it — line items, status log, billing, payments and photos. This cannot be undone.',
     function(){

@@ -375,6 +375,12 @@ textarea{resize:vertical} .chk{display:flex;align-items:center;gap:8px;font-size
 @keyframes tmpulse{0%,100%{opacity:1}50%{opacity:.35}}
 .cb-badges{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
 a.lnk{color:var(--brand);cursor:pointer;font-weight:600}
+/* ---- Voided receipt row (OR series) ---- */
+/* Reads as cancelled without disappearing: the row must stay visible, because
+   that is what keeps the OR series free of holes. */
+.void-row{opacity:.6}
+.void-row td:first-child b{text-decoration:line-through}
+
 /* ---- Show-once password (admin reset) ---- */
 .pw-once{display:flex;align-items:center;gap:12px;margin:10px 0;padding:12px 14px;border:1px dashed var(--brand);border-radius:10px;background:var(--canvas)}
 .pw-once code{flex:1;font:700 18px ui-monospace,Menlo,Consolas,monospace;letter-spacing:.02em;word-break:break-all;color:var(--ink)}
@@ -602,7 +608,7 @@ var BRANCH = {"id":"main","slug":"fairview","name":"Basic by JMSI — Fairview (
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.2.0 · 2026-07-30 · 87968ff';
+var APP_VERSION = 'v1.2.0 · 2026-07-30 · 6097783';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -1977,6 +1983,7 @@ function blankJob(){
     workLog:[],     // per-mechanic labor timer segments: {id,mechId,start,end|null}
     status:'A1', statusLog:[], addlWork:[], approvedReleaseBy:null, paymentReceivedBy:null,
     discount:{ parts:0, labor:0, other:0, otherNote:'' }, payments:[], orNumber:null, billedAt:null, releaseSignature:null,
+    orVoid:null,     // {at,by,byName,reason} — receipt voided; the job and its OR number are KEPT
     photos:[], inventoryDeducted:false };
 }
 
@@ -2197,8 +2204,15 @@ VIEWS.job = function(id){
     '<div class="page-head"><div><a class="back" onclick="go(\'jobs\')">‹ Job Orders</a>'+
       '<h1>'+esc(j.no)+' · '+esc(j.plate)+((j.year+' '+j.make+' '+j.model).trim()?' · '+esc((j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:'')):'')+' '+statusBadge(j.status)+'</h1></div>'+
       '<div class="row gap">'+jobPrintButtons(j)+
+        ((((typeof isAdminUser!=='function')||isAdminUser()) && j.orNumber && !jobVoided(j))
+          ? '<button class="btn danger ghost" onclick="voidReceiptDialog(\''+j.id+'\')" title="Keep the record, cancel the sale">⊘ Void receipt</button>' : '')+
         (((typeof isAdminUser!=='function')||isAdminUser())?'<button class="btn danger ghost" onclick="deleteJobConfirm(\''+j.id+'\')">🗑 Delete</button>':'')+
       '</div></div>'+
+    (jobVoided(j)
+      ? '<div class="lg-msg err" style="margin:0 0 12px">⊘ Receipt '+esc(j.orNumber||'')+' is VOID — '+esc(j.orVoid.reason||'')+
+        '<div class="muted small">Voided '+esc(fmtDateTime(j.orVoid.at))+(j.orVoid.byName?' by '+esc(j.orVoid.byName):'')+
+        '. The number stays accounted for; this sale is excluded from revenue, receivables and commissions.</div></div>'
+      : '')+
     stageStep(j)+
     '<div class="cols">'+
       '<div class="colmain">'+
@@ -2443,10 +2457,60 @@ function delLine(id,lid){
   j.lines=j.lines.filter(function(x){return x.id!==lid;}); persist(); render();
 }
 
-/* Admin-only: delete an entire job order (with warning). */
+/* ---- Voiding an issued receipt --------------------------------------------
+   An Official Receipt number is accountable to the BIR: once issued it must
+   stay explainable. So a job carrying an OR number is never deleted — it is
+   VOIDED, which keeps both the job and the number. The number goes on showing
+   in the OR series marked VOID, so the series has no hole, while the sale is
+   taken out of revenue, receivables and commissions. */
+function jobVoided(j){ return !!(j && j.orVoid && j.orVoid.at); }
+var _voidCtx=null;
+function voidReceiptDialog(id){
+  if (typeof isAdminUser==='function' && !isAdminUser()){ toast('Admins only','err'); return; }
+  var j=jobById(id); if(!j) return;
+  if(!j.orNumber){ toast('No receipt has been issued for this job order','err'); return; }
+  if(jobVoided(j)){ toast('Receipt '+j.orNumber+' is already void'); return; }
+  openModal('Void receipt '+esc(j.orNumber)+'?',
+    '<p class="muted small">The job order and the receipt number are <b>kept on purpose</b>. '+
+      esc(j.orNumber)+' stays listed in the OR series marked <b>VOID</b>, so the number is still '+
+      'accounted for and your series keeps no hole.</p>'+
+    '<p class="muted small">The sale is removed from revenue, receivables and commissions. '+
+      'Payments already recorded are left alone — refund them as a separate entry if money changed hands. '+
+      '<b>This cannot be undone.</b></p>'+
+    field('Reason','<input id="vdReason" placeholder="e.g. wrong customer, duplicate receipt, cancelled sale" autocomplete="off">',
+      'Recorded against the receipt so it can be explained later.'),
+    { onOk:'confirmVoidReceipt', okText:'Void receipt' });
+  setTimeout(function(){ _voidCtx=id; },10);
+}
+function confirmVoidReceipt(){
+  if (typeof isAdminUser==='function' && !isAdminUser()){ toast('Admins only','err'); return; }
+  var j=jobById(_voidCtx); if(!j){ closeModal(); return; }
+  var reason=(val('vdReason')||'').trim();
+  if(reason.length<3){ toast('Give a reason — it is what explains the void later','err'); return; }
+  if(jobVoided(j)){ closeModal(); return; }
+  var me=(typeof CURRENT_USER!=='undefined' && CURRENT_USER) ? CURRENT_USER : null;
+  j.orVoid={ at:new Date().toISOString(), by:(me&&me.uid)||'', byName:(me&&(me.name||me.username||me.email))||'', reason:reason };
+  _voidCtx=null; persist(); closeModal();
+  toast('Receipt '+j.orNumber+' voided — the number stays accounted for');
+  render();
+}
+
+/* Admin-only: delete an entire job order (with warning). A job carrying an OR
+   number cannot be deleted at all — see jobVoided above. */
 function deleteJobConfirm(id){
   if (typeof isAdminUser==='function' && !isAdminUser()){ toast('Admins only','err'); return; }
   var j=jobById(id); if(!j) return;
+  if (j.orNumber){
+    openModal('Cannot delete '+esc(j.no||'this job order'),
+      '<p>Official receipt <b>'+esc(j.orNumber)+'</b> was issued against this job order, so the record has to be kept. '+
+        'Deleting it would leave an unexplained hole in your OR series.</p>'+
+      (jobVoided(j)
+        ? '<p class="muted small">This receipt is already voided ('+esc(j.orVoid.reason||'')+'). It stays on file so the number remains accounted for.</p>'
+        : '<p class="muted small">If the sale should not stand, <b>void the receipt</b> instead — the number stays accounted for and the sale comes out of revenue.</p>'),
+      { footer:'<button class="btn ghost" onclick="closeModal()">Close</button>'+
+        (jobVoided(j)?'':'<span style="flex:1"></span><button class="btn danger" onclick="closeModal();voidReceiptDialog(\''+id+'\')">Void receipt…</button>') });
+    return;
+  }
   confirmModal('Delete this job order?',
     'This permanently deletes '+(j.no||'')+' ('+(j.plate||'')+') and everything in it — line items, status log, billing, payments and photos. This cannot be undone.',
     function(){
@@ -3679,8 +3743,11 @@ function delStaff(id){ S.staff=S.staff.filter(function(s){return s.id!==id;}); p
    Commission logic uses jobLaborCommission() everywhere (single source).
    ========================================================================== */
 
-function releasedJobs(){ return S.jobs.filter(function(j){return j.stage==='Released';}); }
-function billedJobs(){ return S.jobs.filter(function(j){return j.stage==='Final Billing'||j.stage==='Released';}); }
+/* A voided receipt is not a sale, so it is excluded everywhere money is counted
+   — revenue, profit, commissions and receivables. The job itself stays on file
+   and keeps its OR number so the series has no hole (see jobVoided). */
+function releasedJobs(){ return S.jobs.filter(function(j){return j.stage==='Released' && !jobVoided(j);}); }
+function billedJobs(){ return S.jobs.filter(function(j){return (j.stage==='Final Billing'||j.stage==='Released') && !jobVoided(j);}); }
 
 function jobCostOfParts(j){
   return round2((j.lines||[]).reduce(function(s,l){
@@ -3774,7 +3841,8 @@ function orSeriesRows(){
   return (S.jobs||[]).filter(function(j){ return j.orNumber; }).map(function(j){
     var m=/(\d+)/.exec(String(j.orNumber));
     return { n:m?Number(m[1]):0, or:j.orNumber, jo:j.no, date:j.billedAt||j.dateIn||'',
-             owner:j.owner||'', plate:j.plate||'', amount:jobGross(j), id:j.id };
+             owner:j.owner||'', plate:j.plate||'', amount:jobGross(j), id:j.id,
+             voided:jobVoided(j), voidReason:(j.orVoid&&j.orVoid.reason)||'' };
   }).sort(function(a,b){ return a.n-b.n || String(a.or).localeCompare(String(b.or)); });
 }
 /* Holes in a numbered series. Shared by the OR and JO cards — it only reads the
@@ -3805,11 +3873,14 @@ function orSeriesRowsHTML(){
   var rows=orSeriesFiltered();
   if(!rows.length) return '<tr><td colspan="5" class="muted center">No OR numbers match “'+esc(OR_Q)+'”.</td></tr>';
   return rows.map(function(r){
-    return '<tr onclick="go(\'job\',\''+r.id+'\')" style="cursor:pointer">'+
-      '<td><b>'+esc(r.or)+'</b></td><td>'+esc(r.jo)+'</td>'+
+    /* A voided receipt keeps its row — that is what keeps the series gapless —
+       but reads as cancelled and contributes nothing to the total. */
+    return '<tr onclick="go(\'job\',\''+r.id+'\')" style="cursor:pointer"'+(r.voided?' class="void-row"':'')+'>'+
+      '<td><b>'+esc(r.or)+'</b>'+(r.voided?' <span class="chip">VOID</span>':'')+'</td><td>'+esc(r.jo)+'</td>'+
       '<td>'+esc(fmtDate(r.date))+'</td>'+
-      '<td>'+esc(r.owner)+(r.plate?' <span class="muted small">'+esc(r.plate)+'</span>':'')+'</td>'+
-      '<td class="r">'+peso(r.amount)+'</td></tr>';
+      '<td>'+esc(r.owner)+(r.plate?' <span class="muted small">'+esc(r.plate)+'</span>':'')+
+        (r.voided&&r.voidReason?'<div class="muted small">'+esc(r.voidReason)+'</div>':'')+'</td>'+
+      '<td class="r">'+(r.voided?'<span class="muted">—</span>':peso(r.amount))+'</td></tr>';
   }).join('');
 }
 function orSeriesSearch(v){ OR_Q=v; var el=document.getElementById('orSeriesBody'); if(el) el.innerHTML=orSeriesRowsHTML(); }
@@ -3823,7 +3894,9 @@ function orSeriesCard(){
     : '<div class="muted small">✓ No gaps — series is continuous.</div>';
   return '<div class="card"><div class="card-head"><h2>OR numbers by series</h2>'+
     '<button class="btn sm ghost" onclick="printOrSeries()">⎙ Print</button></div>'+
-    '<div class="muted small mb8">'+rows.length+' receipts · '+esc(rows[0].or)+' → '+esc(rows[rows.length-1].or)+'</div>'+
+    '<div class="muted small mb8">'+rows.length+' receipts'+
+      (rows.filter(function(r){return r.voided;}).length?' ('+rows.filter(function(r){return r.voided;}).length+' void)':'')+
+      ' · '+esc(rows[0].or)+' → '+esc(rows[rows.length-1].or)+'</div>'+
     gapNote+
     '<input class="searchbox mt8" id="orSeriesSearch" value="'+attr(OR_Q)+'" oninput="orSeriesSearch(this.value)" placeholder="Search OR # / JO # / customer / plate…" autocomplete="off">'+
     '<div class="card pad0 mt8"><table class="tbl click"><thead><tr><th>OR #</th><th>JO #</th><th>Date</th><th>Sold to</th><th class="r">Amount</th></tr></thead>'+
@@ -3831,12 +3904,14 @@ function orSeriesCard(){
 }
 function docOrSeries(){
   var rows=orSeriesFiltered();
-  var tot=round2(rows.reduce(function(s,r){return s+r.amount;},0));
+  var voided=rows.filter(function(r){ return r.voided; }).length;
+  /* Voided receipts are listed (so the series reads as complete) but add nothing. */
+  var tot=round2(rows.reduce(function(s,r){return s+(r.voided?0:r.amount);},0));
   var body=docHeader('OR Numbers by Series')+
-    '<div class="meta"><div><b>Receipts</b>'+rows.length+'</div>'+
+    '<div class="meta"><div><b>Receipts</b>'+rows.length+(voided?' ('+voided+' void)':'')+'</div>'+
       '<div><b>Range</b>'+(rows.length?esc(rows[0].or)+' → '+esc(rows[rows.length-1].or):'—')+'</div></div>'+
     '<table><thead><tr><th>OR #</th><th>JO #</th><th>Date</th><th>Sold to</th><th class="r">Amount</th></tr></thead><tbody>'+
-    rows.map(function(r){ return '<tr><td>'+esc(r.or)+'</td><td>'+esc(r.jo)+'</td><td>'+esc(fmtDate(r.date))+'</td><td>'+esc(r.owner)+'</td><td class="r">'+peso(r.amount)+'</td></tr>'; }).join('')+
+    rows.map(function(r){ return '<tr><td>'+esc(r.or)+(r.voided?' — VOID':'')+'</td><td>'+esc(r.jo)+'</td><td>'+esc(fmtDate(r.date))+'</td><td>'+esc(r.owner)+(r.voided&&r.voidReason?' ('+esc(r.voidReason)+')':'')+'</td><td class="r">'+(r.voided?'—':peso(r.amount))+'</td></tr>'; }).join('')+
     '<tr class="tot"><td></td><td></td><td></td><td class="r">Total</td><td class="r">'+peso(tot)+'</td></tr>'+
     '</tbody></table>';
   return docShell('OR numbers by series', body);
@@ -3943,7 +4018,9 @@ VIEWS.dailyclose = function(){
   txns.forEach(function(t){ byMethod[t.p.method]=round2((byMethod[t.p.method]||0)+t.p.amount); });
   var collections=round2(txns.reduce(function(s,t){return s+t.p.amount;},0));
   // jobs billed that day -> net sales / vat / discounts
-  var billed=S.jobs.filter(function(j){return localDay(j.billedAt)===date;});
+  // Voided receipts are not sales. Collections above are left untouched: a void
+  // does not un-receive cash, so a refund is entered as its own payment.
+  var billed=S.jobs.filter(function(j){return localDay(j.billedAt)===date && !jobVoided(j);});
   var net=round2(billed.reduce(function(s,j){return s+jobNet(j);},0));   // VATable base (ex-VAT)
   var disc=round2(billed.reduce(function(s,j){return s+discountAmount(j);},0));
   var vs=vatSplit(net,S);
@@ -4164,7 +4241,7 @@ VIEWS.productivity = function(){
 };
 
 /* ---- Receivables (A/R) ---------------------------------------------------- */
-function arJobs(){ return S.jobs.filter(function(j){return (j.stage==='Final Billing'||j.stage==='Released') && jobBalance(j)>0.001;}); }
+function arJobs(){ return S.jobs.filter(function(j){return (j.stage==='Final Billing'||j.stage==='Released') && !jobVoided(j) && jobBalance(j)>0.001;}); }
 function agingBucket(days){ if(days<=30) return '0-30'; if(days<=60) return '31-60'; if(days<=90) return '61-90'; return '90+'; }
 VIEWS.receivables = function(){
   var ar=arJobs();
@@ -5163,7 +5240,8 @@ if (typeof module!=='undefined' && module.exports){
     arJobs:arJobs, jobByNo:jobByNo, vehicleByPlate:vehicleByPlate, vehDupe:vehDupe, partById:partById,
     jobMatch:jobMatch, setJobQ:function(q){ JOB_Q=q; },
     orSeriesRows:orSeriesRows, joSeriesRows:joSeriesRows, seriesGaps:seriesGaps,
-    docJoSeries:docJoSeries,
+    docJoSeries:docJoSeries, docOrSeries:docOrSeries,
+    jobVoided:jobVoided, releasedJobs:releasedJobs, billedJobs:billedJobs,
     can:can, routeAllowed:routeAllowed, setCurrentUser:function(u){ CURRENT_USER=u; },
     commissionTable:commissionTable, jobLaborCommission:jobLaborCommission, jobLaborCommissionMap:jobLaborCommissionMap, jobLaborCommissionMapAll:jobLaborCommissionMapAll, laborTotal:laborTotal,
     jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
