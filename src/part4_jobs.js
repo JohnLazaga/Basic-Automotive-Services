@@ -33,6 +33,7 @@ function blankJob(){
     status:'A1', statusLog:[], addlWork:[], approvedReleaseBy:null, paymentReceivedBy:null,
     discount:{ parts:0, labor:0, other:0, otherNote:'' }, payments:[], orNumber:null, billedAt:null, releaseSignature:null,
     orVoid:null,     // {at,by,byName,reason} — receipt voided; the job and its OR number are KEPT
+    joCancel:null,   // {at,by,byName,reason} — unbilled job order cancelled; its JO number is KEPT
     photos:[], inventoryDeducted:false };
 }
 
@@ -212,7 +213,9 @@ function jobsBodyHTML(){
   var rows = jobs.map(function(j){
     var veh=(j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:'');
     return '<tr onclick="go(\'job\',\''+j.id+'\')">'+
-      '<td><b>'+esc(j.no)+'</b>'+(j.orNumber?'<div class="muted small">'+esc(j.orNumber)+'</div>':'')+'</td>'+
+      '<td><b>'+esc(j.no)+'</b>'+(jobCancelled(j)?' <span class="chip">CANCELLED</span>':'')+
+        (jobVoided(j)?' <span class="chip">VOID</span>':'')+
+        (j.orNumber?'<div class="muted small">'+esc(j.orNumber)+'</div>':'')+'</td>'+
       '<td><b>'+esc(j.plate)+'</b>'+(veh?' <span class="muted small">'+esc(veh)+'</span>':'')+'</td>'+
       '<td>'+chip(j.stage, j.stage==='Released'?'ok':j.stage==='Job Order'?'':'gold')+'</td>'+
       '<td>'+statusBadge(j.status)+'</td>'+
@@ -255,8 +258,16 @@ VIEWS.job = function(id){
       '<div class="row gap">'+jobPrintButtons(j)+
         ((((typeof isAdminUser!=='function')||isAdminUser()) && j.orNumber && !jobVoided(j))
           ? '<button class="btn danger ghost" onclick="voidReceiptDialog(\''+j.id+'\')" title="Keep the record, cancel the sale">⊘ Void receipt</button>' : '')+
-        (((typeof isAdminUser!=='function')||isAdminUser())?'<button class="btn danger ghost" onclick="deleteJobConfirm(\''+j.id+'\')">🗑 Delete</button>':'')+
+        ((((typeof isAdminUser!=='function')||isAdminUser()) && !j.orNumber && !jobCancelled(j))
+          ? '<button class="btn danger ghost" onclick="cancelJobDialog(\''+j.id+'\')" title="Keep the number, take it off the board">⊘ Cancel job order</button>' : '')+
+        ((((typeof isAdminUser!=='function')||isAdminUser()) && jobCancelled(j))
+          ? '<button class="btn ghost" onclick="reinstateJobConfirm(\''+j.id+'\')" title="Put it back on the board">↺ Reinstate</button>' : '')+
       '</div></div>'+
+    (jobCancelled(j)
+      ? '<div class="lg-msg err" style="margin:0 0 12px">⊘ '+esc(j.no)+' is CANCELLED — '+esc(j.joCancel.reason||'')+
+        '<div class="muted small">Cancelled '+esc(fmtDateTime(j.joCancel.at))+(j.joCancel.byName?' by '+esc(j.joCancel.byName):'')+
+        '. The number stays accounted for; it is off the board and out of open WIP. Reinstate it if the customer returns.</div></div>'
+      : '')+
     (jobVoided(j)
       ? '<div class="lg-msg err" style="margin:0 0 12px">⊘ Receipt '+esc(j.orNumber||'')+' is VOID — '+esc(j.orVoid.reason||'')+
         '<div class="muted small">Voided '+esc(fmtDateTime(j.orVoid.at))+(j.orVoid.byName?' by '+esc(j.orVoid.byName):'')+
@@ -513,6 +524,55 @@ function delLine(id,lid){
    in the OR series marked VOID, so the series has no hole, while the sale is
    taken out of revenue, receivables and commissions. */
 function jobVoided(j){ return !!(j && j.orVoid && j.orVoid.at); }
+
+/* ---- Cancelling an unbilled job order --------------------------------------
+   A JO number is internal, not accountable to the BIR — but a hole in the
+   series still hides something worth knowing: that a vehicle was taken in and
+   the work never happened. So an unbilled job order is CANCELLED rather than
+   deleted. The number and the record stay, the job drops out of the board and
+   WIP, and the series keeps no hole. Unlike voiding a receipt this is not
+   final — a cancelled job order can be reinstated if the customer returns. */
+function jobCancelled(j){ return !!(j && j.joCancel && j.joCancel.at); }
+/* Neither cancelled nor a voided sale — i.e. still live work. */
+function jobLive(j){ return !jobCancelled(j) && !jobVoided(j); }
+var _cancelCtx=null;
+function cancelJobDialog(id){
+  if (typeof requireDelete==='function' && !requireDelete('job orders')) return;
+  var j=jobById(id); if(!j) return;
+  if (j.orNumber){ toast('This job order is already billed — void the receipt instead','err'); return; }
+  if (jobCancelled(j)){ toast(j.no+' is already cancelled'); return; }
+  openModal('Cancel job order '+esc(j.no)+'?',
+    '<p class="muted small">The job order is <b>kept on purpose</b>. '+esc(j.no)+' stays listed in the JO '+
+      'series marked <b>CANCELLED</b>, so your numbering keeps no hole and there is a record that this '+
+      'vehicle was taken in and the work did not proceed.</p>'+
+    '<p class="muted small">It leaves the board and open WIP. You can reinstate it later if the customer '+
+      'comes back.</p>'+
+    field('Reason','<input id="cjReason" placeholder="e.g. customer declined, duplicate intake, wrong vehicle" autocomplete="off">',
+      'Recorded against the job order so it can be explained later.'),
+    { onOk:'confirmCancelJob', okText:'Cancel job order' });
+  setTimeout(function(){ _cancelCtx=id; },10);
+}
+function confirmCancelJob(){
+  if (typeof requireDelete==='function' && !requireDelete('job orders')) return;
+  var j=jobById(_cancelCtx); if(!j){ closeModal(); return; }
+  var reason=(val('cjReason')||'').trim();
+  if(reason.length<3){ toast('Give a reason — it is what explains the cancellation later','err'); return; }
+  if(j.orNumber){ toast('This job order is billed — void the receipt instead','err'); return; }
+  var me=(typeof CURRENT_USER!=='undefined' && CURRENT_USER) ? CURRENT_USER : null;
+  j.joCancel={ at:new Date().toISOString(), by:(me&&me.uid)||'', byName:(me&&(me.name||me.username||me.email))||'', reason:reason };
+  _cancelCtx=null; persist(); closeModal();
+  toast(j.no+' cancelled — the number stays accounted for'); render();
+}
+function reinstateJobConfirm(id){
+  if (typeof requireDelete==='function' && !requireDelete('job orders')) return;
+  var j=jobById(id); if(!j || !jobCancelled(j)) return;
+  confirmModal('Reinstate '+j.no+'?',
+    'This puts the job order back on the board as live work. The cancellation and its reason are cleared.',
+    function(){
+      j.joCancel=null; persist(); if(typeof closeModal==='function') closeModal();
+      toast(j.no+' reinstated'); render();
+    }, 'Reinstate');
+}
 var _voidCtx=null;
 function voidReceiptDialog(id){
   if (typeof isAdminUser==='function' && !isAdminUser()){ toast('Admins only','err'); return; }
@@ -549,17 +609,30 @@ function confirmVoidReceipt(){
 function deleteJobConfirm(id){
   if (typeof requireDelete==='function' && !requireDelete('job orders')) return;
   var j=jobById(id); if(!j) return;
-  if (j.orNumber){
-    openModal('Cannot delete '+esc(j.no||'this job order'),
-      '<p>Official receipt <b>'+esc(j.orNumber)+'</b> was issued against this job order, so the record has to be kept. '+
+  /* A job order is never deleted. Both its JO number and any OR number issued
+     against it have to stay accounted for, so the record is retired in place:
+     void the receipt if billed, cancel the job order if not. */
+  openModal('Cannot delete '+esc(j.no||'this job order'),
+    (j.orNumber
+      ? '<p>Official receipt <b>'+esc(j.orNumber)+'</b> was issued against this job order, so the record has to be kept. '+
         'Deleting it would leave an unexplained hole in your OR series.</p>'+
-      (jobVoided(j)
-        ? '<p class="muted small">This receipt is already voided ('+esc(j.orVoid.reason||'')+'). It stays on file so the number remains accounted for.</p>'
-        : '<p class="muted small">If the sale should not stand, <b>void the receipt</b> instead — the number stays accounted for and the sale comes out of revenue.</p>'),
-      { footer:'<button class="btn ghost" onclick="closeModal()">Close</button>'+
-        (jobVoided(j)?'':'<span style="flex:1"></span><button class="btn danger" onclick="closeModal();voidReceiptDialog(\''+id+'\')">Void receipt…</button>') });
-    return;
-  }
+        (jobVoided(j)
+          ? '<p class="muted small">This receipt is already voided ('+esc((j.orVoid&&j.orVoid.reason)||'')+'). It stays on file so the number remains accounted for.</p>'
+          : '<p class="muted small">If the sale should not stand, <b>void the receipt</b> instead — the number stays accounted for and the sale comes out of revenue.</p>')
+      : '<p>Job order <b>'+esc(j.no)+'</b> keeps its number so your JO series has no hole, and so there is a '+
+        'record that this vehicle was taken in.</p>'+
+        (jobCancelled(j)
+          ? '<p class="muted small">This job order is already cancelled ('+esc((j.joCancel&&j.joCancel.reason)||'')+') and is off the board.</p>'
+          : '<p class="muted small">If the work is not going ahead, <b>cancel the job order</b> instead — it leaves the board and open WIP but stays on file, and you can reinstate it if the customer returns.</p>')),
+    { footer:'<button class="btn ghost" onclick="closeModal()">Close</button>'+
+      (j.orNumber
+        ? (jobVoided(j)?'':'<span style="flex:1"></span><button class="btn danger" onclick="closeModal();voidReceiptDialog(\''+id+'\')">Void receipt…</button>')
+        : (jobCancelled(j)?'':'<span style="flex:1"></span><button class="btn danger" onclick="closeModal();cancelJobDialog(\''+id+'\')">Cancel job order…</button>')) });
+  return;
+}
+/* Retained so any older call site still resolves; deletion is no longer offered. */
+function _deleteJobHard(id){
+  var j=jobById(id); if(!j) return;
   confirmModal('Delete this job order?',
     'This permanently deletes '+(j.no||'')+' ('+(j.plate||'')+') and everything in it — line items, status log, billing, payments and photos. This cannot be undone.',
     function(){

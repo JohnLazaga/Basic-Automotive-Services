@@ -454,6 +454,61 @@ section('Voided receipt: number stays accounted for, sale does not count');
   ok('orVoid without a timestamp is ignored', M.jobVoided(s2.jobs[0])===false && M.releasedJobs().length===1);
 })();
 
+/* --------------------------------------------- Cancelled job orders */
+section('Cancelled job order: number kept, off the board, no hole');
+(function(){
+  const s=fresh();
+  const mk=(n,cancelled)=>({ id:'j'+n, no:'JO-'+String(n).padStart(4,'0'), plate:'ABC 123', owner:'JUAN',
+    stage:'Job Order', status:'A1', statusLog:[], dateIn:'2026-07-01',
+    lines:[{id:'l1',type:'labor',desc:'Service',qty:1,price:1000}], payments:[],
+    discount:{parts:0,labor:0,other:0}, mechanicIds:[], orNumber:null,
+    joCancel: cancelled ? { at:'2026-07-02T00:00:00.000Z', by:'u1', byName:'Admin', reason:'customer declined' } : null });
+
+  s.jobs=[mk(1,false), mk(2,true), mk(3,false)];
+  M.setS(s);
+  ok('jobCancelled detects a cancel', M.jobCancelled(s.jobs[1])===true);
+  ok('jobCancelled false otherwise', M.jobCancelled(s.jobs[0])===false);
+  ok('joCancel without a timestamp is ignored', M.jobCancelled({joCancel:{reason:'x'}})===false);
+  ok('jobLive excludes cancelled', M.jobLive(s.jobs[1])===false && M.jobLive(s.jobs[0])===true);
+
+  // The point: the number is still in the series, so no gap.
+  const rows=M.joSeriesRows();
+  ok('cancelled JO still listed', rows.length===3);
+  ok('cancelled row flagged with reason', rows[1].cancelled===true && rows[1].cancelReason==='customer declined');
+  ok('cancelling creates NO gap', M.seriesGaps(rows).length===0);
+
+  // ...but it is not live work.
+  M.setCurrentUser({uid:'u1',isAdmin:true,role:'SV',active:true});
+  const board=M.VIEWS().board();
+  ok('cancelled job off the board', board.indexOf('JO-0002')<0 && board.indexOf('JO-0001')>0);
+  ok('active count excludes cancelled', /Active units[\s\S]{0,80}>2</.test(board));
+  // Compare WIP with the job cancelled vs reinstated: it must drop by exactly
+  // that job's gross, rather than trusting a hard-coded peso string.
+  const wipOf = () => (/Open WIP<\/div><div class="kpi-v">([^<]+)/.exec(M.VIEWS().reports())||[])[1];
+  const wipWithCancel = wipOf();
+  const oneJobGross = M.jobGross(s.jobs[1]);
+  s.jobs[1].joCancel=null; M.setS(s);
+  const wipAllLive = wipOf();
+  const num = t => Number(String(t||'').replace(/[^0-9.]/g,''));
+  ok('open WIP excludes the cancelled job',
+     Math.abs((num(wipAllLive)-num(wipWithCancel)) - oneJobGross) < 0.01);
+  ok('WIP is lower when cancelled', num(wipWithCancel) < num(wipAllLive));
+  // restore for any later assertions
+  s.jobs[1].joCancel={ at:'2026-07-02T00:00:00.000Z', by:'u1', byName:'Admin', reason:'customer declined' };
+  M.setS(s);
+
+  // A billed job cannot be cancelled (void is the route) and vice versa.
+  const s2=fresh();
+  s2.jobs=[Object.assign(mk(1,false),{orNumber:'OR-1207',stage:'Final Billing'})];
+  M.setS(s2);
+  ok('billed job is not cancellable via jobCancelled', M.jobCancelled(s2.jobs[0])===false);
+  // Reinstating clears the cancellation.
+  const s3=fresh(); s3.jobs=[mk(1,true)]; M.setS(s3);
+  s3.jobs[0].joCancel=null;
+  ok('clearing joCancel makes it live again', M.jobCancelled(s3.jobs[0])===false && M.jobLive(s3.jobs[0])===true);
+  M.setCurrentUser(null);
+})();
+
 /* --------------------------------------------- JO series gaps */
 section('JO series: gaps in the job-order sequence are detected');
 (function(){

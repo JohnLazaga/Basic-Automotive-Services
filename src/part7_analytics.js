@@ -37,7 +37,7 @@ function jobNetProfit(job){ return round2(jobGrossMargin(job) - jobLaborCommissi
 VIEWS.reports = function(){
   var rel=releasedJobs();
   var revenue=round2(rel.reduce(function(s,j){return s+jobGross(j);},0));   // total billed (VAT-incl) — the sales headline
-  var wip=round2(S.jobs.filter(function(j){return j.stage!=='Released';}).reduce(function(s,j){return s+jobGross(j);},0));
+  var wip=round2(S.jobs.filter(function(j){return j.stage!=='Released' && !jobCancelled(j);}).reduce(function(s,j){return s+jobGross(j);},0));
   var avg=rel.length? round2(revenue/rel.length):0;
   // Profitability (ex-VAT, consistent with the per-job Profitability panel)
   var revEx=round2(rel.reduce(function(s,j){return s+jobRevenueExVat(j);},0));
@@ -193,7 +193,9 @@ function joSeriesRows(){
     var m=/(\d+)/.exec(String(j.no));
     return { n:m?Number(m[1]):0, jo:j.no, or:j.orNumber||'', stage:j.stage||'',
              date:j.dateIn||'', owner:j.owner||'', plate:j.plate||'',
-             amount:jobGross(j), id:j.id };
+             amount:jobGross(j), id:j.id,
+             cancelled:jobCancelled(j), cancelReason:(j.joCancel&&j.joCancel.reason)||'',
+             voided:jobVoided(j) };
   }).sort(function(a,b){ return a.n-b.n || String(a.jo).localeCompare(String(b.jo)); });
 }
 var JOSER_Q='';
@@ -206,12 +208,15 @@ function joSeriesRowsHTML(){
   var rows=joSeriesFiltered();
   if(!rows.length) return '<tr><td colspan="5" class="muted center">No JO numbers match “'+esc(JOSER_Q)+'”.</td></tr>';
   return rows.map(function(r){
-    return '<tr onclick="go(\'job\',\''+r.id+'\')" style="cursor:pointer">'+
-      '<td><b>'+esc(r.jo)+'</b></td>'+
-      '<td>'+esc(r.or||'—')+'</td>'+
+    /* A cancelled job order keeps its row — that is what keeps the series
+       gapless — but reads as retired and contributes no bill. */
+    return '<tr onclick="go(\'job\',\''+r.id+'\')" style="cursor:pointer"'+(r.cancelled||r.voided?' class="void-row"':'')+'>'+
+      '<td><b>'+esc(r.jo)+'</b>'+(r.cancelled?' <span class="chip">CANCELLED</span>':'')+'</td>'+
+      '<td>'+esc(r.or||'—')+(r.voided?' <span class="chip">VOID</span>':'')+'</td>'+
       '<td>'+esc(fmtDate(r.date))+'</td>'+
-      '<td>'+esc(r.owner)+(r.plate?' <span class="muted small">'+esc(r.plate)+'</span>':'')+'</td>'+
-      '<td class="r">'+peso(r.amount)+'</td></tr>';
+      '<td>'+esc(r.owner)+(r.plate?' <span class="muted small">'+esc(r.plate)+'</span>':'')+
+        (r.cancelled&&r.cancelReason?'<div class="muted small">'+esc(r.cancelReason)+'</div>':'')+'</td>'+
+      '<td class="r">'+((r.cancelled||r.voided)?'<span class="muted">—</span>':peso(r.amount))+'</td></tr>';
   }).join('');
 }
 function joSeriesSearch(v){ JOSER_Q=v; var el=document.getElementById('joSeriesBody'); if(el) el.innerHTML=joSeriesRowsHTML(); }

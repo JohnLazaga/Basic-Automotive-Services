@@ -46,7 +46,7 @@ function alertStrip(){
 
 /* ---- KPI header ----------------------------------------------------------- */
 function boardKPIs(){
-  var active = S.jobs.filter(function(j){return j.stage!=='Released';});
+  var active = S.jobs.filter(function(j){return j.stage!=='Released' && !jobCancelled(j);});
   var wip = round2(active.reduce(function(s,j){return s+jobGross(j);},0));
   var dueCount = active.filter(isUpdateDue).length;
   var released = S.jobs.filter(function(j){return j.stage==='Released';});
@@ -70,7 +70,7 @@ function boardMatch(j){
     .some(function(x){ return String(x||'').toLowerCase().indexOf(q)>=0; });
 }
 function boardBody(){
-  var active = S.jobs.filter(function(j){return j.stage!=='Released';}).filter(boardMatch);
+  var active = S.jobs.filter(function(j){return j.stage!=='Released' && !jobCancelled(j);}).filter(boardMatch);
   if(BOARD_Q && !active.length) return emptyState('No active units match “'+esc(BOARD_Q)+'”.');
   return BOARD_MODE==='kanban'? boardKanban(active) : BOARD_MODE==='bays'? boardBays(active) : BOARD_MODE==='mechs'? boardMechs(active) : boardList(active);
 }
