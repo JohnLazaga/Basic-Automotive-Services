@@ -74,6 +74,7 @@ var LOADED_AT = null;
 var ALL_GZ = null;
 var SOURCE = 'none';      // 'sql:<db>' | 'tsv:<file>' | 'none'
 var LAST_ERROR = null;
+var LAST_SKIPPED = 0;     // unusable rows dropped by the last parse (see junkRow)
 
 function setCatalog(list, sourceLabel) {
   var map = new Map();
@@ -91,8 +92,22 @@ function setCatalog(list, sourceLabel) {
   ALL_GZ = zlib.gzipSync(payload);
 }
 
+/* Rows the upstream database carries that are not parts anyone can sell.
+   Filtered HERE because this is the one funnel both sources pass through — the
+   SQL sync and the offline parts.tsv — so a re-sync cannot bring them back.
+     • SKU not a positive whole number — the DB holds ~2,600 negative-SKU rows
+       (internal adjustment records) plus a SKU 0, none of them named.
+     • no name — the lookup exists to fill the part name in, so a nameless row
+       fills in nothing while still overwriting Net/SRP with its own. That is
+       how SKU 1034 put its prices under a SKU the encoder was still typing.
+   A named part with no price is kept: no price yet is normal, and the encoder
+   can see the name and type the amount. */
+function junkRow(sku, name) {
+  if (!/^\d+$/.test(sku) || Number(sku) <= 0) return true;
+  return name === '';
+}
 function parseRows(raw) {
-  var list = [];
+  var list = [], skipped = 0;
   var lines = String(raw || '').split('\n');
   for (var i = 0; i < lines.length; i++) {
     var ln = lines[i].replace(/\r$/, '');
@@ -100,8 +115,12 @@ function parseRows(raw) {
     var t = ln.split('\t');
     var sku = (t[0] || '').trim();
     if (!sku) continue;
-    list.push({ sku: sku, name: (t[1] || '').trim(), net: Number(t[2]) || 0, srp: Number(t[3]) || 0 });
+    var name = (t[1] || '').trim();
+    if (junkRow(sku, name)) { skipped++; continue; }
+    list.push({ sku: sku, name: name, net: Number(t[2]) || 0, srp: Number(t[3]) || 0 });
   }
+  LAST_SKIPPED = skipped;
+  if (skipped) console.log('[parts] skipped ' + skipped.toLocaleString() + ' unusable row(s) (no name, or SKU not a positive number)');
   return list;
 }
 
@@ -250,7 +269,7 @@ const server = http.createServer(async function (req, res) {
   var p = u.pathname;
 
   // ---- read endpoints ----
-  if (p === '/health') return send(res, 200, { ok: true, branch: BRANCH, count: LIST.length, version: VERSION, source: SOURCE, loadedAt: LOADED_AT, lastError: LAST_ERROR });
+  if (p === '/health') return send(res, 200, { ok: true, branch: BRANCH, count: LIST.length, version: VERSION, source: SOURCE, loadedAt: LOADED_AT, lastError: LAST_ERROR, skipped: LAST_SKIPPED });
   if (p === '/api/version') return send(res, 200, { version: VERSION, count: LIST.length });
   if (p === '/api/all') {
     cors(res);
@@ -307,7 +326,7 @@ const server = http.createServer(async function (req, res) {
       var cfg = readSqlConfig();
       return send(res, 200, {
         configured: !!cfg,
-        source: SOURCE, count: LIST.length, version: VERSION, loadedAt: LOADED_AT, lastError: LAST_ERROR,
+        source: SOURCE, count: LIST.length, version: VERSION, loadedAt: LOADED_AT, lastError: LAST_ERROR, skipped: LAST_SKIPPED,
         platform: process.platform,
         defaults: DEFAULT_SQL,
         config: cfg ? { server: cfg.server, database: cfg.database, auth: cfg.auth, user: cfg.user || '', query: cfg.query } : null
