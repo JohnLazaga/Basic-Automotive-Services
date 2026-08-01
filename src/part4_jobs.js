@@ -403,6 +403,7 @@ function jobLinesPanel(j){
    Labor lines: pick from the labor menu or free-text. */
 function lineForm(l){
   l=l||{type:'part',qty:1,price:0,desc:''};
+  _skuFill=null;              // fresh box — nothing here was auto-filled yet
   // Parts and labor are encoded separately — the type is fixed by which panel's
   // Add button opened the dialog, so no Type selector is shown.
   return '<input type="hidden" id="lnType" value="'+(l.type==='labor'?'labor':'part')+'">'+
@@ -436,12 +437,43 @@ function catalogHint(){
   if (CATALOG_STATE==='loading') return 'Loading parts catalog…';
   return '';
 }
+/* What the last auto-fill wrote into the form, kept so a later keystroke that no
+   longer matches can take it back out again.
+   This matters because the lookup runs on EVERY keystroke, and a long SKU walks
+   through its own prefixes on the way in: typing 103474 passes 10, 103, 1034 and
+   10347 — all real SKUs — each auto-filling in turn. 103474 itself is in no
+   catalog, so without this the box kept SKU 10347's name and prices sitting
+   under a SKU that has neither, and the line got saved that way. */
+var _skuFill=null;   // { desc, net, srp } exactly as written, for an exact-match compare
 function skuLookup(){
   var sku=(val('lnSku')||'').trim(); var msg=document.getElementById('skuMsg');
-  if(!sku){ if(msg) msg.textContent=catalogHint(); return; }
-  var hit = (typeof catalogLookup==='function') ? catalogLookup(sku) : null;
-  if(hit){ setVal('lnDesc',hit.name); setVal('lnNet',hit.net); setVal('lnPrice',hit.srp); if(msg){ msg.textContent='✓ '+hit.name; msg.className='ok small'; } }
-  else if(msg){ msg.textContent = (typeof CATALOG_STATE!=='undefined'&&CATALOG_STATE==='loading')?'Loading catalog…':'No match — enter the details manually.'; msg.className='muted small'; }
+  var hit = (sku && typeof catalogLookup==='function') ? catalogLookup(sku) : null;
+  if(hit){
+    setVal('lnDesc',hit.name); setVal('lnNet',hit.net); setVal('lnPrice',hit.srp);
+    _skuFill={ desc:String(hit.name), net:String(hit.net), srp:String(hit.srp) };
+    if(msg){ msg.textContent='✓ '+hit.name; msg.className='ok small'; }
+    return;
+  }
+  clearSkuFill();
+  if(msg){
+    msg.textContent = !sku ? catalogHint()
+      : (typeof CATALOG_STATE!=='undefined'&&CATALOG_STATE==='loading') ? 'Loading catalog…'
+      : 'No match — enter the details manually.';
+    msg.className='muted small';
+  }
+}
+/* Undo the previous auto-fill — but only where the field still holds exactly what
+   that auto-fill put there. Anything since typed over it is the encoder's own and
+   is left alone. */
+function clearSkuFill(){
+  if(!_skuFill) return;
+  // Compare as text on both sides: an <input> stringifies whatever is assigned to
+  // .value, so the numbers written by the auto-fill come back as strings.
+  function same(id,v){ return String(val(id))===String(v); }
+  if(same('lnDesc', _skuFill.desc)) setVal('lnDesc','');
+  if(same('lnNet',  _skuFill.net))  setVal('lnNet',0);
+  if(same('lnPrice',_skuFill.srp))  setVal('lnPrice',0);
+  _skuFill=null;
 }
 function laborPick(){ var sel=document.getElementById('lnRef'); var o=sel.options[sel.selectedIndex];
   if(o&&o.value){ setVal('lnDesc',o.getAttribute('data-name')); setVal('lnPrice',o.getAttribute('data-price')); }

@@ -63,25 +63,39 @@ function boardKPIs(){
 
 /* ---- Board view ----------------------------------------------------------- */
 var BOARD_Q='';
+/* JO # and OR # are matched too — a unit awaiting release carries both, and the
+   counter is usually holding a receipt or a job order slip rather than knowing
+   the plate. The number is also matched bare (JO-0042 found by typing 42), since
+   nobody says the prefix out loud. */
 function boardMatch(j){
   if(!BOARD_Q) return true; var q=BOARD_Q.toLowerCase();
   var mechs=staffSearchStr((j.mechanicIds||[]).concat([j.saId]));
-  return [j.plate,j.owner,j.contactPerson,j.make,j.model,j.make+' '+j.model,mechs]
+  return [j.plate,j.owner,j.contactPerson,j.make,j.model,j.make+' '+j.model,mechs,
+          j.no,j.orNumber,digitsOf(j.no),digitsOf(j.orNumber)]
     .some(function(x){ return String(x||'').toLowerCase().indexOf(q)>=0; });
 }
+/* "JO-0042" -> "42": the digits with the prefix and any leading zeros dropped. */
+function digitsOf(v){ var m=/(\d+)/.exec(String(v||'')); return m? String(Number(m[1])) : ''; }
 function boardBody(){
   var active = S.jobs.filter(function(j){return j.stage!=='Released' && !jobCancelled(j);}).filter(boardMatch);
-  if(BOARD_Q && !active.length) return emptyState('No active units match “'+esc(BOARD_Q)+'”.');
+  /* The board is active units only, so a released JO — which is exactly what an
+     OR number usually belongs to — can never appear here. Hand the same query to
+     Job Orders, which searches the full history, instead of dead-ending. */
+  if(BOARD_Q && !active.length)
+    return '<div class="empty">No active units match “'+esc(BOARD_Q)+'”.'+
+      '<div class="mt8"><button class="btn sm" onclick="boardSearchAllJobs()">Search all job orders instead</button></div></div>';
   return BOARD_MODE==='kanban'? boardKanban(active) : BOARD_MODE==='bays'? boardBays(active) : BOARD_MODE==='mechs'? boardMechs(active) : boardList(active);
 }
 function boardSearch(v){ BOARD_Q=v; var el=document.getElementById('boardBody'); if(el) el.innerHTML=boardBody(); }
+/* Carry the board's query over to Job Orders, which covers released units too. */
+function boardSearchAllJobs(){ if(typeof JOB_Q!=='undefined') JOB_Q=BOARD_Q; go('jobs'); }
 VIEWS.board = function(){
   var toggle = '<div class="seg">'+
     ['kanban','list','bays','mechs'].map(function(m){
       var on=BOARD_MODE===m?' on':''; var lab={kanban:'Kanban',list:'List',bays:'Service Bays',mechs:'Mechanics'}[m];
       return '<button class="seg-b'+on+'" onclick="setBoardMode(\''+m+'\')">'+lab+'</button>';
     }).join('')+'</div>';
-  var search='<input class="searchbox" id="boardSearch" value="'+attr(BOARD_Q)+'" oninput="boardSearch(this.value)" placeholder="Search plate / owner / make / model / mechanic…" autocomplete="off">';
+  var search='<input class="searchbox" id="boardSearch" value="'+attr(BOARD_Q)+'" oninput="boardSearch(this.value)" placeholder="Search JO # / OR # / plate / owner / make / model / mechanic…" autocomplete="off">';
   return '<div class="page">'+
     '<div class="page-head"><h1>Operations Board</h1><div class="row gap wrap">'+search+toggle+'</div></div>'+
     alertStrip()+ boardKPIs()+ '<div id="boardBody">'+boardBody()+'</div>'+

@@ -312,6 +312,11 @@ if (typeof module!=='undefined' && module.exports){
     LOGO_URI:function(){ return LOGO_URI; }, LOGO_LOCKUP:function(){ return LOGO_LOCKUP; },
     arJobs:arJobs, jobByNo:jobByNo, vehicleByPlate:vehicleByPlate, vehDupe:vehDupe, partById:partById,
     jobMatch:jobMatch, setJobQ:function(q){ JOB_Q=q; },
+    boardMatch:boardMatch, setBoardQ:function(q){ BOARD_Q=q; },
+    /* Setters, not the values: this block runs before part13 assigns CATALOG,
+       so a direct reference would capture null. */
+    skuLookup:function(){ return skuLookup(); },
+    setCatalog:function(map){ CATALOG=map; CATALOG_STATE='ready'; },
     orSeriesRows:orSeriesRows, joSeriesRows:joSeriesRows, seriesGaps:seriesGaps,
     docJoSeries:docJoSeries, docOrSeries:docOrSeries,
     jobVoided:jobVoided, jobCancelled:jobCancelled, jobLive:jobLive,

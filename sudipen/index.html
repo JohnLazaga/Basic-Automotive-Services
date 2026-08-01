@@ -608,7 +608,7 @@ var BRANCH = {"id":"sudipen","slug":"sudipen","name":"Basic by JMSI — Sudipen"
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.2.0 · 2026-07-30 · 7ab46ae';
+var APP_VERSION = 'v1.2.0 · 2026-08-01 · 6de53a5';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -1731,25 +1731,39 @@ function boardKPIs(){
 
 /* ---- Board view ----------------------------------------------------------- */
 var BOARD_Q='';
+/* JO # and OR # are matched too — a unit awaiting release carries both, and the
+   counter is usually holding a receipt or a job order slip rather than knowing
+   the plate. The number is also matched bare (JO-0042 found by typing 42), since
+   nobody says the prefix out loud. */
 function boardMatch(j){
   if(!BOARD_Q) return true; var q=BOARD_Q.toLowerCase();
   var mechs=staffSearchStr((j.mechanicIds||[]).concat([j.saId]));
-  return [j.plate,j.owner,j.contactPerson,j.make,j.model,j.make+' '+j.model,mechs]
+  return [j.plate,j.owner,j.contactPerson,j.make,j.model,j.make+' '+j.model,mechs,
+          j.no,j.orNumber,digitsOf(j.no),digitsOf(j.orNumber)]
     .some(function(x){ return String(x||'').toLowerCase().indexOf(q)>=0; });
 }
+/* "JO-0042" -> "42": the digits with the prefix and any leading zeros dropped. */
+function digitsOf(v){ var m=/(\d+)/.exec(String(v||'')); return m? String(Number(m[1])) : ''; }
 function boardBody(){
   var active = S.jobs.filter(function(j){return j.stage!=='Released' && !jobCancelled(j);}).filter(boardMatch);
-  if(BOARD_Q && !active.length) return emptyState('No active units match “'+esc(BOARD_Q)+'”.');
+  /* The board is active units only, so a released JO — which is exactly what an
+     OR number usually belongs to — can never appear here. Hand the same query to
+     Job Orders, which searches the full history, instead of dead-ending. */
+  if(BOARD_Q && !active.length)
+    return '<div class="empty">No active units match “'+esc(BOARD_Q)+'”.'+
+      '<div class="mt8"><button class="btn sm" onclick="boardSearchAllJobs()">Search all job orders instead</button></div></div>';
   return BOARD_MODE==='kanban'? boardKanban(active) : BOARD_MODE==='bays'? boardBays(active) : BOARD_MODE==='mechs'? boardMechs(active) : boardList(active);
 }
 function boardSearch(v){ BOARD_Q=v; var el=document.getElementById('boardBody'); if(el) el.innerHTML=boardBody(); }
+/* Carry the board's query over to Job Orders, which covers released units too. */
+function boardSearchAllJobs(){ if(typeof JOB_Q!=='undefined') JOB_Q=BOARD_Q; go('jobs'); }
 VIEWS.board = function(){
   var toggle = '<div class="seg">'+
     ['kanban','list','bays','mechs'].map(function(m){
       var on=BOARD_MODE===m?' on':''; var lab={kanban:'Kanban',list:'List',bays:'Service Bays',mechs:'Mechanics'}[m];
       return '<button class="seg-b'+on+'" onclick="setBoardMode(\''+m+'\')">'+lab+'</button>';
     }).join('')+'</div>';
-  var search='<input class="searchbox" id="boardSearch" value="'+attr(BOARD_Q)+'" oninput="boardSearch(this.value)" placeholder="Search plate / owner / make / model / mechanic…" autocomplete="off">';
+  var search='<input class="searchbox" id="boardSearch" value="'+attr(BOARD_Q)+'" oninput="boardSearch(this.value)" placeholder="Search JO # / OR # / plate / owner / make / model / mechanic…" autocomplete="off">';
   return '<div class="page">'+
     '<div class="page-head"><h1>Operations Board</h1><div class="row gap wrap">'+search+toggle+'</div></div>'+
     alertStrip()+ boardKPIs()+ '<div id="boardBody">'+boardBody()+'</div>'+
@@ -2356,6 +2370,7 @@ function jobLinesPanel(j){
    Labor lines: pick from the labor menu or free-text. */
 function lineForm(l){
   l=l||{type:'part',qty:1,price:0,desc:''};
+  _skuFill=null;              // fresh box — nothing here was auto-filled yet
   // Parts and labor are encoded separately — the type is fixed by which panel's
   // Add button opened the dialog, so no Type selector is shown.
   return '<input type="hidden" id="lnType" value="'+(l.type==='labor'?'labor':'part')+'">'+
@@ -2389,12 +2404,43 @@ function catalogHint(){
   if (CATALOG_STATE==='loading') return 'Loading parts catalog…';
   return '';
 }
+/* What the last auto-fill wrote into the form, kept so a later keystroke that no
+   longer matches can take it back out again.
+   This matters because the lookup runs on EVERY keystroke, and a long SKU walks
+   through its own prefixes on the way in: typing 103474 passes 10, 103, 1034 and
+   10347 — all real SKUs — each auto-filling in turn. 103474 itself is in no
+   catalog, so without this the box kept SKU 10347's name and prices sitting
+   under a SKU that has neither, and the line got saved that way. */
+var _skuFill=null;   // { desc, net, srp } exactly as written, for an exact-match compare
 function skuLookup(){
   var sku=(val('lnSku')||'').trim(); var msg=document.getElementById('skuMsg');
-  if(!sku){ if(msg) msg.textContent=catalogHint(); return; }
-  var hit = (typeof catalogLookup==='function') ? catalogLookup(sku) : null;
-  if(hit){ setVal('lnDesc',hit.name); setVal('lnNet',hit.net); setVal('lnPrice',hit.srp); if(msg){ msg.textContent='✓ '+hit.name; msg.className='ok small'; } }
-  else if(msg){ msg.textContent = (typeof CATALOG_STATE!=='undefined'&&CATALOG_STATE==='loading')?'Loading catalog…':'No match — enter the details manually.'; msg.className='muted small'; }
+  var hit = (sku && typeof catalogLookup==='function') ? catalogLookup(sku) : null;
+  if(hit){
+    setVal('lnDesc',hit.name); setVal('lnNet',hit.net); setVal('lnPrice',hit.srp);
+    _skuFill={ desc:String(hit.name), net:String(hit.net), srp:String(hit.srp) };
+    if(msg){ msg.textContent='✓ '+hit.name; msg.className='ok small'; }
+    return;
+  }
+  clearSkuFill();
+  if(msg){
+    msg.textContent = !sku ? catalogHint()
+      : (typeof CATALOG_STATE!=='undefined'&&CATALOG_STATE==='loading') ? 'Loading catalog…'
+      : 'No match — enter the details manually.';
+    msg.className='muted small';
+  }
+}
+/* Undo the previous auto-fill — but only where the field still holds exactly what
+   that auto-fill put there. Anything since typed over it is the encoder's own and
+   is left alone. */
+function clearSkuFill(){
+  if(!_skuFill) return;
+  // Compare as text on both sides: an <input> stringifies whatever is assigned to
+  // .value, so the numbers written by the auto-fill come back as strings.
+  function same(id,v){ return String(val(id))===String(v); }
+  if(same('lnDesc', _skuFill.desc)) setVal('lnDesc','');
+  if(same('lnNet',  _skuFill.net))  setVal('lnNet',0);
+  if(same('lnPrice',_skuFill.srp))  setVal('lnPrice',0);
+  _skuFill=null;
 }
 function laborPick(){ var sel=document.getElementById('lnRef'); var o=sel.options[sel.selectedIndex];
   if(o&&o.value){ setVal('lnDesc',o.getAttribute('data-name')); setVal('lnPrice',o.getAttribute('data-price')); }
@@ -5677,6 +5723,11 @@ if (typeof module!=='undefined' && module.exports){
     LOGO_URI:function(){ return LOGO_URI; }, LOGO_LOCKUP:function(){ return LOGO_LOCKUP; },
     arJobs:arJobs, jobByNo:jobByNo, vehicleByPlate:vehicleByPlate, vehDupe:vehDupe, partById:partById,
     jobMatch:jobMatch, setJobQ:function(q){ JOB_Q=q; },
+    boardMatch:boardMatch, setBoardQ:function(q){ BOARD_Q=q; },
+    /* Setters, not the values: this block runs before part13 assigns CATALOG,
+       so a direct reference would capture null. */
+    skuLookup:function(){ return skuLookup(); },
+    setCatalog:function(map){ CATALOG=map; CATALOG_STATE='ready'; },
     orSeriesRows:orSeriesRows, joSeriesRows:joSeriesRows, seriesGaps:seriesGaps,
     docJoSeries:docJoSeries, docOrSeries:docOrSeries,
     jobVoided:jobVoided, jobCancelled:jobCancelled, jobLive:jobLive,
