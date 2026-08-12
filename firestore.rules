@@ -136,12 +136,45 @@ service cloud.firestore {
         allow write: if isOwner() || activeMember(b);
       }
 
-      /* Customer appointment requests — anonymous create (validated), staff manage. */
+      /* Customer appointment requests — anonymous create (validated), staff manage.
+
+         This is the only collection an unauthenticated stranger can write to, so
+         it is the shop's whole public attack surface. It was previously validated
+         on three fields with NO hasOnly clause, which let anyone attach arbitrary
+         extra fields up to the 1 MB document limit. Every accepted key is now
+         listed and individually bounded, so the largest document a stranger can
+         create is roughly 1.4 KB.
+
+         What this does NOT do is stop someone submitting thousands of *valid*
+         requests — rules cannot rate-limit. That needs App Check, which must be
+         rolled out to the clients BEFORE it is required here or every existing
+         device breaks at once. See FIRESTORE_RULES.md, "Phase 2". */
       match /appt_requests/{doc} {
-        allow create: if request.resource.data.status == 'new'
-                      && request.resource.data.name is string    && request.resource.data.name.size() < 120
-                      && request.resource.data.contact is string && request.resource.data.contact.size() < 60
-                      && request.resource.data.notes is string   && request.resource.data.notes.size() < 1000;
+        allow create: if request.resource.data.keys().hasOnly(
+                           ['name','contact','notes','status','source','createdAt',
+                            'plate','vehicle','vehicleId','preferredDate'])
+                      && request.resource.data.keys().hasAll(['name','contact','status'])
+                      && request.resource.data.status == 'new'
+                      && request.resource.data.name is string
+                      && request.resource.data.name.size() > 0
+                      && request.resource.data.name.size() < 120
+                      && request.resource.data.contact is string
+                      && request.resource.data.contact.size() > 0
+                      && request.resource.data.contact.size() < 60
+                      && request.resource.data.get('notes','') is string
+                      && request.resource.data.get('notes','').size() < 1000
+                      && request.resource.data.get('source','') is string
+                      && request.resource.data.get('source','').size() < 24
+                      && request.resource.data.get('plate','') is string
+                      && request.resource.data.get('plate','').size() < 24
+                      && request.resource.data.get('vehicle','') is string
+                      && request.resource.data.get('vehicle','').size() < 120
+                      && request.resource.data.get('vehicleId','') is string
+                      && request.resource.data.get('vehicleId','').size() < 64
+                      && request.resource.data.get('preferredDate','') is string
+                      && request.resource.data.get('preferredDate','').size() <= 10
+                      && request.resource.data.get('createdAt','') is string
+                      && request.resource.data.get('createdAt','').size() <= 32;
         allow read, update, delete: if isOwner() || activeMember(b);
       }
 

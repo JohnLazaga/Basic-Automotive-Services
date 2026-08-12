@@ -56,6 +56,51 @@ If a client could write either of the first two, the premises gate would be
 worthless — a worker would simply grant himself a session, or add his home
 address to the trusted list.
 
+## Public write surface: `appt_requests`
+
+`branches/{b}/appt_requests` is the **only** collection an unauthenticated
+stranger can write to. Customers create booking requests there with no login;
+staff read, accept and dismiss them. It is therefore the shop's entire public
+attack surface, and it is deliberately *not* premises-gated — customers are off
+the shop network by definition.
+
+**Phase 1 (done).** Every accepted key is listed in a `hasOnly` clause and
+individually size-capped. Before this, three fields were validated and anything
+else was waved through, so a stranger could attach arbitrary extra fields up to
+the 1 MB document limit. The ceiling is now ~1.4 KB of field data per request.
+
+Accepted keys: `name` (required, 1–119), `contact` (required, 1–59),
+`status` (required, must equal `'new'`), `notes` (<1000), `source` (<24),
+`plate` (<24), `vehicle` (<120), `vehicleId` (<64), `preferredDate` (≤10),
+`createdAt` (≤32).
+
+**If you add a field to the booking form, add it here too or the write is
+rejected.** The portal sends exactly these ten keys today.
+
+### Phase 2 — App Check, before any public website links to this
+
+Rules **cannot rate-limit**. Phase 1 bounds how big each junk request can be, not
+how many arrive. A public booking page on the marketing site advertises this
+endpoint, and a script could flood it — every junk request pops a modal on every
+staff device and costs a Firestore write.
+
+The fix is [App Check](https://firebase.google.com/docs/app-check) with
+reCAPTCHA v3, which is a **two-phase rollout — do not skip the order**:
+
+1. Register the site in the Firebase console, add the App Check SDK to the staff
+   app *and* the customer portal *and* the website, and deploy all of them.
+   Watch the App Check metrics until verified requests are ~100%.
+2. Only then require it in the rule, by adding as the first condition:
+
+   ```
+   allow create: if request.app != null
+                 && request.resource.data.keys().hasOnly([...
+   ```
+
+Adding step 2 before step 1 rejects every existing client at once — the staff
+apps included, since the same rules file governs them. There is no staged
+rollout inside rules; it flips for everyone the moment you deploy.
+
 ## The premises gate (shop-network lock)
 
 Being signed in is not enough. A non-admin also needs a live session document at
