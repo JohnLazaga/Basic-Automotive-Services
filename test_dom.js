@@ -106,6 +106,60 @@ console.log('\nBoard search (JO # / OR #):');
   ok('board rejects a number belonging to no unit', !hit('ZZZ-99999'));
 })();
 
+/* ---- Sync merge: a remote snapshot must not eat unsaved local edits ---------
+   persist() is debounced, so between an edit and its write Firestore has never
+   heard of it (hasPendingWrites is false). The old wholesale S[c] = incoming
+   dropped the edit AND reset its sync baseline, so it was never written — the
+   parts that went missing off a job order. */
+console.log('\nSync merge (remote snapshot vs unsaved local edits):');
+(function(){
+  function sync(c){                       // pretend everything currently in S is synced
+    var m={}; (s[c]||[]).forEach(function(r){ if(r&&r.id) m[r.id]=JSON.stringify(M.cloudDocForm(c,r)); });
+    M.setCloudSnap(c,m);
+  }
+  function serverCopy(c){                 // what the server would send back
+    return JSON.parse(JSON.stringify((s[c]||[]).map(function(r){ return M.cloudDocForm(c,r); })));
+  }
+
+  var job = s.jobs[0];
+  sync('jobs');
+  var remote = serverCopy('jobs');        // server's view, taken BEFORE the local edit
+
+  // encoder adds a part; it exists only in memory (debounce still running)
+  job.lines.push({ id:'ln_test_1', type:'part', sku:'99999', desc:'TEST BRAKE PAD', qty:2, price:500, netPrice:300 });
+
+  M.applyRemoteSnapshot('jobs', remote);  // a snapshot lands mid-window
+
+  var after = M.getS().jobs.find(function(j){ return j.id===job.id; });
+  var kept  = (after.lines||[]).some(function(l){ return l.id==='ln_test_1'; });
+  ok('unsaved line survives a remote snapshot', kept);
+
+  // and it must still be pending, or cloudPersist would skip writing it
+  var baseline = M.getCloudSnap('jobs')[job.id];
+  ok('held-back record is still queued for write',
+     baseline !== JSON.stringify(M.cloudDocForm('jobs', after)));
+
+  // a record created locally and not yet on the server must not be deleted
+  var fresh = { id:'job_test_new', no:'JO-9999', plate:'TEST-1', owner:'X', stage:'Job Order',
+                status:'A1', lines:[], payments:[], statusLog:[], dateIn:M.todayISO() };
+  M.getS().jobs.push(fresh);
+  M.applyRemoteSnapshot('jobs', remote);       // snapshot still has no such job
+  ok('locally-created record survives a remote snapshot',
+     M.getS().jobs.some(function(j){ return j.id==='job_test_new'; }));
+
+  // clean, already-synced records still take the server's copy (live updates work)
+  M.getS().jobs = M.getS().jobs.filter(function(j){ return j.id!=='job_test_new'; });
+  var target = M.getS().jobs.find(function(j){ return j.id===job.id; });
+  target.lines = target.lines.filter(function(l){ return l.id!=='ln_test_1'; });
+  sync('jobs');
+  var edited = JSON.parse(JSON.stringify(remote));
+  var row = edited.find(function(j){ return j.id===job.id; });
+  row.owner = 'REMOTE RENAME';
+  M.applyRemoteSnapshot('jobs', edited);
+  ok('clean record still accepts remote changes',
+     M.getS().jobs.find(function(j){ return j.id===job.id; }).owner==='REMOTE RENAME');
+})();
+
 // portal mode through render()
 try {
   M.setPortalId(function(){ return s.vehicles[0].id; });

@@ -313,6 +313,12 @@ if (typeof module!=='undefined' && module.exports){
     arJobs:arJobs, jobByNo:jobByNo, vehicleByPlate:vehicleByPlate, vehDupe:vehDupe, partById:partById,
     jobMatch:jobMatch, setJobQ:function(q){ JOB_Q=q; },
     boardMatch:boardMatch, setBoardQ:function(q){ BOARD_Q=q; },
+    /* Sync-merge hooks. Closures, not direct refs: _cloudSnap is declared in a
+       later part, so it is still undefined when this object is built. */
+    applyRemoteSnapshot:function(c,inc){ return applyRemoteSnapshot(c,inc); },
+    setCloudSnap:function(c,m){ _cloudSnap[c]=m; },
+    getCloudSnap:function(c){ return _cloudSnap[c]; },
+    cloudDocForm:function(c,r){ return cloudDocForm(c,r); },
     /* Setters, not the values: this block runs before part13 assigns CATALOG,
        so a direct reference would capture null. */
     skuLookup:function(){ return skuLookup(); },

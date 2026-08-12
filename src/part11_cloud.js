@@ -528,6 +528,59 @@ async function cloudPersistPhotos(){
 }
 
 /* ---- Real-time listeners ------------------------------------------------- */
+/* The form a record takes in Firestore — jobs shed their photo bytes. */
+function cloudDocForm(c, rec){ return (c==='jobs') ? jobDocForCloud(rec) : rec; }
+
+/* Apply a remote snapshot WITHOUT discarding local edits that have not been
+   written yet.
+
+   persist() is debounced (400ms), so between an edit and its write there is a
+   window where Firestore has never heard of that edit — which means
+   snap.metadata.hasPendingWrites is FALSE and does not protect it. The old
+   `S[c] = incoming` threw the edit away and, worse, reset the sync baseline to
+   the server's copy, so cloudPersist() then saw "no change" and never wrote it.
+   The edit vanished silently, with the indicator still reading "saved".
+   Parts added line after line in the Add-parts dialog were the most exposed:
+   that dialog is built for rapid repeat entry and each add restarts the timer.
+
+   Policy is local-wins-while-dirty. A record whose current form differs from
+   the last form we successfully synced is pending, so the local copy is kept
+   and its baseline is left untouched — cloudPersist() still sees it as
+   outstanding and writes it on the next pass. Everything else takes the
+   server's copy and updates live exactly as before. Dirtiness is measured with
+   the same comparison cloudPersist() uses, so the two cannot disagree about
+   what is still owed to the server. */
+function applyRemoteSnapshot(c, incoming){
+  var prev = _cloudSnap[c] || (_cloudSnap[c] = {});
+  var dirty = {};
+  (S[c]||[]).forEach(function(r){
+    if (!r || !r.id) return;
+    if (prev[r.id] !== JSON.stringify(cloudDocForm(c, r))) dirty[r.id] = r;
+  });
+  var next = [], base = {}, seen = {};
+  incoming.forEach(function(rec){
+    if (!rec || !rec.id) return;
+    seen[rec.id] = true;
+    if (_own(dirty, rec.id)){
+      next.push(dirty[rec.id]);                                  // keep the unsaved local copy
+      if (prev[rec.id] !== undefined) base[rec.id] = prev[rec.id]; // ...and keep it pending
+    } else {
+      next.push(rec);
+      base[rec.id] = JSON.stringify(cloudDocForm(c, rec));
+    }
+  });
+  // Records created locally that the server has not seen yet: absent from the
+  // snapshot, so the wholesale replace used to delete them outright.
+  Object.keys(dirty).forEach(function(id){
+    if (seen[id]) return;
+    next.push(dirty[id]);
+    if (prev[id] !== undefined) base[id] = prev[id];
+  });
+  S[c] = next;
+  _cloudSnap[c] = base;
+  return Object.keys(dirty).length;
+}
+
 function cloudSubscribe(){
   cloudUnsub();
   COLLECTIONS.forEach(function(c){
@@ -535,10 +588,13 @@ function cloudSubscribe(){
       if (snap.metadata.hasPendingWrites) return;             // ignore our own local writes
       _applyingRemote = true;
       var incoming = snap.docs.map(function(d){ return d.data(); });
-      if (c==='jobs'){ attachJobPhotos(incoming, S.jobs); attachPmsPhotos(incoming, S.jobs); _cloudSnap[c]={}; incoming.forEach(function(j){ if(j&&j.id) _cloudSnap[c][j.id]=JSON.stringify(jobDocForCloud(j)); }); }
-      S[c] = incoming;
-      if (c!=='jobs') _cloudSnap[c] = snapMap(S[c]);
+      // Photos re-attach off the OLD S.jobs, so this must run before the merge.
+      if (c==='jobs'){ attachJobPhotos(incoming, S.jobs); attachPmsPhotos(incoming, S.jobs); }
+      var held = applyRemoteSnapshot(c, incoming);
       _applyingRemote = false;
+      // Anything held back is still owed to the server; make sure a write is queued
+      // even if the edit that dirtied it already had its debounce consumed.
+      if (held && typeof persist==='function') persist();
       if (!modalOpen()) render();
     }, function(err){ console.error('listener '+c, err); });
     _cloudSubs.push(u);
@@ -676,7 +732,12 @@ function localSubscribe(){
   _es = new EventSource(branchBase()+'/events?token='+encodeURIComponent(SESSION_TOKEN||''));
   _es.addEventListener('upsert', function(ev){ var m; try{m=JSON.parse(ev.data);}catch(e){return;} if(m.origin===CLIENT_ID) return;
     _applyRemote(function(){ var arr=S[m.coll]||(S[m.coll]=[]); var i=-1; for(var x=0;x<arr.length;x++){ if(String(arr[x].id)===String(m.id)){ i=x; break; } }
-      if(i>=0) arr[i]=m.rec; else arr.push(m.rec); (_cloudSnap[m.coll]||(_cloudSnap[m.coll]={}))[m.id]=JSON.stringify(m.rec); });
+      var base=(_cloudSnap[m.coll]||(_cloudSnap[m.coll]={}));
+      /* Same local-wins-while-dirty rule as the cloud listener above: an edit
+         still sitting in persist()'s debounce has not reached the server, so an
+         echo arriving now must not overwrite it and mark it synced. */
+      if(i>=0 && base[m.id]!==JSON.stringify(cloudDocForm(m.coll, arr[i]))){ if(typeof persist==='function') persist(); return; }
+      if(i>=0) arr[i]=m.rec; else arr.push(m.rec); base[m.id]=JSON.stringify(m.rec); });
   });
   _es.addEventListener('delete', function(ev){ var m; try{m=JSON.parse(ev.data);}catch(e){return;} if(m.origin===CLIENT_ID) return;
     _applyRemote(function(){ S[m.coll]=(S[m.coll]||[]).filter(function(r){return String(r.id)!==String(m.id);}); if(_cloudSnap[m.coll]) delete _cloudSnap[m.coll][m.id]; });
