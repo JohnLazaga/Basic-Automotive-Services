@@ -557,6 +557,9 @@ a.lnk{color:var(--brand);cursor:pointer;font-weight:600}
      job/PMS photos upload to Cloud Storage instead of being crammed into the
      Firestore document (which has a hard 1 MB limit). -->
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<!-- App Check must load before Firestore is used, so tokens ride along with the
+     very first request. Inert until APPCHECK_SITE_KEY is set (firebase-config.js). -->
+<script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-check-compat.js"></script>
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
@@ -576,6 +579,22 @@ var LOGO_BG = "#181818";
    by Firebase Auth + Firestore Security Rules, not by hiding this value.
    ========================================================================== */
 var CLOUD_ENABLED = true;   /* cloud branch: on. (main branch keeps this off / absent) */
+
+/* ---- App Check (reCAPTCHA v3) ----------------------------------------------
+   appt_requests is the one collection an unauthenticated stranger can write to.
+   Security rules bound how BIG each request can be, but rules cannot rate-limit,
+   so a public booking form on the marketing site can be flooded. App Check is
+   what closes that, by attesting the write came from a real browser on a real
+   page rather than a script.
+
+   Like the apiKey above, a reCAPTCHA v3 SITE key is a public client identifier —
+   the paired secret lives in the Firebase console, never here.
+
+   Empty string = App Check stays OFF and the app behaves exactly as before.
+   That is deliberate: enforcement must reach every client BEFORE the rules start
+   requiring it, or every device breaks at once. Rollout order is written up in
+   FIRESTORE_RULES.md, "Phase 2". */
+var APPCHECK_SITE_KEY = '';
 
 var FIREBASE_CONFIG = {
   apiKey: "AIzaSyBrgR-4Tkp6juJAKhcurfXWERMy5nI73FA",
@@ -608,7 +627,7 @@ var BRANCH = {"id":"sudipen","slug":"sudipen","name":"Basic by JMSI — Sudipen"
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.2.0 · 2026-08-01 · 341e17c';
+var APP_VERSION = 'v1.2.0 · 2026-08-13 · 1224836';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -4682,6 +4701,8 @@ VIEWS.settings = function(){
 
     premisesCard()+
 
+    appCheckCard()+
+
   '</div><div class="colside">'+
     '<div class="card"><h2>Service Bays</h2><div class="tags">'+bays+'</div>'+
       '<div class="row gap mt8"><input id="bayNew" placeholder="Bay name"><button class="btn sm" onclick="addBay()">Add</button></div></div>'+
@@ -4719,6 +4740,28 @@ function saveShop(){
    signed-in device pull the newest *synced* catalog immediately, without
    waiting for the app's normal check. It does NOT reach SQL directly — a
    browser can't; that's what the LAN-side sync is for. */
+/* ---- App Check status ------------------------------------------------------
+   Read-only, admin-only. Exists so the rollout can be VERIFIED on real devices
+   before the rules start requiring a token: arming the rule while any station is
+   still unattested locks that station out of the database. Check this card on
+   every device — and the console's App Check metrics — before Phase 2. */
+function appCheckCard(){
+  if (typeof isAdminUser==='function' && !isAdminUser()) return '';
+  if (typeof cloudOn!=='function' || !cloudOn()) return '';
+  var st = (typeof FB!=='undefined' && FB) ? (FB.appCheck||'off') : 'off';
+  var body = st==='on'
+    ? '<div class="ok small mb8">✓ Active on this device — writes carry an attestation token.</div>'
+    : st==='unavailable'
+      ? '<div class="err small mb8">✗ A site key is configured but App Check could not start on this device. '+
+        'It is NOT protecting anything here. Do not enforce in rules yet.</div>'
+      : '<div class="muted small mb8">Off — no site key configured. Public booking requests are unattested.</div>';
+  return '<div class="card"><h2>App Check (bot protection)</h2>'+body+
+    '<p class="muted small">Customer booking requests are the only thing an unauthenticated stranger can write. '+
+    'Security rules cap how large each request may be, but cannot limit how many arrive — App Check is what does that. '+
+    'Turn it on by setting the reCAPTCHA v3 site key in the build, deploying to every device, confirming this card reads '+
+    '“Active” everywhere, and only then requiring it in the rules. See FIRESTORE_RULES.md.</p></div>';
+}
+
 function partsCloudCard(){
   if (typeof partsFromLocal==='function' && partsFromLocal()) return '';   // local branches use the SQL Server card
   var cnt = (typeof catalogCount==='function') ? catalogCount() : 0;
@@ -5760,7 +5803,7 @@ if (typeof module!=='undefined' && module.exports){
    never at module load — so the Node test bundle is unaffected.
    ========================================================================== */
 
-var FB = { app:null, auth:null, db:null, storage:null, ready:false, user:null };
+var FB = { app:null, auth:null, db:null, storage:null, ready:false, user:null, appCheck:'off' };
 
 function cloudOn(){ return (typeof CLOUD_ENABLED!=='undefined') && CLOUD_ENABLED; }
 
@@ -5772,11 +5815,46 @@ function branchId(){ return (typeof BRANCH!=='undefined' && BRANCH && BRANCH.id)
 function bRoot(){ return FB.db.collection('branches').doc(branchId()); }
 function bcol(name){ return bRoot().collection(name); }
 
+/* App Check — attests that a request came from a real browser running our page,
+   which is the only thing that can rate-limit the public booking endpoint (rules
+   cannot). Activated only when a site key is configured, so an unconfigured
+   build behaves exactly as it always has.
+
+   FB.appCheck records what happened so Settings can show it and so a rollout is
+   verifiable before the rules start requiring tokens: 'off' | 'on' | 'unavailable'.
+   Failure here is deliberately non-fatal — App Check going wrong must never cost
+   the shop its app. While rules do not yet require a token, a missing one simply
+   means the write proceeds unattested, exactly as today. */
+function initAppCheck(){
+  FB.appCheck = 'off';
+  var key = (typeof APPCHECK_SITE_KEY!=='undefined') ? String(APPCHECK_SITE_KEY||'').trim() : '';
+  if (!key) return;
+  if (typeof firebase==='undefined' || !firebase.appCheck){
+    console.warn('App Check key set but the SDK did not load — continuing without attestation.');
+    FB.appCheck = 'unavailable';
+    return;
+  }
+  try {
+    /* localhost gets a debug token instead of a live reCAPTCHA assessment, so
+       dev machines are not scored (and never burn the site key's quota). Paste
+       the token the console prints into Firebase → App Check → Debug tokens. */
+    if (typeof location!=='undefined' && /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)){
+      self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+    }
+    firebase.appCheck().activate(key, /* auto-refresh */ true);
+    FB.appCheck = 'on';
+  } catch(e){
+    console.error('App Check activation failed — continuing without attestation.', e);
+    FB.appCheck = 'unavailable';
+  }
+}
+
 function initFirebase(){
   if (FB.ready) return true;
   if (typeof firebase==='undefined' || typeof FIREBASE_CONFIG==='undefined') return false;
   try {
     FB.app = firebase.apps && firebase.apps.length ? firebase.app() : firebase.initializeApp(FIREBASE_CONFIG);
+    initAppCheck();                 // must precede firestore() so the first request carries a token
     FB.auth = firebase.auth();
     FB.db = firebase.firestore();
     try { FB.storage = firebase.storage(); } catch(e){}

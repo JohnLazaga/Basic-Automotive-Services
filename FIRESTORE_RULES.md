@@ -85,21 +85,52 @@ endpoint, and a script could flood it — every junk request pops a modal on eve
 staff device and costs a Firestore write.
 
 The fix is [App Check](https://firebase.google.com/docs/app-check) with
-reCAPTCHA v3, which is a **two-phase rollout — do not skip the order**:
+reCAPTCHA v3. **The client support is already built and shipped, sitting inert.**
+`APPCHECK_SITE_KEY` in `src/firebase-config.js` is an empty string; while it is
+empty `initAppCheck()` does nothing and the app behaves exactly as before.
 
-1. Register the site in the Firebase console, add the App Check SDK to the staff
-   app *and* the customer portal *and* the website, and deploy all of them.
-   Watch the App Check metrics until verified requests are ~100%.
-2. Only then require it in the rule, by adding as the first condition:
+Do these in order. Skipping ahead locks every station out of the database.
 
-   ```
-   allow create: if request.app != null
-                 && request.resource.data.keys().hasOnly([...
-   ```
+**Step 1 — get a site key.** Firebase console → App Check → Apps → register the
+web app with reCAPTCHA v3. It hands back a **site key** (public, goes in the
+build) and keeps the paired secret server-side. Leave *enforcement* OFF.
 
-Adding step 2 before step 1 rejects every existing client at once — the staff
-apps included, since the same rules file governs them. There is no staged
-rollout inside rules; it flips for everyone the moment you deploy.
+**Step 2 — ship it to the clients.** Put the site key in
+`src/firebase-config.js`, then `node deploy-branches.js --push "enable App Check"`.
+The staff app and the customer portal are the same bundle, so both are covered
+at once. The marketing website is separate and must activate App Check too, or
+its bookings start failing the moment step 4 lands.
+
+**Step 3 — verify on real devices.** Settings → *App Check (bot protection)*
+must read **“Active”** on **every** station, not just yours — a tablet with a
+stale cached bundle still reports Off. Cross-check against Firebase console →
+App Check → Metrics until verified requests sit at ~100% and unverified is flat
+at zero. Unverified traffic here means a real device that step 4 will lock out.
+
+**Step 4 — require it in the rule.** Only now, add as the first condition of the
+`appt_requests` create rule:
+
+```
+allow create: if request.app != null
+              && request.resource.data.keys().hasOnly([...
+```
+
+and deploy the rules. Rules have no staged rollout — this flips for everyone the
+instant it lands, staff apps included, since one rules file governs them all.
+
+**Rollback.** Remove that one condition and redeploy the rules; it takes effect
+in seconds and needs no client change. That is the lever to reach for if
+bookings start failing, *not* clearing the site key (which requires a full
+rebuild and redeploy to every branch).
+
+### Consider console enforcement carefully
+
+The Firebase console can also enforce App Check for **all of Firestore** at once.
+Do not use that here. It would require attestation for every read and write the
+staff app makes, so any device that fails attestation — an old browser, a blocked
+gstatic, a lapsed key — loses the whole app rather than just the booking form.
+The rule-level condition above is deliberately surgical: it protects the public
+endpoint and leaves shop operations alone.
 
 ## The premises gate (shop-network lock)
 

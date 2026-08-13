@@ -47,6 +47,8 @@ VIEWS.settings = function(){
 
     premisesCard()+
 
+    appCheckCard()+
+
   '</div><div class="colside">'+
     '<div class="card"><h2>Service Bays</h2><div class="tags">'+bays+'</div>'+
       '<div class="row gap mt8"><input id="bayNew" placeholder="Bay name"><button class="btn sm" onclick="addBay()">Add</button></div></div>'+
@@ -84,6 +86,28 @@ function saveShop(){
    signed-in device pull the newest *synced* catalog immediately, without
    waiting for the app's normal check. It does NOT reach SQL directly — a
    browser can't; that's what the LAN-side sync is for. */
+/* ---- App Check status ------------------------------------------------------
+   Read-only, admin-only. Exists so the rollout can be VERIFIED on real devices
+   before the rules start requiring a token: arming the rule while any station is
+   still unattested locks that station out of the database. Check this card on
+   every device — and the console's App Check metrics — before Phase 2. */
+function appCheckCard(){
+  if (typeof isAdminUser==='function' && !isAdminUser()) return '';
+  if (typeof cloudOn!=='function' || !cloudOn()) return '';
+  var st = (typeof FB!=='undefined' && FB) ? (FB.appCheck||'off') : 'off';
+  var body = st==='on'
+    ? '<div class="ok small mb8">✓ Active on this device — writes carry an attestation token.</div>'
+    : st==='unavailable'
+      ? '<div class="err small mb8">✗ A site key is configured but App Check could not start on this device. '+
+        'It is NOT protecting anything here. Do not enforce in rules yet.</div>'
+      : '<div class="muted small mb8">Off — no site key configured. Public booking requests are unattested.</div>';
+  return '<div class="card"><h2>App Check (bot protection)</h2>'+body+
+    '<p class="muted small">Customer booking requests are the only thing an unauthenticated stranger can write. '+
+    'Security rules cap how large each request may be, but cannot limit how many arrive — App Check is what does that. '+
+    'Turn it on by setting the reCAPTCHA v3 site key in the build, deploying to every device, confirming this card reads '+
+    '“Active” everywhere, and only then requiring it in the rules. See FIRESTORE_RULES.md.</p></div>';
+}
+
 function partsCloudCard(){
   if (typeof partsFromLocal==='function' && partsFromLocal()) return '';   // local branches use the SQL Server card
   var cnt = (typeof catalogCount==='function') ? catalogCount() : 0;

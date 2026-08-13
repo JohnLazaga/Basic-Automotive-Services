@@ -18,6 +18,9 @@
      job/PMS photos upload to Cloud Storage instead of being crammed into the
      Firestore document (which has a hard 1 MB limit). -->
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<!-- App Check must load before Firestore is used, so tokens ride along with the
+     very first request. Inert until APPCHECK_SITE_KEY is set (firebase-config.js). -->
+<script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-check-compat.js"></script>
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>

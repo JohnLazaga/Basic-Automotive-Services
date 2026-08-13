@@ -6,7 +6,7 @@
    never at module load — so the Node test bundle is unaffected.
    ========================================================================== */
 
-var FB = { app:null, auth:null, db:null, storage:null, ready:false, user:null };
+var FB = { app:null, auth:null, db:null, storage:null, ready:false, user:null, appCheck:'off' };
 
 function cloudOn(){ return (typeof CLOUD_ENABLED!=='undefined') && CLOUD_ENABLED; }
 
@@ -18,11 +18,46 @@ function branchId(){ return (typeof BRANCH!=='undefined' && BRANCH && BRANCH.id)
 function bRoot(){ return FB.db.collection('branches').doc(branchId()); }
 function bcol(name){ return bRoot().collection(name); }
 
+/* App Check — attests that a request came from a real browser running our page,
+   which is the only thing that can rate-limit the public booking endpoint (rules
+   cannot). Activated only when a site key is configured, so an unconfigured
+   build behaves exactly as it always has.
+
+   FB.appCheck records what happened so Settings can show it and so a rollout is
+   verifiable before the rules start requiring tokens: 'off' | 'on' | 'unavailable'.
+   Failure here is deliberately non-fatal — App Check going wrong must never cost
+   the shop its app. While rules do not yet require a token, a missing one simply
+   means the write proceeds unattested, exactly as today. */
+function initAppCheck(){
+  FB.appCheck = 'off';
+  var key = (typeof APPCHECK_SITE_KEY!=='undefined') ? String(APPCHECK_SITE_KEY||'').trim() : '';
+  if (!key) return;
+  if (typeof firebase==='undefined' || !firebase.appCheck){
+    console.warn('App Check key set but the SDK did not load — continuing without attestation.');
+    FB.appCheck = 'unavailable';
+    return;
+  }
+  try {
+    /* localhost gets a debug token instead of a live reCAPTCHA assessment, so
+       dev machines are not scored (and never burn the site key's quota). Paste
+       the token the console prints into Firebase → App Check → Debug tokens. */
+    if (typeof location!=='undefined' && /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)){
+      self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+    }
+    firebase.appCheck().activate(key, /* auto-refresh */ true);
+    FB.appCheck = 'on';
+  } catch(e){
+    console.error('App Check activation failed — continuing without attestation.', e);
+    FB.appCheck = 'unavailable';
+  }
+}
+
 function initFirebase(){
   if (FB.ready) return true;
   if (typeof firebase==='undefined' || typeof FIREBASE_CONFIG==='undefined') return false;
   try {
     FB.app = firebase.apps && firebase.apps.length ? firebase.app() : firebase.initializeApp(FIREBASE_CONFIG);
+    initAppCheck();                 // must precede firestore() so the first request carries a token
     FB.auth = firebase.auth();
     FB.db = firebase.firestore();
     try { FB.storage = firebase.storage(); } catch(e){}
