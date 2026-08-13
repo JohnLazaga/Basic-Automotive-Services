@@ -173,8 +173,19 @@ service cloud.firestore {
                       && request.resource.data.get('vehicleId','').size() < 64
                       && request.resource.data.get('preferredDate','') is string
                       && request.resource.data.get('preferredDate','').size() <= 10
-                      && request.resource.data.get('createdAt','') is string
-                      && request.resource.data.get('createdAt','').size() <= 32;
+                      /* createdAt may be an ISO string OR a real Timestamp.
+                         A web client reaching for serverTimestamp() or passing a
+                         Date writes a Timestamp, and calling .size() on one is an
+                         evaluation ERROR, which denies the whole write — a silent
+                         permission-denied that looks like a broken endpoint. The
+                         string branch is tested first and && short-circuits, so
+                         .size() never runs on a non-string.
+                         preferredDate is deliberately string-only: the staff app
+                         uses it verbatim as the appointment date and needs
+                         'YYYY-MM-DD'. */
+                      && ( ( request.resource.data.get('createdAt','') is string
+                             && request.resource.data.get('createdAt','').size() <= 32 )
+                           || request.resource.data.get('createdAt', request.time) is timestamp );
         allow read, update, delete: if isOwner() || activeMember(b);
       }
 
