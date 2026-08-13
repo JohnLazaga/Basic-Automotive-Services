@@ -19,7 +19,13 @@ const { execFileSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
 const branches = JSON.parse(fs.readFileSync(path.join(ROOT, 'branches.json'), 'utf8'));
-const cloud = Object.values(branches).filter(b => b.partsSource === 'cloud').map(b => b.slug);
+/* Upload by FIRESTORE BRANCH ID, not by URL slug. They are the same for every
+   branch except Fairview, whose slug is 'fairview' but whose branch id is
+   'main' — and the app reads branches/<BRANCH.id>/catalog (branchId() in
+   part11_cloud.js). Mapping slugs here sent Fairview's catalog to
+   branches/fairview/catalog, a path nothing reads, while the catalog its app
+   actually loads went stale. */
+const cloud = Object.values(branches).filter(b => b.partsSource === 'cloud').map(b => b.id || b.slug);
 
 if (!cloud.length) { console.log('No cloud branches in branches.json — nothing to do.'); process.exit(0); }
 console.log('Cloud branches to sync: ' + cloud.join(', '));

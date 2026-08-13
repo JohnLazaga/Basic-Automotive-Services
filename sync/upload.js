@@ -6,7 +6,10 @@
    - The catalog is readable only by that branch's signed-in active staff
      (Firestore rules); it is never public.
 
-   Usage:  node upload.js [--branch=<slug>]      (default branch: main)
+   Usage:  node upload.js [--branch=<branchId>]   (default branch: main)
+   --branch takes the FIRESTORE BRANCH ID from branches.json (the `id` field),
+   which is what the app reads — NOT the URL slug. They differ for Fairview:
+   slug 'fairview', branch id 'main'.
    Each branch syncs its OWN SQL Server into its OWN cloud catalog, isolated. */
 const fs = require('fs');
 const path = require('path');
@@ -25,21 +28,47 @@ const db = getFirestore();
 const catalog = db.collection('branches').doc(BRANCH).collection('catalog');   // branches/<branch>/catalog
 console.log('Target branch: ' + BRANCH + '  (branches/' + BRANCH + '/catalog)');
 
+/* Rows the upstream database carries that are not sellable parts — negative-SKU
+   internal adjustment records, a SKU 0, and rows with no name at all. Kept
+   identical to the branch server's junkRow() in branch-server/server.js: this is
+   the OTHER end of the same catalog, and the two must not disagree about what a
+   usable part is.
+
+   The nameless rows are the harmful ones. The SKU lookup exists to supply the
+   part name, so a row without one fills in nothing while still overwriting Net
+   and SRP with its own figures — that is how SKU 1034 put its prices under a SKU
+   the encoder was still typing. Named parts with no price are kept: no price yet
+   is normal, and the encoder can see the name and type the amount. */
+function junkRow(sku, name) {
+  if (!/^\d+$/.test(sku) || Number(sku) <= 0) return true;
+  return name === '';
+}
+
 (async () => {
   const raw = fs.readFileSync(TSV, 'utf8');
   const lines = raw.split('\n');
   const parts = [];
+  let skipped = 0;
   for (const ln of lines) {
     if (!ln) continue;
     const t = ln.split('\t');
     const sku = (t[0] || '').trim();
     if (!sku) continue;
-    parts.push([sku, (t[1] || '').trim(), Number(t[2]) || 0, Number(t[3]) || 0]);
+    const name = (t[1] || '').trim();
+    if (junkRow(sku, name)) { skipped++; continue; }
+    parts.push([sku, name, Number(t[2]) || 0, Number(t[3]) || 0]);
   }
-  console.log('Parsed ' + parts.length.toLocaleString() + ' parts');
+  console.log('Parsed ' + parts.length.toLocaleString() + ' parts' +
+              (skipped ? '  (skipped ' + skipped.toLocaleString() + ' unusable row(s))' : ''));
 
-  // content hash for change detection
-  const version = crypto.createHash('md5').update(raw).digest('hex').slice(0, 16);
+  /* Content hash over what is actually UPLOADED, not over the source file.
+     Hashing the raw file would mean a change to the filter yields the SAME
+     version, so the "no changes" check below would skip the re-upload and leave
+     the junk sitting in the cloud catalog indefinitely. Hashing the filtered
+     rows also matches how the branch server derives its version (setCatalog in
+     server.js), so the two ends agree on what "unchanged" means. */
+  const version = crypto.createHash('md5')
+    .update(parts.map(r => r.join('\t')).join('\n')).digest('hex').slice(0, 16);
 
   const metaRef = catalog.doc('_meta');
   const existing = await metaRef.get();
