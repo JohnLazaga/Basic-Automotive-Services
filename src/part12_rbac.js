@@ -227,9 +227,15 @@ function passwordDialog(uid){
   var cloud = !(typeof dataLocal==='function' && dataLocal());
   openModal('Set a password — '+esc(u.name||u.username||u.email),
     (cloud ? '<p class="muted small">To set a <b>specific</b> password, type the worker’s <b>current</b> one first (Firebase requires it to change it). Don’t know it? Use <b>🎲 Reset</b> instead — it makes a random one with no current password needed, and stores nothing.</p>'
-           + field('Current password','<input id="pwCur" type="text" placeholder="type the current password" autocomplete="off">')
+           /* type=text on purpose so the admin can SEE what they are typing and
+              read back a generated one. That opts these fields INTO the app-wide
+              uppercase transform, which silently rewrote the password before it
+              reached Firebase — a correct current password was rejected, and a
+              new one was set in caps without anyone being told. Passwords are
+              case-sensitive, so they must be exempt. */
+           + field('Current password','<input id="pwCur" type="text" placeholder="type the current password" autocomplete="off" autocapitalize="off" data-no-upper>')
            : '')+
-    field('New password','<input id="pwNew" type="text" placeholder="new password (min 6 characters)" autocomplete="off"><button type="button" class="btn xs ghost" style="margin-top:6px" onclick="setVal(\'pwNew\', genRandomPassword())">🎲 Generate random</button>'),
+    field('New password','<input id="pwNew" type="text" placeholder="new password (min 6 characters)" autocomplete="off" autocapitalize="off" data-no-upper><button type="button" class="btn xs ghost" style="margin-top:6px" onclick="setVal(\'pwNew\', genRandomPassword())">🎲 Generate random</button>'),
     { onOk:'saveStaffPassword', okText:'Set password' });
   setTimeout(function(){ pwCtx=uid; },10);
 }

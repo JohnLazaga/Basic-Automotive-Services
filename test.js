@@ -450,6 +450,30 @@ section('EOD & range report: OR series with void status, one shared aggregator')
   M.setCurrentUser(null);
 })();
 
+/* --------------------------------------------- Case-sensitive fields vs the uppercase rule */
+section('Uppercase rule: case-sensitive fields stay exempt');
+(function(){
+  /* installUppercase() rewrites every text input as it is typed. That is right
+     for names, plates and descriptions, and WRONG for anything case-sensitive:
+     a correct current password was being rejected because the transform had
+     already rewritten it, and a new password was set in caps without anyone
+     being told. These fields are type=text on purpose (the admin must be able to
+     read a generated password back), so they need an explicit exemption.
+     Any new case-sensitive input belongs in this list. */
+  const MUST_BE_EXEMPT = ['pwCur','pwNew','acPass','shPortal','shApi','sqlUser'];
+  const bundle = require('fs').readFileSync(path.join(__dirname,'_bundle.js'),'utf8');
+  const SAFE_TYPE = /type=\\?["']?(password|email|url|number|tel)\b/i;
+  MUST_BE_EXEMPT.forEach(function(id){
+    const m = new RegExp('<input[^>]*\\bid=\\\\?["\']?'+id+'\\b[^>]*>').exec(bundle);
+    if(!m){ ok('field '+id+' exists', false); return; }
+    const tag = m[0];
+    const exempt = /data-no-upper/.test(tag)
+                || /autocapitalize=\\?["']?(off|none)/i.test(tag)
+                || SAFE_TYPE.test(tag);
+    ok(id+' is exempt from the uppercase transform', exempt);
+  });
+})();
+
 /* --------------------------------------------- Billed vs collected on the OR table */
 section('OR series: receipts carry payment status; amounts are billed, not collected');
 (function(){

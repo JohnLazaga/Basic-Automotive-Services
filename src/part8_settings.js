@@ -22,7 +22,10 @@ VIEWS.settings = function(){
     '</div><button class="btn primary" onclick="saveShop()">Save shop details</button></div>'+
 
     '<div class="card"><h2>Customer QR portal</h2>'+
-      field('Portal base URL','<input id="shPortal" value="'+attr(sh.portalUrl)+'">','Vehicle QR encodes <portalUrl>/#v=<id>. Host this file there for scans to resolve.')+
+      /* URL paths are case-sensitive, and this one is encoded into every vehicle
+         QR sticker via portalLink() — uppercasing it 404s every scan. Exempt
+         from the app-wide uppercase transform, same as the password fields. */
+      field('Portal base URL','<input id="shPortal" value="'+attr(sh.portalUrl)+'" autocapitalize="off" data-no-upper>','Vehicle QR encodes <portalUrl>/#v=<id>. Host this file there for scans to resolve.')+
       '<label class="chk"><input type="checkbox" id="shPinReq" '+(sh.portalPinRequired?'checked':'')+'> Require a PIN to open portals (customer sets it on first scan)</label>'+
       '<p class="muted small">Local branches always require a PIN. For the cloud site this needs the Firestore rule from FIRESTORE_RULES.md deployed first.</p>'+
       '<div class="row gap"><button class="btn ghost" onclick="saveShop()">Save</button>'+
@@ -35,7 +38,7 @@ VIEWS.settings = function(){
 
     '<div class="card"><h2>Parts Database (server)</h2>'+
       field('Source','<select id="shSource"><option value="local"'+(sh.partsSource==='local'?' selected':'')+'>Local</option><option value="server"'+(sh.partsSource==='server'?' selected':'')+'>Server API</option></select>')+
-      field('Parts API endpoint (JSON)','<input id="shApi" value="'+attr(sh.partsApi||'')+'" placeholder="https://shop.local/api/parts.json">')+
+      field('Parts API endpoint (JSON)','<input id="shApi" value="'+attr(sh.partsApi||'')+'" placeholder="https://shop.local/api/parts.json" autocapitalize="off" data-no-upper>')+
       '<div class="row gap"><button class="btn ghost" onclick="saveShop()">Save</button><button class="btn ghost" onclick="syncPartsNow()">Sync now</button><button class="btn ghost" onclick="importPartsDialog()">Import CSV/JSON</button></div>'+
       '<details class="mt8"><summary class="muted small">Expected JSON shape & sample SQL</summary>'+
       '<pre class="codeblk">'+esc(sampleJSON)+'</pre><pre class="codeblk">'+esc(sampleQuery)+'</pre>'+
@@ -160,7 +163,7 @@ function sqlServerCard(){
     field('SQL Server instance','<input id="sqlServer" value="'+attr(d.server)+'">')+
     field('Database','<input id="sqlDb" value="'+attr(d.database)+'">')+
     field('Authentication','<select id="sqlAuth"><option value="integrated">Windows (Integrated)</option><option value="sql">SQL login</option></select>')+
-    '<div class="grid2">'+field('Username','<input id="sqlUser" value="" placeholder="SQL login only">')+
+    '<div class="grid2">'+field('Username','<input id="sqlUser" value="" placeholder="SQL login only" autocapitalize="off" data-no-upper>')+
       field('Password','<input id="sqlPass" type="password" value="" placeholder="SQL login only">')+'</div>'+
     '<details class="mt8"><summary class="muted small">Advanced: query</summary>'+
       '<textarea id="sqlQuery" rows="5" class="full mono">'+esc(d.query)+'</textarea></details>'+
