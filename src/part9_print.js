@@ -61,6 +61,11 @@ function printCSS(){
     '.eod tr.due td{font-weight:700;color:#CC0F0F}'+
     '.eod .notes{margin:6px 0 0;padding:6px 8px;font-size:11px;border-left:3px solid #F21717}'+
     '.eod .sig-grid{margin-top:16px;font-size:11px}.eod .sigline{margin-top:26px}'+
+    /* Printed-at stamp: quiet, but it must survive a photocopy — this is what
+       says which moment the figures describe. */
+    '.eod-stamp{font-size:10px;color:#6E6E73;margin:-4px 0 8px;padding-bottom:5px;'+
+      'border-bottom:1px dashed #E5E5EA}'+
+    '.eod-stamp b{color:#CC0F0F;letter-spacing:.04em}'+
   '</style>';
 }
 function docHeader(title){
@@ -339,9 +344,37 @@ function docMechCommission(){
 function printMechCommission(){ printDoc(docMechCommission()); }
 
 /* ---- Daily Close report --------------------------------------------------- */
+/* Who ran this printout, for the footer stamp. */
+function printedByName(){
+  if (typeof CURRENT_USER==='undefined' || !CURRENT_USER) return '';
+  return String(CURRENT_USER.name || CURRENT_USER.username || CURRENT_USER.email || '').trim();
+}
+/* Footer stamp for the EOD and the date-range report.
+
+   These two are recomputed from live data every time they are printed, so the
+   same day printed twice can differ — a payment recorded after the first run
+   turns an UNPAID row into a settled one. Without a stamp there is no way to
+   tell, from the paper, WHICH moment the figures describe, and the signature
+   lines below sit under numbers that can still move. That ambiguity is exactly
+   what made an OR look settled on a printout taken before the cash arrived.
+
+   A reprint of an earlier day is called out explicitly: those figures are today's
+   view of that day, not what was on the original sheet. */
+function eodPrintStamp(coversDay){
+  var now = new Date();
+  var when = now.toLocaleString('en-PH', { year:'numeric', month:'short', day:'numeric',
+                                           hour:'2-digit', minute:'2-digit' });
+  var who = printedByName();
+  var late = coversDay && coversDay !== todayISO();
+  return '<div class="eod-stamp">'+
+    'Printed '+esc(when)+(who?' by '+esc(who):'')+
+    ' · figures as of this moment'+
+    (late? ' · <b>REPRINT</b> of '+esc(fmtDate(coversDay))+' — later entries are included' : '')+
+  '</div>';
+}
 /* Shared body for the printed EOD and the printed date-range report. Both come
    from eodData(), so a range printout always reconciles against its days. */
-function docEodBody(d, title, withDate){
+function docEodBody(d, title, withDate, coversDay){
   var vs=d.vs;
   var cols=withDate?5:4;                      // both tables carry the same column count
   var due=round2(vs.gross-d.disc);            // what the billed jobs actually ask for — ties to the OR total
@@ -366,6 +399,9 @@ function docEodBody(d, title, withDate){
   }
 
   return '<div class="eod">'+docHeader(title)+
+    /* Sits above the figures, not in the footer: it qualifies everything below,
+       and it must be read before the numbers are trusted or signed for. */
+    eodPrintStamp(coversDay)+
     /* Sales, collections and mix side by side: the three columns that used to be
        three stacked blocks. Each closes on its own total. */
     '<div class="eod-sum">'+
@@ -433,14 +469,17 @@ function docEodBody(d, title, withDate){
 function docDailyClose(){
   var date=DC_DATE||todayISO();
   var d=eodData(date, date);
-  return docShell('EOD '+date, docEodBody(d, 'End-of-Day Report · '+fmtDate(date), false));
+  return docShell('EOD '+date, docEodBody(d, 'End-of-Day Report · '+fmtDate(date), false, date));
 }
 function printDailyClose(){ printDoc(docDailyClose()); }
 function docEodRange(){
   var r=eodRange();
   var d=eodData(r.from, r.to);
+  /* No coversDay: a date RANGE is historical by nature, so flagging it as a
+     reprint would fire on every run and mean nothing. The printed-at line still
+     tells the reader which moment the figures describe. */
   return docShell('Sales '+r.from+' to '+r.to,
-    docEodBody(d, 'Sales & Collections · '+fmtDate(r.from)+' – '+fmtDate(r.to), true));
+    docEodBody(d, 'Sales & Collections · '+fmtDate(r.from)+' – '+fmtDate(r.to), true, null));
 }
 function printEodRange(){ printDoc(docEodRange()); }
 

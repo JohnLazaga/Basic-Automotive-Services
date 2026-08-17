@@ -432,6 +432,21 @@ section('EOD & range report: OR series with void status, one shared aggregator')
   const eod=M.docDailyClose();
   ok('printed EOD lists that day only', eod.indexOf('OR-1208')>0 && eod.indexOf('OR-1209')<0);
   ok('printed EOD marks the void', eod.indexOf('VOID')>0);
+
+  /* Printed-at stamp. These reports are recomputed live on every print, so the
+     same day printed twice can differ once a later payment lands. Without the
+     stamp there is nothing on the paper saying WHICH moment the figures describe
+     — which is how an OR came to look settled on a sheet taken before the cash
+     arrived, with signature lines under numbers that could still move. */
+  ok('printed EOD carries a printed-at stamp', eod.indexOf('eod-stamp')>0 && eod.indexOf('Printed ')>0);
+  ok('printed EOD names who printed it', eod.indexOf('by ')>0);
+  ok('EOD for an earlier day is flagged as a reprint', eod.indexOf('REPRINT')>0);
+  M.setDcDate(M.todayISO());
+  const eodToday=M.docDailyClose();
+  ok("today's EOD is stamped but NOT flagged a reprint",
+     eodToday.indexOf('eod-stamp')>0 && eodToday.indexOf('REPRINT')<0);
+  ok('date-range report is stamped too', doc.indexOf('eod-stamp')>0);
+  ok('range report is not flagged a reprint (always historical)', doc.indexOf('REPRINT')<0);
   M.setCurrentUser(null);
 })();
 
