@@ -69,6 +69,8 @@ const arg = (name) => {
 const DRY = !!arg('dry-run');
 const LIST = !!arg('list');
 const VERIFY = arg('verify');
+const NO_PHOTOS = !!arg('no-photos');
+const PHOTOS_ONLY = !!arg('photos-only');
 
 function die(msg) { console.error('\n✗ ' + msg + '\n'); process.exit(1); }
 function readConfig() { try { return JSON.parse(fs.readFileSync(CONFIG, 'utf8')); } catch (e) { return {}; } }
@@ -182,6 +184,122 @@ async function readCollection(col) {
     if (snap.docs.length < PAGE_SIZE) break;
   }
   return out;
+}
+
+/* ---------------------------------------------------------------- photos --- */
+/* Photos live in a WRITE-ONCE store beside the dated snapshots, not inside them:
+
+     <dest>/photos/<branch>/<collection>/<docId>.jpg
+     <dest>/photos/<branch>/<collection>/index.json
+
+   They are the bulk of the database and they never change once written, so
+   copying them into every nightly run would duplicate the same megabytes
+   forever. Instead each run fetches only ids that are not already on disk.
+
+   listDocuments() is what makes that cheap: it returns document REFERENCES
+   without their payloads, so discovering "what exists" costs a couple of
+   seconds instead of transferring every image. Fetching one photo takes 20-40s
+   on this link, so downloading only the new ones is the difference between a
+   viable nightly job and an impossible one.
+
+   Images are decoded from their data: URL and written as real .jpg files rather
+   than base64 JSON — a quarter smaller, and openable by anyone who ever needs
+   them without a tool to decode them first.
+
+   Photos are NEVER deleted from the store when they disappear from Firestore.
+   That is the whole point of a backup. The index records lastSeen so you can
+   tell what is still live. */
+const PHOTO_COLLECTIONS = ['jobphotos', 'pmsphotos'];
+
+function decodeDataUrl(s) {
+  const m = /^data:([^;,]+);base64,(.*)$/s.exec(String(s || ''));
+  if (!m) return null;
+  const mime = m[1].toLowerCase();
+  const ext = mime === 'image/png' ? 'png' : mime === 'image/webp' ? 'webp'
+            : mime === 'image/gif' ? 'gif' : 'jpg';
+  return { ext, mime, buf: Buffer.from(m[2], 'base64') };
+}
+
+async function backupPhotos(db) {
+  const crypto = require('crypto');
+  console.log('\n  photos (incremental — only ids not already stored)');
+  let fetched = 0, skipped = 0, bytes = 0, failed = 0;
+
+  for (const b of cloudBranchIds()) {
+    for (const coll of PHOTO_COLLECTIONS) {
+      const col = db.collection('branches').doc(b).collection(coll);
+      let refs;
+      try { refs = await withRetry(coll, () => col.listDocuments()); }
+      catch (e) { console.log('    ' + b + '/' + coll + ': listing failed — ' + e.message); failed++; continue; }
+      if (!refs.length) continue;
+
+      const dir = path.join(DEST, 'photos', b, coll);
+      if (!DRY) fs.mkdirSync(dir, { recursive: true });
+
+      /* "Already have" is derived from the FILES on disk, not from the index, so
+         a run interrupted midway never re-downloads what it already saved and a
+         lost index cannot cost hours of refetching. */
+      let onDisk = new Set();
+      try {
+        onDisk = new Set(fs.readdirSync(dir)
+          .filter(f => f !== 'index.json')
+          .map(f => f.replace(/\.[^.]+$/, '')));
+      } catch (e) { /* first run */ }
+
+      let index = {};
+      try { index = JSON.parse(fs.readFileSync(path.join(dir, 'index.json'), 'utf8')); } catch (e) {}
+
+      const missing = refs.filter(r => !onDisk.has(r.id));
+      console.log('    ' + (b + '/' + coll).padEnd(24) + refs.length + ' live, ' +
+                  onDisk.size + ' stored, ' + missing.length + ' to fetch');
+      skipped += refs.length - missing.length;
+
+      const now = new Date().toISOString();
+      refs.forEach(r => { if (index[r.id]) index[r.id].lastSeen = now; });
+
+      for (let i = 0; i < missing.length; i++) {
+        const ref = missing[i];
+        try {
+          const t0 = Date.now();
+          const snap = await withRetry(ref.id, () => ref.get());
+          if (!snap.exists) continue;
+          const d = snap.data() || {};
+          const img = decodeDataUrl(d.data);
+          if (!img) {
+            /* Local-branch uploads store a URL instead of base64. Record it so
+               the gap is visible rather than silently absent. */
+            index[ref.id] = { jobId: d.jobId || '', url: d.url || '', note: 'no inline image data',
+                              firstSeen: now, lastSeen: now };
+            console.log('      ' + ref.id + ': no inline data (url only) — recorded, not fetched');
+            continue;
+          }
+          const file = ref.id + '.' + img.ext;
+          if (!DRY) fs.writeFileSync(path.join(dir, file), img.buf);
+          index[ref.id] = {
+            file, bytes: img.buf.length, mime: img.mime,
+            sha256: crypto.createHash('sha256').update(img.buf).digest('hex'),
+            jobId: d.jobId || '', caption: d.caption || '', ts: d.ts || '',
+            key: d.key || undefined, ord: (typeof d.ord === 'number' ? d.ord : undefined),
+            firstSeen: now, lastSeen: now
+          };
+          fetched++; bytes += img.buf.length;
+          console.log('      [' + (i + 1) + '/' + missing.length + '] ' + file + '  ' +
+                      (img.buf.length / 1024).toFixed(0) + ' KB  ' +
+                      ((Date.now() - t0) / 1000).toFixed(1) + 's');
+          /* Index written after every photo: each one costs 20-40s to fetch, so
+             a local write is free by comparison and a crash keeps its metadata. */
+          if (!DRY) fs.writeFileSync(path.join(dir, 'index.json'), JSON.stringify(index, null, 2), 'utf8');
+        } catch (e) {
+          failed++;
+          console.log('      ' + ref.id + ': FAILED — ' + ((e && e.message) || e).split('\n')[0].slice(0, 90));
+        }
+      }
+      if (!DRY) fs.writeFileSync(path.join(dir, 'index.json'), JSON.stringify(index, null, 2), 'utf8');
+    }
+  }
+  console.log('    → ' + fetched + ' new (' + (bytes / 1048576).toFixed(2) + ' MB), ' +
+              skipped + ' already stored' + (failed ? ', ' + failed + ' FAILED' : ''));
+  return { fetched, skipped, bytes, failed };
 }
 
 /* ---------------------------------------------------------------- back up -- */
@@ -309,8 +427,58 @@ function verify(which) {
                   Object.keys(counts).length + ' collections');
     }
   }
-  console.log(bad ? '\n✗ ' + bad + ' branch file(s) failed verification' : '\n✓ snapshot verified');
+  bad += verifyPhotos();
+
+  console.log(bad ? '\n✗ ' + bad + ' problem(s) found' : '\n✓ snapshot verified');
   process.exit(bad ? 1 : 0);
+}
+
+/* The photo store is shared across runs rather than living inside a snapshot,
+   so it is verified on its own terms: every file the index claims must exist and
+   still hash to what was recorded. Re-hashing is what catches silent corruption
+   on the NAS — a truncated or bit-rotted JPEG is still a file of the right name,
+   and would otherwise be discovered only when someone needed the picture. */
+function verifyPhotos() {
+  const crypto = require('crypto');
+  const root = path.join(DEST, 'photos');
+  if (!fs.existsSync(root)) { console.log('\n  photos: no store yet'); return 0; }
+  console.log('\n  photo store:');
+  let problems = 0, files = 0, bytes = 0;
+
+  for (const b of fs.readdirSync(root)) {
+    for (const coll of PHOTO_COLLECTIONS) {
+      const dir = path.join(root, b, coll);
+      if (!fs.existsSync(dir)) continue;
+      let index = {};
+      try { index = JSON.parse(fs.readFileSync(path.join(dir, 'index.json'), 'utf8')); }
+      catch (e) { console.log('    ' + b + '/' + coll + ': index.json unreadable'); problems++; continue; }
+
+      let missing = 0, corrupt = 0, n = 0;
+      for (const [id, rec] of Object.entries(index)) {
+        if (!rec || !rec.file) continue;          // url-only records hold no file
+        n++;
+        const f = path.join(dir, rec.file);
+        if (!fs.existsSync(f)) { missing++; continue; }
+        const buf = fs.readFileSync(f);
+        bytes += buf.length; files++;
+        if (rec.sha256 && crypto.createHash('sha256').update(buf).digest('hex') !== rec.sha256) corrupt++;
+      }
+      /* Files present on disk but absent from the index would be invisible to a
+         restore, so they count as a problem too. */
+      const onDisk = fs.readdirSync(dir).filter(f => f !== 'index.json');
+      const indexed = new Set(Object.values(index).map(r => r && r.file).filter(Boolean));
+      const orphans = onDisk.filter(f => !indexed.has(f));
+
+      problems += missing + corrupt + orphans.length;
+      console.log('    ' + (b + '/' + coll).padEnd(24) + n + ' indexed' +
+                  (missing ? ', ' + missing + ' MISSING' : '') +
+                  (corrupt ? ', ' + corrupt + ' CHECKSUM MISMATCH' : '') +
+                  (orphans.length ? ', ' + orphans.length + ' not in index' : '') +
+                  (!missing && !corrupt && !orphans.length ? ' — all present, checksums match' : ''));
+    }
+  }
+  console.log('    → ' + files + ' image file(s), ' + (bytes / 1048576).toFixed(2) + ' MB');
+  return problems;
 }
 
 function list() {
@@ -327,6 +495,23 @@ function list() {
     console.log('  ' + r + '   ' + String(n).padStart(9) + ' docs   ' + String(mb).padStart(7) + ' MB');
   }
   console.log('\n  ' + runs.length + ' snapshot(s)');
+
+  /* The photo store sits outside the dated runs, so a listing that showed only
+     snapshots would imply photos were not being backed up at all. */
+  const proot = path.join(DEST, 'photos');
+  if (!fs.existsSync(proot)) { console.log('  photo store: none yet'); return; }
+  let files = 0, bytes = 0;
+  for (const b of fs.readdirSync(proot)) {
+    for (const coll of PHOTO_COLLECTIONS) {
+      const dir = path.join(proot, b, coll);
+      if (!fs.existsSync(dir)) continue;
+      for (const f of fs.readdirSync(dir)) {
+        if (f === 'index.json') continue;
+        try { bytes += fs.statSync(path.join(dir, f)).size; files++; } catch (e) {}
+      }
+    }
+  }
+  console.log('  photo store: ' + files + ' image(s), ' + (bytes / 1048576).toFixed(2) + ' MB');
 }
 
 /* ------------------------------------------------------------------- main -- */
@@ -339,8 +524,19 @@ function list() {
 
   initializeApp({ credential: cert(require(KEY)) });
   const db = getFirestore();
-  await backup(db);
-  rotate();
+
+  let photoResult = null;
+  if (!PHOTOS_ONLY) await backup(db);
+  if (!NO_PHOTOS) photoResult = await backupPhotos(db);
+  if (!PHOTOS_ONLY) rotate();
+
+  /* A photo that failed to download is the one thing here that can quietly
+     leave a gap, so it fails the run rather than printing a tick. */
+  if (photoResult && photoResult.failed) {
+    console.error('\n✗ Backup finished with ' + photoResult.failed +
+                  ' photo failure(s) — rerun to pick them up (already-stored photos are skipped).');
+    process.exit(1);
+  }
   console.log('\n✓ Backup complete.');
   process.exit(0);
 })().catch(e => {

@@ -50,7 +50,7 @@ makes Task Scheduler show the run as failed.
 | Collection | Why |
 | --- | --- |
 | `catalog` | ~102k parts, rebuilt from SQL Server nightly by `upload-all.js`. Derived data, not a record, and it would dwarf the snapshot. |
-| `jobphotos`, `pmsphotos` | The bulk of the database. Immutable once written, so they want an incremental copy rather than a nightly full pull. **Phase two — photos are NOT backed up yet.** |
+| `jobphotos`, `pmsphotos` | Handled separately as an incremental photo store — see below. Not in the dated snapshots. |
 | `sessions` | Premises-gate sessions. Short-lived, reissued on sign-in, and restoring a stale one would be wrong. |
 
 Collections are **discovered**, not listed, so anything added later is picked up
@@ -74,6 +74,52 @@ It is kept anyway, because unlike `catalog` there is **no bulk republish tool** 
 leave every customer QR code showing nothing until each vehicle was touched
 again, one at a time. Exclude it if you would rather have the time back and
 accept that trade.
+
+## Photos
+
+Photos are not copied into the dated snapshots. They live in a **write-once
+store** beside them:
+
+```
+<dest>/photos/main/jobphotos/ph_mrk7ufd8_r.jpg
+<dest>/photos/main/jobphotos/index.json
+<dest>/photos/main/pmsphotos/…
+```
+
+They are the bulk of the database and never change once written, so putting them
+in every nightly run would duplicate the same megabytes forever. Each run instead
+fetches only ids that are not already on disk.
+
+`listDocuments()` is what makes that cheap — it returns document *references*
+without their payloads, so discovering what exists costs a couple of seconds
+rather than transferring every image. That matters because fetching one photo
+takes **20–40 seconds** on this link. The first run pulls everything; after that
+a night with no new photos costs seconds.
+
+Images are decoded from their `data:` URL and written as real `.jpg` files, not
+base64 JSON — about a quarter smaller, and openable by anyone who needs them
+without a tool to decode them first. `index.json` holds the metadata for each:
+job id, caption, timestamp, size, and a SHA-256.
+
+**Photos are never deleted from the store** when they disappear from Firestore.
+That is the point of a backup. `index.json` records `lastSeen`, so you can tell
+what is still live.
+
+Two behaviours worth knowing:
+
+- "Already stored" is derived from the **files on disk**, not from the index, so
+  an interrupted run never re-downloads what it already saved, and a lost index
+  cannot cost hours of refetching.
+- A photo that fails to download **fails the whole run** (non-zero exit) rather
+  than printing a tick. Rerun it — everything already stored is skipped.
+
+`--verify` re-hashes every stored image against its recorded SHA-256. That is
+what catches silent corruption on the NAS: a truncated or bit-rotted JPEG is
+still a file of the right name, and would otherwise be discovered only when
+someone actually needed the picture.
+
+Current scale: **42 photos, ~10 MB, all on Fairview** — the other three branches
+have none.
 
 ## Scheduling it
 
@@ -146,6 +192,8 @@ node sync/backup-nas.js --dest=D:\tmp   # override the destination
 node sync/backup-nas.js --page=50       # smaller reads on a slow link
 node sync/backup-nas.js --branch=main   # one branch only (ids, not slugs)
 node sync/backup-nas.js --exclude=portal
+node sync/backup-nas.js --no-photos     # data only, skip the photo store
+node sync/backup-nas.js --photos-only   # photos only, no snapshot, no rotation
 ```
 
 `--branch` takes **branch ids** from `branches.json`, not URL slugs — Fairview is
