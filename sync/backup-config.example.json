@@ -1,0 +1,17 @@
+{
+  "_comment": "Copy this to backup-config.json (git-ignored) and edit. See BACKUP.md.",
+
+  "dest": "\\\\NAS\\backups\\basic",
+
+  "_dest_note": "UNC path to the NAS share, or any local/mapped folder. In JSON every backslash is doubled, so \\\\NAS\\share is written \\\\\\\\NAS\\\\share. A mapped drive letter (Z:/backups/basic) is fine when running interactively, but Task Scheduler often cannot see mapped drives — prefer the UNC path there.",
+
+  "keepDaily": 30,
+  "keepMonthly": 12,
+  "_retention_note": "Keeps the last keepDaily runs, plus the first run of each of the last keepMonthly months. Everything else is deleted after a successful run.",
+
+  "exclude": [],
+  "_exclude_note": "Extra collections to skip, on top of catalog/jobphotos/pmsphotos/sessions. [\"portal\"] roughly halves the runtime — portal docs are rebuildable from vehicles+jobs, but there is no bulk republish tool, so customer QR pages would stay blank until each vehicle is saved again. The manifest records whatever was excluded.",
+
+  "pageSize": 100,
+  "_pageSize_note": "Documents per read request. Reads run at single-digit KB/s over a shop connection, and one unbounded read of the jobs collection exceeds Firestore's 300s deadline. Lower this if you still see DEADLINE_EXCEEDED; raise it on a fast link to reduce round-trips."
+}

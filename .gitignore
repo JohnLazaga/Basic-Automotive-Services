@@ -37,6 +37,7 @@ sync/parts.tsv
 sync/.lastsync.json
 sync/backup_*.json
 sync/premigration-backup_*.json
+sync/backup-config.json
 sync/_*.js
 BASIC_dev.html
 
