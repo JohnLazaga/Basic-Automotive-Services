@@ -10,7 +10,7 @@
   "_retention_note": "Keeps the last keepDaily runs, plus the first run of each of the last keepMonthly months. Everything else is deleted after a successful run.",
 
   "exclude": [],
-  "_exclude_note": "Extra collections to skip, on top of catalog/jobphotos/pmsphotos/sessions. [\"portal\"] roughly halves the runtime — portal docs are rebuildable from vehicles+jobs, but there is no bulk republish tool, so customer QR pages would stay blank until each vehicle is saved again. The manifest records whatever was excluded.",
+  "_exclude_note": "EXTRA collections to skip, on top of the built-in list (catalog, portal, jobphotos, pmsphotos, sessions). Leave empty unless you have a reason. The manifest records whatever was excluded, so a future reader can tell what a snapshot is missing.",
 
   "pageSize": 100,
   "_pageSize_note": "Documents per read request. Reads run at single-digit KB/s over a shop connection, and one unbounded read of the jobs collection exceeds Firestore's 300s deadline. Lower this if you still see DEADLINE_EXCEEDED; raise it on a fast link to reduce round-trips."

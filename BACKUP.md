@@ -50,6 +50,7 @@ makes Task Scheduler show the run as failed.
 | Collection | Why |
 | --- | --- |
 | `catalog` | ~102k parts, rebuilt from SQL Server nightly by `upload-all.js`. Derived data, not a record, and it would dwarf the snapshot. |
+| `portal` | Derived customer-QR snapshots, rebuilt by **Settings → "Publish all portals"**. See below. |
 | `jobphotos`, `pmsphotos` | Handled separately as an incremental photo store — see below. Not in the dated snapshots. |
 | `sessions` | Premises-gate sessions. Short-lived, reissued on sign-in, and restoring a stale one would be wrong. |
 
@@ -61,19 +62,29 @@ You can skip more via `"exclude": ["portal"]` in the config, or
 `--exclude=portal`. The manifest records what was excluded, so whoever reads the
 snapshot later knows what is missing from it.
 
-### About `portal`
+### About `portal` — excluded, and why
 
-It is the slowest collection by a wide margin — one published snapshot per
-vehicle, and on Fairview it was **730 of that branch's ~1,150 seconds.** It is
-also fully derived: `portalDataForVehicle()` rebuilds it from the vehicle and its
-jobs, and the PIN hash comes from the vehicle's own `portalPin`, which is backed
-up.
+`portal` holds one published customer-QR snapshot per vehicle, ~880 of them. It
+was **730 of Fairview's ~1,150 seconds** — roughly half the entire nightly run.
 
-It is kept anyway, because unlike `catalog` there is **no bulk republish tool** —
-`publishPortalDoc()` runs per vehicle when that vehicle is saved. Losing it would
-leave every customer QR code showing nothing until each vehicle was touched
-again, one at a time. Exclude it if you would rather have the time back and
-accept that trade.
+It is excluded because it is **derived and rebuildable in one click**:
+`portalDataForVehicle()` reconstructs each document from the vehicle plus its
+jobs, and **Settings → "↑ Publish all portals"** (`publishAllPortals`)
+regenerates every one. The PIN hash derives from the vehicle's own `portalPin`,
+which *is* backed up.
+
+The deciding argument is staleness. `publishPortalDoc()` only fires at defined
+moments, so a published snapshot holds whatever it last happened to contain — in
+practice some were months old. Backing them up preserves stale data, while
+rebuilding after a restore produces portals **fresher than the backup ever
+held.** Spending twelve minutes a night copying stale derived data buys nothing.
+
+> **Restore consequence:** after restoring, click **Settings → "↑ Publish all
+> portals"**, or every customer QR shows nothing. It is in the restore steps
+> below.
+
+Put it back with `"exclude": []` in the config if you would rather have the
+snapshots than the time.
 
 ## Photos
 
@@ -146,6 +157,15 @@ There is no one-click restore, and you should know that before you need one.
   a handful of documents, the fastest honest path is to read the JSON and repair
   by hand.
 
+**After any restore, rebuild the derived collections — they are not in the
+snapshot:**
+
+1. **Settings → "↑ Publish all portals"** — rebuilds every customer-QR snapshot.
+   Skip this and every QR code shows nothing.
+2. **`node sync/upload-all.js`** — rebuilds the parts catalog from SQL Server.
+3. Photos restore from `<dest>/photos/…` — they are real `.jpg` files, but
+   putting them back into Firestore needs a script that does not exist yet.
+
 If a real restore path matters, say so and it gets built and tested — an
 untested restore is not a restore.
 
@@ -161,9 +181,10 @@ is exactly the JO-0170 case — a nightly backup would not have saved those line
 
 ## Two things to be aware of
 
-**Runtime.** Measured: **~26 minutes** for all four branches, 4,030 documents,
-6.84 MB. Fairview is ~19 of those minutes; Sandbox, with 29 documents, still
-takes over two.
+**Runtime.** Measured at **~26 minutes** for all four branches (4,030 documents,
+6.84 MB) *while `portal` was still included*. Excluding `portal` removes ~880
+documents and roughly half the wall-clock, so expect **~13–14 minutes**. Fairview
+dominates either way; Sandbox, with 29 documents, still takes over two.
 
 That is because Firestore reads from this connection run at roughly 5–25 KB/s
 and the latency is erratic — four documents in `sandbox/parts` once took 124

@@ -48,16 +48,25 @@ const ROOT = path.join(__dirname, '..');
 const KEY = path.join(__dirname, 'serviceAccountKey.json');
 const CONFIG = path.join(__dirname, 'backup-config.json');
 
-const EXCLUDE = new Set(['catalog', 'jobphotos', 'pmsphotos', 'sessions']);
+/* `portal` is excluded for the same reason as `catalog`: it is DERIVED, and it
+   has a one-click rebuild. portalDataForVehicle() reconstructs each document
+   from the vehicle plus its jobs, and Settings -> "Publish all portals"
+   (publishAllPortals) regenerates every one of them. The pinHash comes from the
+   vehicle's own portalPin, which IS backed up.
 
-/* `portal` is the slowest collection by a wide margin — one published snapshot
-   per vehicle, and it dominates the run. It IS derived: portalDataForVehicle()
-   rebuilds it from the vehicle plus its jobs, and the pinHash comes from the
-   vehicle's own portalPin, which is backed up. It is kept anyway BECAUSE there
-   is no bulk republish tool — publishPortalDoc() is per-vehicle and fires on
-   save, so losing it would leave every customer QR showing nothing until each
-   vehicle was touched again. Drop it via config if you would rather have the
-   time back and accept that. */
+   It was also the single most expensive thing in the run — 730 of Fairview's
+   ~1,150 seconds, roughly half the nightly total, for ~880 documents.
+
+   The deciding argument is that these snapshots go STALE: publishPortalDoc()
+   only fires at defined moments, so backing them up preserves whatever they last
+   happened to hold. Rebuilding after a restore produces FRESHER portals than the
+   backup ever contained. Copying stale derived data for twelve minutes a night
+   buys nothing.
+
+   RESTORE CONSEQUENCE: after restoring data, click Settings -> "Publish all
+   portals" or every customer QR shows nothing. That step is in BACKUP.md.
+   Put "portal" back by removing it here or setting "exclude": [] in the config. */
+const EXCLUDE = new Set(['catalog', 'jobphotos', 'pmsphotos', 'sessions', 'portal']);
 
 const argv = process.argv.slice(2);
 const arg = (name) => {
