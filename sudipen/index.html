@@ -627,7 +627,7 @@ var BRANCH = {"id":"sudipen","slug":"sudipen","name":"Basic by JMSI — Sudipen"
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.2.0 · 2026-08-17 · 5404ef4';
+var APP_VERSION = 'v1.2.0 · 2026-08-22 · 6e0dfd9';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -3223,7 +3223,17 @@ function advanceBilling(id){
   if(document.getElementById('dscParts')) j.discount=readDiscount('dsc');
   allocateOrNumber(id).then(function(orNo){
     j.orNumber=orNo; j.billedAt=new Date().toISOString(); j.stage='Final Billing';
-    delete _issuingOR[id]; persist(); toast('Final Billing issued · '+orNo); render();
+    delete _issuingOR[id]; persist();
+    /* Republish the customer portal NOW, not only at release.
+       portalDataForVehicle() already includes Final Billing jobs, but the only
+       publish triggers were release and a vehicle edit — so between billing and
+       release the customer's QR served a snapshot that predated the whole job.
+       The ingress odometer, the OR number and the work done were all missing,
+       which is exactly when the customer is most likely to scan: they have just
+       been handed the receipt. */
+    var pv = vehicleById(j.vehicleId);
+    if(pv && typeof publishPortalDoc==='function') publishPortalDoc(pv.id);
+    toast('Final Billing issued · '+orNo); render();
   }).catch(function(err){
     delete _issuingOR[id];
     toast('Could not assign OR number — please try again.'+(err&&err.message?' ('+err.message+')':''),'err');

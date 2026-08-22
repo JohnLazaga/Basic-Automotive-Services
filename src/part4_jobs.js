@@ -1237,7 +1237,17 @@ function advanceBilling(id){
   if(document.getElementById('dscParts')) j.discount=readDiscount('dsc');
   allocateOrNumber(id).then(function(orNo){
     j.orNumber=orNo; j.billedAt=new Date().toISOString(); j.stage='Final Billing';
-    delete _issuingOR[id]; persist(); toast('Final Billing issued · '+orNo); render();
+    delete _issuingOR[id]; persist();
+    /* Republish the customer portal NOW, not only at release.
+       portalDataForVehicle() already includes Final Billing jobs, but the only
+       publish triggers were release and a vehicle edit — so between billing and
+       release the customer's QR served a snapshot that predated the whole job.
+       The ingress odometer, the OR number and the work done were all missing,
+       which is exactly when the customer is most likely to scan: they have just
+       been handed the receipt. */
+    var pv = vehicleById(j.vehicleId);
+    if(pv && typeof publishPortalDoc==='function') publishPortalDoc(pv.id);
+    toast('Final Billing issued · '+orNo); render();
   }).catch(function(err){
     delete _issuingOR[id];
     toast('Could not assign OR number — please try again.'+(err&&err.message?' ('+err.message+')':''),'err');
