@@ -1,0 +1,220 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Basic by JMSI — Locking BASIC to your shop devices (Easy)</title>
+<style>
+:root{--ink:#1d1d1f;--ink2:#5f5f66;--brand:#d10000;--hair:#e4e4e7;--bg:#f4f4f6;--panel:#fff;
+--tipbg:#eef7ee;--tipbd:#2e7d32;--warnbg:#fff5e6;--warnbd:#c77700;--seebg:#eef2ff;--seebd:#3949ab;--codebg:#101014}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16.5px/1.65 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+.wrap{max-width:820px;margin:0 auto;padding:34px 22px 90px}
+.cover{background:#101014;color:#fff;border-radius:18px;padding:34px 30px;margin-bottom:26px}
+.cover .brand{color:var(--brand);font-weight:800;letter-spacing:.6px;font-size:14px}
+.cover h1{margin:6px 0 8px;font-size:30px}
+.cover p{margin:0;color:#cfcfd6;font-size:15px}
+h2{font-size:22px;margin:34px 0 6px;border-bottom:3px solid var(--brand);padding-bottom:6px}
+h3{font-size:17px;margin:22px 0 6px}
+p{margin:9px 0}
+a{color:var(--brand)}
+code{background:#ececf0;border:1px solid var(--hair);border-radius:5px;padding:1px 6px;font:14px/1.5 Consolas,Menlo,monospace}
+.step{background:var(--panel);border:1px solid var(--hair);border-radius:14px;padding:6px 22px 18px;margin:16px 0;box-shadow:0 1px 0 var(--hair);position:relative}
+.step>h3{display:flex;align-items:center;gap:12px}
+.num{flex:none;width:34px;height:34px;border-radius:50%;background:var(--brand);color:#fff;font-weight:800;display:inline-flex;align-items:center;justify-content:center;font-size:16px}
+.type{background:var(--codebg);color:#eaeaea;border-radius:10px;padding:12px 14px;margin:10px 0;font:14px/1.7 Consolas,Menlo,monospace;white-space:pre-wrap;word-break:break-word}
+.type .lbl{display:block;color:#8aa0ff;font:700 11px -apple-system,Segoe UI,sans-serif;letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px}
+.box{border-radius:10px;padding:11px 15px;margin:12px 0;font-size:15px}
+.tip{background:var(--tipbg);border-left:4px solid var(--tipbd)}
+.warn{background:var(--warnbg);border-left:4px solid var(--warnbd)}
+.see{background:var(--seebg);border-left:4px solid var(--seebd)}
+.box b{display:inline}
+ul,ol{margin:8px 0;padding-left:24px}li{margin:5px 0}
+kbd{background:#fff;border:1px solid #bbb;border-bottom-width:2px;border-radius:5px;padding:1px 6px;font:13px Consolas,monospace}
+.big{font-size:19px;font-weight:700}
+.foot{color:var(--ink2);font-size:13px;margin-top:30px;text-align:center}
+table{border-collapse:collapse;width:100%;margin:12px 0;font-size:15px}
+th,td{border:1px solid var(--hair);padding:9px 11px;text-align:left;vertical-align:top}
+th{background:#ececf0;font-size:13px;letter-spacing:.03em;text-transform:uppercase}
+.chk{background:var(--panel);border:1px solid var(--hair);border-radius:14px;padding:14px 22px}
+.chk li{margin:8px 0}
+@page{margin:14mm}
+@media print{
+  /* Print the colours: the green/amber/blue stripes on the boxes are what tells
+     a "why this matters" apart from a "STOP, you will break it". A grey guide
+     loses the warnings. */
+  body{background:#fff;font-size:11pt;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .wrap{max-width:none;padding:0}
+  .step{box-shadow:none}
+  /* Nothing that is read as one thing may be split across two pages. */
+  .step,.box,.chk,.type,table,tr,li{break-inside:avoid}
+  h2,h3{break-after:avoid}
+  .cover{break-after:avoid}
+  .foot{break-before:avoid}
+}
+</style></head><body><div class="wrap">
+
+<div class="cover">
+  <div class="brand">BASIC by JMSI</div>
+  <h1>Locking BASIC to your shop devices — easy guide</h1>
+  <p>A worker took the password her browser had saved and opened BASIC from a computer outside the shop. This guide closes that for good, by making BASIC ask the <b>device</b> to prove itself — something a password can never do.</p>
+</div>
+
+<h2>What this does, in plain words</h2>
+
+<p>Today, anyone who has the password can open BASIC from anywhere. That is what a password <i>is</i> — it proves <b>who</b> you are, never <b>where</b> or <b>on what</b>.</p>
+
+<p>After this guide, each shop iPad holds a secret key of its own, created inside the iPad's security chip. When a worker signs in, the server asks that iPad to sign a one-time puzzle. The right password with the wrong iPad gets nothing — not a slow page, not a warning: <b>no data at all</b>.</p>
+
+<div class="box tip"><b>The part that matters:</b> that key cannot be read, copied, screenshotted, emailed or written down — not by a worker, not by you. It is not stored as a file. It never leaves the iPad. This is the thing a saved password could never be.</div>
+
+<div class="box warn"><b>This replaces Part A of the old <i>Device Lockdown</i> guide.</b> That guide told you to type a secret password into each device and let it remember. <b>Do not do that any more</b> — that is exactly how the leak happened. The old guide's <b>Guided Access</b> section (locking an iPad to one app) is still good and still worth doing.</div>
+
+<h2>Before you start — check each iPad (5 minutes each)</h2>
+
+<p>Do these three checks on <b>every</b> iPad before enrolling anything. The third one is the one people get wrong.</p>
+
+<div class="step"><h3><span class="num">1</span> Check the iPad is new enough</h3>
+  <p><b>Settings → General → About → Software Version.</b></p>
+  <ul>
+    <li><b>iPadOS 14 or higher</b> — good, carry on.</li>
+    <li><b>iPadOS 13 or lower</b> — this iPad cannot do the check. See <i>If a device is too old</i> at the end.</li>
+  </ul>
+  <div class="box tip">Your shop iPads are on <b>17.7.10</b>. That is fine — no need to update them for this.</div>
+</div>
+
+<div class="step"><h3><span class="num">2</span> Check the passcode and Touch ID are on</h3>
+  <p><b>Settings → Touch ID &amp; Passcode</b> (or <b>Face ID &amp; Passcode</b>).</p>
+  <ul>
+    <li>A passcode must be set — <b>one only you and your admins know</b>, not one the workers know.</li>
+    <li><b>iPhone/iPad Unlock</b> must be switched on for Touch ID or Face ID.</li>
+  </ul>
+</div>
+
+<div class="step"><h3><span class="num">3</span> Switch iCloud passwords OFF <span class="big">← the important one</span></h3>
+  <p>Best: the iPad has <b>no Apple ID signed in at all</b>. Check <b>Settings</b> — if the very top shows a name, an Apple ID is signed in.</p>
+  <p>If an Apple ID <i>is</i> signed in and you cannot remove it, then:</p>
+  <p><b>Settings → [the name at the top] → iCloud → Passwords and Keychain → OFF.</b></p>
+  <div class="box see"><b>Why this matters so much.</b> With iCloud passwords switched on, a key made on this iPad <b>copies itself to every Apple device on that Apple ID</b> — including someone's personal iPhone at home. That would hand the key to exactly the person we are locking out. With it off, the key is sealed into this one iPad's chip and can never leave it.</div>
+  <div class="box tip"><b>You cannot get this wrong silently.</b> BASIC checks, and <b>refuses to enrol</b> a device whose key would sync. If you see the iCloud message during enrolment, come back and finish this step. It also keeps watching afterwards — if someone signs the iPad into iCloud next month, BASIC stops that device by itself.</div>
+</div>
+
+<h2>Part A — one time, by John (the owner)</h2>
+
+<p>Do this once from the office computer, before anyone goes out to the branches. It changes nothing for staff — the lock stays off until you switch it on in Part C.</p>
+
+<div class="step"><h3><span class="num">1</span> Send up the app</h3>
+  <div class="type"><span class="lbl">In the BASIC_by_JMSI folder</span>node deploy-branches.js --push</div>
+  <p>Builds all four branches, runs the tests, and pushes them live.</p>
+</div>
+
+<div class="step"><h3><span class="num">2</span> Send up the server side</h3>
+  <div class="type"><span class="lbl">Same folder</span>C:\node20\node-v20.18.2-win-x64\firebase.cmd deploy --only functions,firestore:rules</div>
+  <div class="box tip">If it complains about not being logged in, set <code>HOME</code> and <code>USERPROFILE</code> to <code>C:\fbcli-home</code> first — that is where your Firebase login is kept. Do <b>not</b> use <code>tools\firebase.exe</code>; it is broken.</div>
+</div>
+
+<div class="box tip"><b>Nothing has changed for staff yet.</b> The lock is off until an administrator turns it on, and it cannot even be turned on until at least one device is enrolled. There is no way to accidentally lock out a branch from this step.</div>
+
+<h2>Part B — enrol each shop device</h2>
+
+<p>This is the on-site job. It must be done <b>on the device itself, with it in your hands</b>, by an administrator. About one minute per device.</p>
+
+<div class="step"><h3><span class="num">1</span> Open BASIC on that device and sign in as an administrator</h3>
+  <p>Your own admin account. Not a worker's.</p>
+</div>
+
+<div class="step"><h3><span class="num">2</span> Go to Settings → Shop devices</h3>
+  <p>Tap <b>＋ Enrol this device</b>.</p>
+</div>
+
+<div class="step"><h3><span class="num">3</span> Give it a name you will recognise later</h3>
+  <p>“Fairview front desk iPad”, “Bay 2 tablet”, “Sudipen counter PC”. You will be reading this list a year from now when one of them breaks — a name like “iPad 3” will not help you.</p>
+</div>
+
+<div class="step"><h3><span class="num">4</span> Confirm with Touch ID / Face ID</h3>
+  <p>The iPad asks you to confirm. That prompt <b>is</b> the iPad proving it is itself and making its key. On a Windows computer it asks for the Windows Hello PIN instead.</p>
+  <div class="box warn">If you get <b>“This device is signed into iCloud…”</b>, stop. Go back and do the <b>Check 3</b> step above, then enrol again. Do not skip it — enrolling that device would defeat the whole exercise.</div>
+</div>
+
+<div class="step"><h3><span class="num">5</span> Check it appears in the list, then do the next device</h3>
+  <p>Repeat for <b>every</b> device your staff actually use to open BASIC. A device that is not on this list will not work once you finish Part C.</p>
+  <div class="box warn"><b>Do not enrol anything that leaves the building.</b> A laptop that goes home with someone is an enrolled device sitting in their house. Enrol fixed counter iPads and shop computers only.</div>
+</div>
+
+<h2>Part C — switch the lock on</h2>
+
+<p>Do this <b>per branch</b>, after every device at that branch is enrolled.</p>
+
+<div class="step"><h3><span class="num">1</span> Settings → Shop devices → Turn enforcement ON</h3>
+  <p>Read the confirmation and accept it. The banner at the top of the card turns green and says staff can only open BASIC on the devices listed.</p>
+</div>
+
+<div class="step"><h3><span class="num">2</span> Test it before you leave the branch</h3>
+  <p>This is the step people skip and then regret. On a device that is <b>not</b> enrolled — your own phone is perfect — open the branch's BASIC address and sign in with a worker's account.</p>
+  <p>You should see <b>“BASIC can only be opened on a shop device”</b>. If you get in, enforcement is not on. Go back to step 1.</p>
+  <div class="box tip">Then sign in on a shop iPad as a normal worker and confirm everyday work still behaves. Two minutes now saves a phone call at 7am.</div>
+</div>
+
+<div class="box see"><b>You are not affected.</b> Administrators and the owner are exempt on purpose, so you keep working from home. The lock applies to non-admin staff.</div>
+
+<h2>Part D — do you still need the shop-network lock?</h2>
+
+<p>There is a second, older lock in <b>Settings → Shop network</b>, which checks the shop's internet address instead of the device.</p>
+
+<p><b>Our advice: leave it OFF and use devices only.</b> Your internet provider changes the shop's address from time to time, and every change would lock the branch out until an admin re-taps a button — in Sudipen's case, from 250 km away. The device lock has no such problem: the iPad is the iPad wherever the internet address wanders.</p>
+
+<p>Turn the network lock on as well only if you want a device that walks out of the building to stop working the moment it leaves. Both locks can run together; a worker then needs an enrolled device <b>and</b> the shop's Wi-Fi.</p>
+
+<h2>What a worker sees when they are refused</h2>
+
+<table>
+  <tr><th>Message on their screen</th><th>What it actually means</th><th>What to do</th></tr>
+  <tr><td><b>BASIC can only be opened on a shop device</b></td><td>Right password, wrong device. This is the lock doing its job.</td><td>Use a shop iPad. If it <i>is</i> a shop device, it was never enrolled — do Part B on it.</td></tr>
+  <tr><td><b>This device's passkey is being synced</b></td><td>Someone signed this iPad into iCloud, so its key started copying to personal devices. BASIC stopped the device by itself.</td><td>Do <b>Check 3</b>, remove the device from the list, enrol it again.</td></tr>
+  <tr><td><b>This device is too old for the shop lock</b></td><td>iPadOS 13 or older, or no Touch&nbsp;ID / Face&nbsp;ID.</td><td>See <i>If a device is too old</i> below.</td></tr>
+  <tr><td><b>BASIC can only be opened at the shop</b></td><td>This is the <i>network</i> lock, not the device lock. The shop's internet address changed.</td><td>Settings → Shop network → Trust this network. Or switch that lock off and rely on devices (Part D).</td></tr>
+</table>
+
+<h2>Everyday rules — keep it working</h2>
+
+<table>
+  <tr><th>When this happens</th><th>Do this</th></tr>
+  <tr><td><b>A new iPad or computer arrives</b></td><td>Run the three checks, then Part B on it. Until you do, staff cannot use it.</td></tr>
+  <tr><td><b>An iPad is lost or stolen</b></td><td>Settings → Shop devices → tap <b>✕</b> next to it. It stops working within 20 minutes, even if it is already open in someone's hands.</td></tr>
+  <tr><td><b>An iPad is erased, reset or repaired</b></td><td>Its key is gone. Remove the old entry (<b>✕</b>) and enrol it again as if it were new.</td></tr>
+  <tr><td><b>A worker leaves the company</b></td><td>Switch off their account as usual. You no longer have to worry about which browser saved their password — it is useless off a shop device.</td></tr>
+  <tr><td><b>You remove the last device by mistake</b></td><td>Nothing breaks. Enforcement switches itself off rather than lock everyone out. Enrol a device and turn it back on.</td></tr>
+  <tr><td><b>A worker says "it stopped working" mid-shift</b></td><td>Check the message against the table above. The usual cause is an admin removing that device, or the iPad being signed into iCloud.</td></tr>
+</table>
+
+<h2>If a device is too old</h2>
+
+<p>An iPad on <b>iPadOS 13 or older</b>, or one with no Touch ID / Face ID at all, cannot do this check — no setting or update will fix it if the iPad cannot go past 13. Your options, best first:</p>
+
+<ul>
+  <li><b>Replace it.</b> A basic current iPad is the cheapest and cleanest answer, and everything in this guide then applies to it.</li>
+  <li><b>Use a Windows computer at that station instead.</b> Windows Hello with a PIN works the same way and is enrolled with the same steps.</li>
+  <li><b>Use the shop-network lock for that branch</b> (Part D) instead of the device lock. Weaker, and you take on the changing-address problem — but it is better than nothing while you budget for hardware.</li>
+</ul>
+
+<div class="box warn">Do <b>not</b> leave the old iPad running with no lock as a workaround. One unlocked station is all it takes; the worker will simply use that one.</div>
+
+<h2>Quick checklist per device</h2>
+
+<div class="chk">
+<ol>
+  <li>Settings → General → About → <b>Software Version is 14 or higher</b></li>
+  <li>Settings → Touch ID &amp; Passcode → <b>passcode set, Touch ID on for unlock</b></li>
+  <li>Settings → [name] → iCloud → <b>Passwords and Keychain OFF</b> (or no Apple ID at all)</li>
+  <li>Open BASIC on the device, sign in <b>as an administrator</b></li>
+  <li>Settings → Shop devices → <b>＋ Enrol this device</b> → name it → confirm with Touch ID</li>
+  <li>Confirm it now appears in the device list</li>
+</ol>
+<p style="margin:14px 0 4px"><b>Once per branch, after every device is done:</b></p>
+<ol start="7">
+  <li>Settings → Shop devices → <b>Turn enforcement ON</b></li>
+  <li><b>Test from a non-enrolled device</b> — you must be refused</li>
+</ol>
+</div>
+
+<div class="box tip"><b>Suggested order:</b> Sandbox (training) first, then Fairview where you can watch it for a day, then Commonwealth, then Sudipen last — you want the trip you cannot easily repeat to be the one you have already rehearsed twice.</div>
+
+<div class="foot">Basic by JMSI · Shop device lock · Companion to the Device Lockdown and Password Reset guides</div>
+
+</div></body></html>
