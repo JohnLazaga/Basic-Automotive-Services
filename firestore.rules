@@ -5,15 +5,19 @@ rules_version = '2';
    The shop owner (by email) is a super-admin across every branch.
    One branch's data is completely walled off from another's.
 
-   PREMISES GATE (see password-reset-kit/functions/shop-session.js)
+   PREMISES / DEVICE GATE (password-reset-kit/functions/shop-session.js)
    Being signed in is not enough: a non-admin also needs a live session document
    at branches/{b}/sessions/{uid}, which ONLY the Admin SDK can write and which
-   the startShopSession function issues only when the request comes from one of
-   the branch's trusted networks. A worker who copies his saved password out of
-   the browser and signs in from home therefore reads nothing.
+   startShopSession issues only when the request comes from one of the branch's
+   trusted networks (enforce) and/or carries a signature from one of the shop's
+   enrolled devices (deviceEnforce — see device-auth.js). A worker who copies
+   her saved password out of the browser and signs in from home therefore reads
+   nothing: she can replay the password, but not the iPad's hardware key.
 
-   The gate is dormant until branches/{b}/meta/network.enforce == true, so
-   deploying these rules cannot lock a shop out. Trust the shop network first.
+   These rules are the same either way — they only ask whether a session exists.
+   Both gates are dormant until their flag is set on
+   branches/{b}/shopnet/network, so deploying these rules cannot lock a shop
+   out. Trust the shop network / enrol a device first.
    ========================================================================== */
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -70,15 +74,18 @@ service cloud.firestore {
 
       /* Operational data — staff, bays, parts, labor, vehicles, estimates,
          jobs, appointments, purchaseOrders, catalog. Members of the branch
-         read/write; 'users', 'meta' and 'sessions' are handled by their own
-         stricter rules below (excluded here so members can't edit accounts,
-         shop settings, the trusted-network list, or their own session). */
+         read/write; 'users', 'meta', 'sessions', 'shopnet', 'devices' and
+         'webauthn_challenges' are handled by their own stricter rules below
+         (excluded here so members can't edit accounts, shop settings, the
+         trusted-network list, the enrolled-device list, an in-flight WebAuthn
+         challenge, or their own session). */
       match /{coll}/{doc} {
         allow read, write: if (isOwner() || activeMember(b))
                               && coll != 'users' && coll != 'meta'
                               && coll != 'portal' && coll != 'appt_requests'
                               && coll != 'portal_claims'
-                              && coll != 'sessions' && coll != 'shopnet';
+                              && coll != 'sessions' && coll != 'shopnet'
+                              && coll != 'devices' && coll != 'webauthn_challenges';
       }
 
       match /meta/shop {
@@ -108,6 +115,26 @@ service cloud.firestore {
       match /shopnet/{doc} {
         allow read:  if isOwner() || memberOf(b);
         allow write: if false;
+      }
+
+      /* Enrolled shop devices for the device gate. Each doc holds a PUBLIC key
+         and bookkeeping — no secret, because with WebAuthn the server never
+         holds one. Readable by admins so the Settings screen can list and
+         retire devices; writable ONLY by the Cloud Functions (Admin SDK), or a
+         worker would simply enrol her own laptop. Members do not need to read
+         this: the credential IDs they must present are handed to them inside
+         the startShopSession challenge. */
+      match /devices/{id} {
+        allow read:  if isOwner() || adminOf(b);
+        allow write: if false;
+      }
+
+      /* In-flight WebAuthn challenges. Server-side only, in both directions:
+         the client is never the thing that remembers what it was asked to sign,
+         and a challenge nobody else can read is a challenge nobody else can
+         pre-sign. */
+      match /webauthn_challenges/{uid} {
+        allow read, write: if false;
       }
 
       /* Shop sessions — issued by startShopSession (Admin SDK) only. A member

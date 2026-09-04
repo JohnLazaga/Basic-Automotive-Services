@@ -50,6 +50,8 @@ VIEWS.settings = function(){
 
     premisesCard()+
 
+    devicesCard()+
+
     appCheckCard()+
 
   '</div><div class="colside">'+

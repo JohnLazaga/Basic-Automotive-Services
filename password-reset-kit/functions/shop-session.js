@@ -1,172 +1,115 @@
 /* ============================================================================
-   shop-session — "you can only open BASIC inside the shop"
+   shop-session — "you can only open BASIC at the shop, on a shop device"
    ----------------------------------------------------------------------------
    WHY THIS EXISTS
    A password can never enforce *where* the app is opened. Whatever the browser
    can autofill, the worker can reveal (chrome://password-manager) or sync to his
-   own phone. So location is checked HERE, on the server, where the client cannot
+   own phone. So the check happens HERE, on the server, where the client cannot
    lie — and Firestore rules refuse every read/write without the session document
    this file writes.
 
+   TWO INDEPENDENT GATES, either or both:
+     • Trusted network (enforce)       — is this the shop's internet address?
+     • Enrolled device (deviceEnforce) — is this one of our iPads? (device-auth.js)
+
+   The device gate is the stronger of the two and the one that survives a
+   changing IP: the proof is a signature from hardware that never leaves the
+   shop. The network gate is kept because it is already deployed, costs nothing
+   to leave on, and catches an enrolled device that walked out of the building.
+
    HOW IT WORKS
      1. Worker signs in normally (Firebase Auth).
-     2. The app calls startShopSession(). We compare the request's source IP with
-        the branch's trusted-network list.
-     3. On a match we write branches/{b}/sessions/{uid} with an expiry. ONLY the
+     2. The app calls startShopSession(). If the device gate is on we hand back
+        a challenge; the iPad signs it with Face ID and calls again.
+     3. We check the signature and/or the request's source IP.
+     4. On success we write branches/{b}/sessions/{uid} with an expiry. ONLY the
         Admin SDK can write that collection, so it cannot be forged.
-     4. firestore.rules requires a live session for every data operation.
+     5. firestore.rules requires a live session for every data operation.
 
    Off-premises the worker holds a valid password AND a valid auth token, and
    still reads nothing.
 
-   SAFE ROLLOUT: enforcement is OFF until meta/network.enforce === true, so
-   deploying this cannot lock a shop out. Trust the shop network first, then
-   switch enforcement on.
+   SAFE ROLLOUT: both gates are OFF until their flag is set on
+   branches/{b}/shopnet/network, so deploying this cannot lock a shop out.
    ========================================================================== */
 const functions = require('firebase-functions/v1');
 const admin = require('firebase-admin');
-if (!admin.apps.length) admin.initializeApp();
+const C = require('./shop-common');
+const DEV = require('./device-auth');
 
-const CONFIG = {
-  ownerEmails: ['johnlazaga1980@yahoo.com'],
-  userDocPath: 'branches/{b}/users/{uid}',
-  sessionPath: 'branches/{b}/sessions/{uid}',
-  /* Its own collection, NOT a meta/ document: the app listens to meta/ as a
-     whole, and rules for a listened collection cannot carry per-document-id
-     conditions without breaking that listen. */
-  networkPath: 'branches/{b}/shopnet/network',
+const CONFIG = C.CONFIG;
 
-  /* How long a shop session stays valid. A worker who signs in at the shop and
-     then leaves keeps access until this runs out, so shorter = tighter. The app
-     silently renews every ~20 min while it is open on the shop network, so a
-     device that stays on-site never notices the expiry. */
-  sessionHours: 3,
-};
+/* Has this user already proved a device, on a session that has not run out —
+   and is that device still enrolled and switched on? Returns the device id, or
+   '' when a fresh hardware proof is required.
 
-function pathFor(tpl, b, uid) { return String(tpl).replace('{b}', b || '').replace('{uid}', uid || ''); }
-
-/* ---- IP helpers ---------------------------------------------------------- */
-/* SECURITY: x-forwarded-for is NOT trustworthy from the left. Any client can
-   send their own X-Forwarded-For header, and Google's front end APPENDS the
-   real client address to whatever arrived — so the chain looks like
-       <anything the worker made up>, <his real address>, <google hop>
-   Reading the left-most entry would therefore let a worker at home simply
-   claim the shop's address and walk straight through the gate.
-
-   We read from the RIGHT instead, skipping addresses that belong to the
-   infrastructure (private ranges and Google's load-balancer ranges). The
-   right-most remaining address is the one Google observed, which the caller
-   cannot influence. Anything he prepends sits to the left and is ignored.
-
-   IPv4-mapped IPv6 (::ffff:1.2.3.4) is unwrapped so it compares equal to the
-   plain IPv4 an admin would recognise. */
-function ipChain(context) {
-  const req = (context && context.rawRequest) || {};
-  const headers = req.headers || {};
-  return String(headers['x-forwarded-for'] || '')
-    .split(',').map(normalizeIp).filter(Boolean);
-}
-/* Private/loopback/link-local, plus the published Google front-end and
-   load-balancer ranges that appear as the final hops. */
-function isInfrastructureIp(ip) {
-  if (!ip) return true;
-  return ipMatches(ip, '10.0.0.0/8')
-      || ipMatches(ip, '172.16.0.0/12')
-      || ipMatches(ip, '192.168.0.0/16')
-      || ipMatches(ip, '127.0.0.0/8')
-      || ipMatches(ip, '169.254.0.0/16')
-      || ipMatches(ip, '35.191.0.0/16')      // Google LB / health checks
-      || ipMatches(ip, '130.211.0.0/22');    // Google LB
-}
-function callerIp(context) {
-  const chain = ipChain(context);
-  for (let i = chain.length - 1; i >= 0; i--) {
-    if (!isInfrastructureIp(chain[i])) return chain[i];
-  }
-  const req = (context && context.rawRequest) || {};
-  return normalizeIp(req.ip || '');
-}
-function normalizeIp(ip) {
-  ip = String(ip || '').trim();
-  if (ip.toLowerCase().indexOf('::ffff:') === 0) ip = ip.slice(7);
-  return ip;
-}
-function ipv4ToInt(ip) {
-  const parts = String(ip).split('.');
-  if (parts.length !== 4) return null;
-  let n = 0;
-  for (let i = 0; i < 4; i++) {
-    const o = Number(parts[i]);
-    if (!Number.isInteger(o) || o < 0 || o > 255) return null;
-    n = (n * 256) + o;
-  }
-  return n >>> 0;
-}
-/* Exact match, or an IPv4 CIDR block such as 112.198.44.0/24. */
-function ipMatches(ip, rule) {
-  if (!ip || !rule) return false;
-  rule = String(rule).trim();
-  if (rule.indexOf('/') < 0) return normalizeIp(ip) === normalizeIp(rule);
-  const slash = rule.split('/');
-  const bits = Number(slash[1]);
-  const a = ipv4ToInt(normalizeIp(ip));
-  const b = ipv4ToInt(slash[0]);
-  if (a === null || b === null || !Number.isInteger(bits) || bits < 0 || bits > 32) return false;
-  if (bits === 0) return true;
-  const mask = bits === 32 ? 0xFFFFFFFF : (~((1 << (32 - bits)) - 1)) >>> 0;
-  return ((a & mask) >>> 0) === ((b & mask) >>> 0);
-}
-
-/* ---- shared lookups ------------------------------------------------------ */
-async function loadAccount(db, branchId, uid) {
-  const snap = await db.doc(pathFor(CONFIG.userDocPath, branchId, uid)).get();
-  return snap.exists ? snap.data() : null;
-}
-async function loadNetwork(db, branchId) {
-  const snap = await db.doc(pathFor(CONFIG.networkPath, branchId, '')).get();
-  const d = snap.exists ? (snap.data() || {}) : {};
-  return { enforce: d.enforce === true, ips: Array.isArray(d.ips) ? d.ips : [] };
-}
-function isOwnerEmail(email) {
-  return CONFIG.ownerEmails.map((e) => String(e).toLowerCase()).includes(String(email || '').toLowerCase());
-}
-/* Admins and the owner are exempt — they are expected to work from home. */
-async function requireAdmin(db, context, branchId) {
-  if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Please sign in.');
-  if (isOwnerEmail(context.auth.token.email)) return { uid: context.auth.uid, owner: true };
-  const acct = await loadAccount(db, branchId, context.auth.uid);
-  if (!acct || acct.isAdmin !== true || acct.active === false) {
-    throw new functions.https.HttpsError('permission-denied', 'Admins only.');
-  }
-  return { uid: context.auth.uid, owner: false };
+   Reading the session we ourselves wrote is safe here: only the Admin SDK can
+   write that document, so its deviceId is not something a client can plant. */
+async function provenDeviceId(db, branchId, uid) {
+  const snap = await db.doc(C.pathFor(CONFIG.sessionPath, branchId, uid)).get();
+  if (!snap.exists) return '';
+  const d = snap.data() || {};
+  const expires = (d.expiresAt && d.expiresAt.toMillis) ? d.expiresAt.toMillis() : 0;
+  if (!d.deviceId || expires <= Date.now()) return '';
+  const devices = await DEV._device.activeDevices(db, branchId);
+  return devices.some((x) => x.id === d.deviceId) ? String(d.deviceId) : '';
 }
 
 /* ============================================================================
    startShopSession — called by the app right after sign-in, then every ~20 min.
-   Returns { ok, enforced, exempt, expiresAt, ip }. Throws permission-denied
-   with message 'off-premises' when the caller is not on a trusted network.
+
+   Returns { ok, enforced, deviceEnforced, exempt, expiresAt, ip } on success.
+   Returns { ok:false, need:'device', options } when the device gate is on and
+   the caller has not signed a challenge yet — the app then asks the hardware
+   and calls straight back with deviceResponse.
+   Throws permission-denied 'off-premises' when the caller is not on a trusted
+   network, and 'unknown-device' / 'synced-passkey' for a device refusal.
    ========================================================================== */
 exports.startShopSession = functions.https.onCall(async (data, context) => {
   if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Please sign in.');
   const uid = context.auth.uid;
-  const branchId = String((data && data.branchId) || '').trim();
-  if (!branchId) throw new functions.https.HttpsError('invalid-argument', 'branchId is required.');
+  const branchId = C.requireBranchId(data);
 
   const db = admin.firestore();
-  const ip = callerIp(context);
+  const ip = C.callerIp(context);
 
-  const acct = await loadAccount(db, branchId, uid);
+  const acct = await C.loadAccount(db, branchId, uid);
   if (!acct) throw new functions.https.HttpsError('not-found', 'That account is not set up in this branch.');
   if (acct.active === false) throw new functions.https.HttpsError('permission-denied', 'This account is disabled.');
 
-  const net = await loadNetwork(db, branchId);
-  const exempt = isOwnerEmail(context.auth.token.email) || acct.isAdmin === true;
-  const allowed = !net.enforce || exempt || net.ips.some((e) => ipMatches(ip, e && e.ip));
+  const net = await C.loadNetwork(db, branchId);
+  const exempt = C.isOwnerEmail(context.auth.token.email) || acct.isAdmin === true;
 
-  if (!allowed) {
+  /* ---- Gate 1: enrolled device -----------------------------------------
+     Done before the IP check so a worker at home gets the accurate reason. */
+  let deviceId = '';
+  if (net.deviceEnforce && !exempt) {
+    const response = data && data.deviceResponse;
+    if (response) {
+      const dev = await DEV._device.verifyDeviceAssertion(db, branchId, uid, response, context);
+      deviceId = dev.id;
+    } else {
+      /* The app renews every ~20 min while it stays open. Asking the hardware
+         again each time would put a Face ID prompt in front of a mechanic with
+         his hands in an engine, so a session that was ALREADY device-proven is
+         simply extended. The device must still be enrolled and active, which is
+         what makes "remove device" revoke access within one renewal. */
+      deviceId = await provenDeviceId(db, branchId, uid);
+      if (!deviceId) {
+        /* First leg of the round trip: hand out a challenge and stop here. No
+           session is written, so this is not an access decision yet. */
+        const options = await DEV._device.deviceChallenge(db, branchId, uid, context);
+        return { ok: false, need: 'device', options, enforced: net.enforce, deviceEnforced: true };
+      }
+    }
+  }
+
+  /* ---- Gate 2: trusted network ------------------------------------------ */
+  const ipAllowed = !net.enforce || exempt || net.ips.some((e) => C.ipMatches(ip, e && e.ip));
+  if (!ipAllowed) {
     /* Leave a trace so an admin can see who tried from where. Best-effort. */
     try {
-      await db.doc(pathFor(CONFIG.sessionPath, branchId, uid)).set({
+      await db.doc(C.pathFor(CONFIG.sessionPath, branchId, uid)).set({
         deniedIp: ip, deniedAt: admin.firestore.FieldValue.serverTimestamp(),
       }, { merge: true });
     } catch (e) { /* non-fatal */ }
@@ -174,79 +117,85 @@ exports.startShopSession = functions.https.onCall(async (data, context) => {
   }
 
   const expiresAt = admin.firestore.Timestamp.fromMillis(Date.now() + CONFIG.sessionHours * 3600 * 1000);
-  await db.doc(pathFor(CONFIG.sessionPath, branchId, uid)).set({
-    uid, ip, expiresAt, exempt,
+  await db.doc(C.pathFor(CONFIG.sessionPath, branchId, uid)).set({
+    uid, ip, expiresAt, exempt, deviceId,
     startedAt: admin.firestore.FieldValue.serverTimestamp(),
     deniedIp: admin.firestore.FieldValue.delete(),
     deniedAt: admin.firestore.FieldValue.delete(),
   }, { merge: true });
 
-  return { ok: true, enforced: net.enforce, exempt, expiresAt: expiresAt.toMillis(), ip };
+  return {
+    ok: true, enforced: net.enforce, deviceEnforced: net.deviceEnforce,
+    exempt, expiresAt: expiresAt.toMillis(), ip,
+  };
 });
 
 /* ============================================================================
    trustThisNetwork — admin taps this ONCE while standing in the shop, on the
    shop's WiFi. Records the connection's current public IP as trusted. Consumer
    broadband rotates its IP, so this is the button to tap again when it does.
+   (The device gate exists precisely so you do not have to.)
    ========================================================================== */
 exports.trustThisNetwork = functions.https.onCall(async (data, context) => {
-  const branchId = String((data && data.branchId) || '').trim();
-  if (!branchId) throw new functions.https.HttpsError('invalid-argument', 'branchId is required.');
+  const branchId = C.requireBranchId(data);
   const db = admin.firestore();
-  const caller = await requireAdmin(db, context, branchId);
+  const caller = await C.requireAdmin(db, context, branchId);
 
-  const ip = callerIp(context);
-  if (!ip) throw new functions.https.HttpsError('failed-precondition', 'Could not read this connection’s address.');
+  const ip = C.callerIp(context);
+  if (!ip) throw new functions.https.HttpsError('failed-precondition', 'Could not read this connection address.');
 
   const label = String((data && data.label) || '').trim().slice(0, 60) || 'Shop network';
-  const net = await loadNetwork(db, branchId);
-  if (net.ips.some((e) => e && normalizeIp(e.ip) === ip)) {
+  const net = await C.loadNetwork(db, branchId);
+  if (net.ips.some((e) => e && C.normalizeIp(e.ip) === ip)) {
     return { ok: true, ip, alreadyTrusted: true, ips: net.ips, enforce: net.enforce };
   }
 
   const entry = { ip, label, addedBy: caller.uid, addedAt: new Date().toISOString() };
   const ips = net.ips.concat([entry]);
-  await db.doc(pathFor(CONFIG.networkPath, branchId, '')).set({ ips }, { merge: true });
+  await db.doc(C.pathFor(CONFIG.networkPath, branchId, '')).set({ ips }, { merge: true });
   /* `chain` is returned for diagnosis only — it shows which hop was picked out
      of the forwarding chain if a shop ever appears to be trusting the wrong
      address. It is never used for a decision. */
-  return { ok: true, ip, alreadyTrusted: false, ips, enforce: net.enforce, chain: ipChain(context) };
+  return { ok: true, ip, alreadyTrusted: false, ips, enforce: net.enforce, chain: C.ipChain(context) };
 });
 
 /* ---- forgetNetwork — drop a trusted address ------------------------------ */
 exports.forgetNetwork = functions.https.onCall(async (data, context) => {
-  const branchId = String((data && data.branchId) || '').trim();
-  const target = normalizeIp((data && data.ip) || '');
-  if (!branchId || !target) throw new functions.https.HttpsError('invalid-argument', 'branchId and ip are required.');
+  const branchId = C.requireBranchId(data);
+  const target = C.normalizeIp((data && data.ip) || '');
+  if (!target) throw new functions.https.HttpsError('invalid-argument', 'ip is required.');
   const db = admin.firestore();
-  await requireAdmin(db, context, branchId);
+  await C.requireAdmin(db, context, branchId);
 
-  const net = await loadNetwork(db, branchId);
-  const ips = net.ips.filter((e) => !(e && normalizeIp(e.ip) === target));
+  const net = await C.loadNetwork(db, branchId);
+  const ips = net.ips.filter((e) => !(e && C.normalizeIp(e.ip) === target));
   /* Removing the last trusted network while enforcing would lock out every
      non-admin, so enforcement is switched off with it. */
   const patch = { ips };
   if (!ips.length && net.enforce) patch.enforce = false;
-  await db.doc(pathFor(CONFIG.networkPath, branchId, '')).set(patch, { merge: true });
+  await db.doc(C.pathFor(CONFIG.networkPath, branchId, '')).set(patch, { merge: true });
   return { ok: true, ips, enforce: patch.enforce !== undefined ? patch.enforce : net.enforce };
 });
 
-/* ---- setEnforcement — turn the whole gate on or off ---------------------- */
+/* ---- setEnforcement — turn the NETWORK gate on or off -------------------- */
 exports.setEnforcement = functions.https.onCall(async (data, context) => {
-  const branchId = String((data && data.branchId) || '').trim();
-  if (!branchId) throw new functions.https.HttpsError('invalid-argument', 'branchId is required.');
+  const branchId = C.requireBranchId(data);
   const enforce = !!(data && data.enforce);
   const db = admin.firestore();
-  await requireAdmin(db, context, branchId);
+  await C.requireAdmin(db, context, branchId);
 
-  const net = await loadNetwork(db, branchId);
+  const net = await C.loadNetwork(db, branchId);
   if (enforce && !net.ips.length) {
     throw new functions.https.HttpsError('failed-precondition',
       'Trust the shop network first — otherwise every worker is locked out.');
   }
-  await db.doc(pathFor(CONFIG.networkPath, branchId, '')).set({ enforce }, { merge: true });
+  await db.doc(C.pathFor(CONFIG.networkPath, branchId, '')).set({ enforce }, { merge: true });
   return { ok: true, enforce, ips: net.ips };
 });
 
-/* Exposed for unit tests. */
-exports._internals = { ipMatches, normalizeIp, ipv4ToInt, callerIp, ipChain, isInfrastructureIp };
+/* Exposed for unit tests. The implementations now live in shop-common.js so the
+   device gate and the network gate cannot drift apart. */
+exports._internals = {
+  ipMatches: C.ipMatches, normalizeIp: C.normalizeIp, ipv4ToInt: C.ipv4ToInt,
+  callerIp: C.callerIp, ipChain: C.ipChain, isInfrastructureIp: C.isInfrastructureIp,
+};

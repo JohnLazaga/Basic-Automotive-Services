@@ -18,8 +18,12 @@
    "Trust this network" controls in Settings.
    ========================================================================== */
 
-var PREMISES = { checked:false, enforced:false, exempt:false, ip:'', expiresAt:0 };
-var PREM_NET = null;              /* cached {enforce, ips[]} for the Settings card */
+/* Part 16 adds a second, stronger gate on the same session: an enrolled device
+   proving itself with a hardware key. Both are answered by startShopSession,
+   so this file drives both round trips. */
+
+var PREMISES = { checked:false, enforced:false, deviceEnforced:false, exempt:false, ip:'', expiresAt:0 };
+var PREM_NET = null;              /* cached {enforce, deviceEnforce, ips[]} for Settings */
 var _premNetLoading = false;
 var _premTimer = null;
 var PREM_REFRESH_MS = 20 * 60 * 1000;    /* renew every 20 min while open on-site */
@@ -46,17 +50,43 @@ async function premisesEnsure(){
   try {
     var res = await _premCall('startShopSession', { branchId: branchId() });
     var d = (res && res.data) || {};
-    PREMISES = { checked:true, enforced:!!d.enforced, exempt:!!d.exempt,
-                 ip:d.ip||'', expiresAt:Number(d.expiresAt)||0 };
+
+    /* The device gate is on and we have not proved this device yet. The server
+       has handed us a challenge; the hardware signs it and we call straight
+       back. Renewals skip this — the server extends a session that is already
+       device-proven, so nobody is asked for Face ID every 20 minutes. */
+    if (d && d.need === 'device'){
+      if (typeof deviceSupported!=='function' || !deviceSupported()){
+        renderDeviceBlocked('unsupported'); await _premSignOut(); return false;
+      }
+      var assertion = await deviceGetAssertion(d.options);
+      var res2 = await _premCall('startShopSession', { branchId: branchId(), deviceResponse: assertion });
+      d = (res2 && res2.data) || {};
+    }
+
+    PREMISES = { checked:true, enforced:!!d.enforced, deviceEnforced:!!d.deviceEnforced,
+                 exempt:!!d.exempt, ip:d.ip||'', expiresAt:Number(d.expiresAt)||0 };
     premisesStartTimer();
     return true;
   } catch(e){
     var code = (e && e.code) || '';
-    var offPremises = code.indexOf('permission-denied')>=0 && /off-premises/.test((e&&e.message)||'');
+    var msg  = (e && e.message) || '';
+
+    /* Device refusals: wrong device, a passkey that has started syncing to a
+       personal iCloud account, or the worker dismissing the Face ID prompt. */
+    var deviceRefusal = /unknown-device|synced-passkey/.test(msg) || (e && e.name==='NotAllowedError');
+    if (deviceRefusal){
+      PREMISES = { checked:true, enforced:false, deviceEnforced:true, exempt:false, ip:'', expiresAt:0 };
+      renderDeviceBlocked(/synced-passkey/.test(msg) ? 'synced-passkey' : '');
+      await _premSignOut();
+      return false;
+    }
+
+    var offPremises = code.indexOf('permission-denied')>=0 && /off-premises/.test(msg);
     if (offPremises){
-      PREMISES = { checked:true, enforced:true, exempt:false, ip:'', expiresAt:0 };
+      PREMISES = { checked:true, enforced:true, deviceEnforced:false, exempt:false, ip:'', expiresAt:0 };
       renderPremisesBlocked();
-      try { if (FB && FB.auth) await FB.auth.signOut(); } catch(_){}
+      await _premSignOut();
       return false;
     }
     if (code.indexOf('not-found')>=0 || code.indexOf('unauthenticated')>=0){
@@ -81,19 +111,44 @@ function premisesStartTimer(){
     if (typeof FB==='undefined' || !FB || !FB.auth || !FB.auth.currentUser) return;
     _premCall('startShopSession', { branchId: branchId() }).then(function(res){
       var d=(res&&res.data)||{};
-      PREMISES.expiresAt = Number(d.expiresAt)||PREMISES.expiresAt;
-      PREMISES.enforced  = !!d.enforced;
+      /* A renewal is normally answered outright, because the server extends a
+         session that is already device-proven. Being asked for a device now
+         means the proof stopped counting — an admin removed this device, or it
+         started syncing its passkey. That is a revocation, so treat it like
+         one rather than silently re-prompting for Face ID. */
+      if (d && d.need === 'device'){
+        renderDeviceBlocked('');
+        _premSignOut();
+        if (_premTimer){ clearInterval(_premTimer); _premTimer=null; }
+        return;
+      }
+      PREMISES.expiresAt      = Number(d.expiresAt)||PREMISES.expiresAt;
+      PREMISES.enforced       = !!d.enforced;
+      PREMISES.deviceEnforced = !!d.deviceEnforced;
     }).catch(function(e){
       var msg=(e&&e.message)||'';
+      if (/unknown-device|synced-passkey/.test(msg)){
+        renderDeviceBlocked(/synced-passkey/.test(msg) ? 'synced-passkey' : '');
+        _premSignOut();
+        if (_premTimer){ clearInterval(_premTimer); _premTimer=null; }
+        return;
+      }
       if (/off-premises/.test(msg)){
         /* The device left the shop network mid-shift. Data access dies with the
            session; tell the user before it silently starts failing. */
         renderPremisesBlocked(true);
-        try { if (FB && FB.auth) FB.auth.signOut(); } catch(_){}
+        _premSignOut();
         if (_premTimer){ clearInterval(_premTimer); _premTimer=null; }
       }
     });
   }, PREM_REFRESH_MS);
+}
+
+/* Signing out on a refusal is deliberate: it stops the app retrying a login
+   that the server has already decided against, and drops the token. */
+function _premSignOut(){
+  try { if (typeof FB!=='undefined' && FB && FB.auth) return FB.auth.signOut(); } catch(_){}
+  return Promise.resolve();
 }
 
 function renderPremisesBlocked(midSession){
@@ -118,11 +173,12 @@ function loadPremisesNetwork(){
   _premNetLoading = true;
   bcol('shopnet').doc('network').get().then(function(doc){
     var d = doc.exists ? (doc.data()||{}) : {};
-    PREM_NET = { enforce: d.enforce===true, ips: Array.isArray(d.ips)?d.ips:[] };
+    PREM_NET = { enforce: d.enforce===true, deviceEnforce: d.deviceEnforce===true,
+                 ips: Array.isArray(d.ips)?d.ips:[] };
     _premNetLoading=false;
     if (ROUTE.view==='settings') render();
   }).catch(function(){
-    _premNetLoading=false; PREM_NET={ enforce:false, ips:[] };
+    _premNetLoading=false; PREM_NET={ enforce:false, deviceEnforce:false, ips:[] };
     if (ROUTE.view==='settings') render();
   });
 }
@@ -163,7 +219,7 @@ function trustShopNetwork(){
   var el=document.getElementById('premStatus'); if(el){ el.textContent='Checking this connection…'; }
   _premCall('trustThisNetwork', { branchId: branchId(), label: 'Shop network' }).then(function(res){
     var d=(res&&res.data)||{};
-    PREM_NET = { enforce: !!d.enforce, ips: d.ips||[] };
+    PREM_NET = { enforce: !!d.enforce, deviceEnforce: !!(PREM_NET&&PREM_NET.deviceEnforce), ips: d.ips||[] };
     toast(d.alreadyTrusted ? 'Already trusted · '+(d.ip||'') : 'Trusted this network · '+(d.ip||''));
     render();
   }).catch(function(e){ toast(_premErr(e),'err'); render(); });
@@ -178,7 +234,7 @@ function forgetShopNetwork(ip){
       if (typeof closeModal==='function') closeModal();
       _premCall('forgetNetwork', { branchId: branchId(), ip: ip }).then(function(res){
         var d=(res&&res.data)||{};
-        PREM_NET = { enforce: !!d.enforce, ips: d.ips||[] };
+        PREM_NET = { enforce: !!d.enforce, deviceEnforce: !!(PREM_NET&&PREM_NET.deviceEnforce), ips: d.ips||[] };
         toast('Network removed'); render();
       }).catch(function(e){ toast(_premErr(e),'err'); });
     }, 'Forget');
@@ -191,7 +247,7 @@ function togglePremisesEnforce(on){
     if (typeof closeModal==='function') closeModal();
     _premCall('setEnforcement', { branchId: branchId(), enforce: turnOn }).then(function(res){
       var d=(res&&res.data)||{};
-      PREM_NET = { enforce: !!d.enforce, ips: d.ips||PREM_NET.ips };
+      PREM_NET = { enforce: !!d.enforce, deviceEnforce: !!(PREM_NET&&PREM_NET.deviceEnforce), ips: d.ips||PREM_NET.ips };
       toast(turnOn ? 'Enforcement is ON' : 'Enforcement is OFF'); render();
     }).catch(function(e){ toast(_premErr(e),'err'); });
   };

@@ -879,6 +879,50 @@ await (async function(){
   ok('setting job hours clears that gate item', M.postJobMissingFields(jg).indexOf('Job hours')<0);
 })();
 
+/* ---------------------------------------------------------------- TEST 26 */
+section('Device gate: base64url round-trip and refusal messages');
+(function(){
+  /* WebAuthn ids, challenges and signatures cross the wire as base64url and go
+     back to the browser as ArrayBuffers. Anything lossy here does not fail
+     loudly — it surfaces much later as "signature invalid" on a shop iPad, so
+     assert the round trip over bytes that expose padding and the +/ chars. */
+  var bytes = new Uint8Array(256); for (var i=0;i<256;i++) bytes[i]=i;
+  var b64u = M.devBufToB64u(bytes.buffer);
+  ok('base64url uses no +, / or = padding', !/[+/=]/.test(b64u));
+  var back = new Uint8Array(M.devB64uToBuf(b64u));
+  var same = (back.length===256);
+  for (var j=0;j<256 && same;j++) same = (back[j]===bytes[j]);
+  ok('all 256 byte values survive the round trip', same);
+
+  var pads = true;
+  [1,2,3,4].forEach(function(n){
+    var b = new Uint8Array(n); for (var k=0;k<n;k++) b[k] = (k*37+1) & 255;
+    var r = new Uint8Array(M.devB64uToBuf(M.devBufToB64u(b.buffer)));
+    if (r.length!==n){ pads=false; return; }
+    for (var k2=0;k2<n;k2++) if (r[k2]!==b[k2]) pads=false;
+  });
+  ok('every padding length round-trips', pads);
+
+  /* allowCredentials entries must become real buffers or the browser throws. */
+  var list = M.devCredList([{ id:M.devBufToB64u(new Uint8Array([1,2,3]).buffer), type:'public-key' }]);
+  ok('credential ids become ArrayBuffers', list.length===1 && list[0].id instanceof ArrayBuffer);
+  ok('credential type is preserved', list[0].type==='public-key');
+
+  /* The iCloud refusal is the one an admin will actually hit at enrolment, and
+     it is useless unless it says what to do about it. */
+  ok('synced-passkey error explains iCloud', /iCloud/.test(M.devErr({ message:'synced-passkey' })));
+  ok('dismissed Face ID reads as cancelled', /cancelled/i.test(M.devErr({ name:'NotAllowedError' })));
+  ok('already-enrolled device says so', /already enrolled/i.test(M.devErr({ name:'InvalidStateError' })));
+
+  /* No Firebase in Node: the card must stay silent rather than throw, the same
+     way it must on a local branch where the gate does not apply. */
+  ok('passkeys reported unsupported without a browser', M.deviceSupported()===false);
+  M.setDevices([]); M.setPremNet({ enforce:false, deviceEnforce:false, ips:[] });
+  var card='', threw=false;
+  try { card = M.devicesCard(); } catch(e){ threw=true; }
+  ok('devices card is inert without cloud', !threw && card==='');
+})();
+
 /* ---------------------------------------------------------------- SUMMARY */
 console.log('\n────────────────────────────────────────');
 console.log('  PASS: '+pass+'   FAIL: '+fail);

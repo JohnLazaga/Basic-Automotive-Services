@@ -334,6 +334,18 @@ if (typeof module!=='undefined' && module.exports){
     allocateSeriesNumber:allocateSeriesNumber, maxSeriesNo:maxSeriesNo, nextNo:nextNo,
     jobCostOfParts:jobCostOfParts, jobRevenueExVat:jobRevenueExVat, jobGrossMargin:jobGrossMargin, jobNetProfit:jobNetProfit,
     jobMechActualHours:jobMechActualHours, jobHasTimer:jobHasTimer, jobActualHoursTotal:jobActualHoursTotal, timerRunning:timerRunning,
+    /* Device gate (part16). Function declarations hoist, so naming them here —
+       above where they are written — is safe; the DEVICES/PREM_NET vars are not,
+       hence the setter closures. */
+    devB64uToBuf:function(s){ return _devB64uToBuf(s); },
+    devBufToB64u:function(b){ return _devBufToB64u(b); },
+    devCredList:function(l){ return _devCredList(l); },
+    deviceSupported:function(){ return deviceSupported(); },
+    devicePlatformAvailable:function(){ return devicePlatformAvailable(); },
+    devicesCard:function(){ return devicesCard(); },
+    devErr:function(e){ return _devErr(e); },
+    setDevices:function(list){ DEVICES=list; },
+    setPremNet:function(n){ PREM_NET=n; },
     advancePostJob:null
   };
 }

@@ -100,9 +100,18 @@ exports.adminResetPassword = functions.https.onCall(async (data, context) => {
 });
 
 /* ============================================================================
-   Also deployed from this functions project: the shop-premises gate
-   (startShopSession / trustThisNetwork / forgetNetwork / setEnforcement).
-   It lives in its own module because it is app-specific, not part of the
-   reusable password-reset kit. See shop-session.js for the why and how.
+   Also deployed from this functions project, both app-specific rather than part
+   of the reusable password-reset kit:
+
+     shop-session.js — the premises gate. startShopSession / trustThisNetwork /
+                       forgetNetwork / setEnforcement.
+     device-auth.js  — the device gate (WebAuthn passkeys on the shop iPads).
+                       beginDeviceEnroll / finishDeviceEnroll / forgetDevice /
+                       setDeviceEnforcement.
+
+   shop-session requires device-auth (it issues the session either gate earns),
+   so this single Object.assign would be enough — device-auth is listed for its
+   own sake so the deployed function names are obvious from this file.
    ========================================================================== */
 Object.assign(exports, require('./shop-session'));
+Object.assign(exports, require('./device-auth'));
