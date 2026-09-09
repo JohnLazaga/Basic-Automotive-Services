@@ -311,6 +311,14 @@ textarea{resize:vertical} .chk{display:flex;align-items:center;gap:8px;font-size
 .curstat{font-size:13px;margin-bottom:10px} .due-banner{background:#fff6db;border-radius:9px;padding:7px 11px;font-size:12.5px;margin-bottom:10px}
 .log{display:flex;flex-direction:column;gap:2px} .log-row{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--hair)}
 .log-row:last-child{border-bottom:0} .log-body{flex:1} .log-note{font-size:13px} .log-meta{font-size:11.5px;color:var(--ink2)}
+.log-row.tagged{background:#fffbea;border-radius:9px;padding:8px 10px;margin:2px 0}
+.log-for{font-size:12px;font-weight:600;color:#9a7400;margin-bottom:3px;display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+.tagpick-cta{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:4px 0 8px}
+.tagpick{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:6px 12px;background:var(--canvas);border-radius:9px;padding:10px 12px;margin-bottom:8px}
+.tagpick[hidden]{display:none}
+.tagpick-item{display:flex;align-items:center;justify-content:flex-start;gap:8px;font-size:13px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tagpick-item input[type=checkbox]{width:17px;height:17px;flex:0 0 auto;margin:0;cursor:pointer;accent-color:var(--brand)}
+.jcard-for{font-size:11.5px;font-weight:600;color:#9a7400}
 .kv{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;padding:3px 0} .kv-k{color:var(--ink2)} .kv-v{font-weight:600;text-align:right}
 .notes{margin-top:10px} .notes p{margin:4px 0 0;font-size:13px}
 .addl-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--hair)}
@@ -543,6 +551,7 @@ a.lnk{color:var(--brand);cursor:pointer;font-weight:600}
 [data-theme="dark"] .sbadge.gA{background:rgba(110,128,255,.2);color:#aeb6ff}
 [data-theme="dark"] .released{background:rgba(52,199,89,.14);color:#5fe08a}
 [data-theme="dark"] .due-banner{background:#2a2206}
+[data-theme="dark"] .log-row.tagged{background:#2a2206} [data-theme="dark"] .log-for,[data-theme="dark"] .jcard-for{color:#ffd60a}
 [data-theme="dark"] .nextsvc.due{color:#ff8a8a}
 [data-theme="dark"] .bay-car:hover{background:rgba(242,23,23,.28)}
 [data-theme="dark"] .p-due{border-color:rgba(242,23,23,.4)!important;background:rgba(242,23,23,.08)!important}
@@ -627,7 +636,7 @@ var BRANCH = {"id":"sudipen","slug":"sudipen","name":"Basic by JMSI — Sudipen"
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-09-04 · 65a53a2';
+var APP_VERSION = 'v1.3.0 · 2026-09-09 · ecce454';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -1757,7 +1766,9 @@ var BOARD_Q='';
 function boardMatch(j){
   if(!BOARD_Q) return true; var q=BOARD_Q.toLowerCase();
   var mechs=staffSearchStr((j.mechanicIds||[]).concat([j.saId]));
-  return [j.plate,j.owner,j.contactPerson,j.make,j.model,j.make+' '+j.model,mechs,
+  // People tagged in the clipboard log — lets a mechanic find "messages for me".
+  var tagged=staffSearchStr((j.statusLog||[]).reduce(function(a,e){ return a.concat(logEntryFor(e)); },[]));
+  return [j.plate,j.owner,j.contactPerson,j.make,j.model,j.make+' '+j.model,mechs,tagged,
           j.no,j.orNumber,digitsOf(j.no),digitsOf(j.orNumber)]
     .some(function(x){ return String(x||'').toLowerCase().indexOf(q)>=0; });
 }
@@ -1794,6 +1805,12 @@ function lastLogTimeLabel(j){
   var log=j.statusLog||[]; if(!log.length) return '—';
   return fmtDateTime(log[log.length-1].time);
 }
+/* "📣 for Jun, Toto" when the latest log entry is addressed to someone, else ''. */
+function lastLogForLabel(j){
+  var log=j.statusLog||[]; if(!log.length) return '';
+  var ids=logEntryFor(log[log.length-1]); if(!ids.length) return '';
+  return '📣 for '+ids.map(staffName).join(', ');
+}
 function jobCardMini(j){
   var due = isUpdateDue(j);
   return '<div class="jcard" onclick="go(\'job\',\''+j.id+'\')">'+
@@ -1802,7 +1819,8 @@ function jobCardMini(j){
       (due?'<span class="duedot" title="Update due">●</span>':'')+'</div>'+
     '<div class="jcard-veh">'+esc(j.year+' '+j.make+' '+j.model)+'</div>'+
     '<div class="jcard-meta"><span>'+esc(bayName(j.bayId))+'</span><span>'+esc(mechName(j.mechanicIds))+'</span></div>'+
-    '<div class="jcard-meta"><span class="muted small">⏱ last log '+esc(lastLogTimeLabel(j))+'</span></div>'+
+    '<div class="jcard-meta"><span class="muted small">⏱ last log '+esc(lastLogTimeLabel(j))+'</span>'+
+      (lastLogForLabel(j)?'<span class="jcard-for">'+esc(lastLogForLabel(j))+'</span>':'')+'</div>'+
     '<div class="jcard-foot"><span class="muted">'+esc(j.no)+'</span>'+(canSeeJobPrices()?'<span class="bill">'+peso(jobGross(j))+'</span>':'')+'</div>'+
   '</div>';
 }
@@ -2290,19 +2308,63 @@ function jobPrintButtons(j){
 }
 
 /* ---- Status / clipboard panel --------------------------------------------- */
+/* Staff ids a log entry is addressed to (the "📣 For" tags). Always an array. */
+function logEntryFor(e){ return (e && Array.isArray(e.for)) ? e.for.filter(function(id){ return !!staffById(id); }) : []; }
+/* "📣 For: Jun Reyes, Toto Bautista" chips for a tagged entry, or '' when untagged. */
+function logForHTML(e){
+  var ids=logEntryFor(e); if(!ids.length) return '';
+  return '<div class="log-for">📣 For: '+ids.map(function(id){ return '<span class="chip gold">'+esc(staffName(id))+'</span>'; }).join(' ')+'</div>';
+}
 function jobStatusPanel(j){
   var log = (j.statusLog||[]).slice().reverse().map(function(e){
-    return '<div class="log-row">'+statusBadge(e.code)+'<div class="log-body"><div class="log-note">'+esc(e.note||'')+'</div>'+
+    var tagged = logEntryFor(e).length;
+    return '<div class="log-row'+(tagged?' tagged':'')+'">'+statusBadge(e.code)+'<div class="log-body">'+logForHTML(e)+
+      '<div class="log-note">'+esc(e.note||'')+'</div>'+
       '<div class="log-meta">'+esc(staffName(e.by))+' · '+esc(fmtDateTime(e.time))+'</div></div></div>';
   }).join('') || emptyState('No updates logged yet.');
   var due = isUpdateDue(j) ? '<span class="amber">⚑ Update due (clipboard checkpoint passed)</span>' : '';
-  return '<div class="card"><div class="card-head"><h2>Status & Clipboard Log</h2>'+
-    '<button class="btn sm primary" onclick="logUpdate(\''+j.id+'\')">＋ Log update</button></div>'+
+  return '<div class="card"><div class="card-head"><h2>Status & Clipboard Log</h2><div class="row gap">'+
+    '<button class="btn sm ghost" onclick="logUpdate(\''+j.id+'\',true)" title="Log an update addressed to specific people">📣 Message someone</button>'+
+    '<button class="btn sm primary" onclick="logUpdate(\''+j.id+'\')">＋ Log update</button></div></div>'+
     (due?'<div class="due-banner">'+due+'</div>':'')+
     '<div class="curstat">Current: '+statusBadge(j.status)+' <span class="muted">'+esc(STATUS[j.status]||'')+'</span></div>'+
     '<div class="log">'+log+'</div></div>';
 }
-function logUpdate(id){
+/* The tag picker: one checkbox per staff member. Hidden until the "📣 Tag people"
+   call-to-action is pressed (or the panel's "Message someone" shortcut is used),
+   so a plain clipboard update stays a two-field form. */
+function logTagPickerHTML(open){
+  var boxes=(S.staff||[]).map(function(st){
+    return '<label class="tagpick-item"><input type="checkbox" class="luTag" value="'+attr(st.id)+'"><span>'+esc(st.name)+
+      (st.role?' <span class="muted small">· '+esc(st.role)+'</span>':'')+'</span></label>';
+  }).join('') || '<div class="muted small">No staff on file — add people under Staff first.</div>';
+  return '<div class="tagpick-cta"><button type="button" class="btn sm'+(open?' primary':' ghost')+'" id="luTagBtn" onclick="toggleLogTags()">📣 Tag people</button>'+
+    '<span class="muted small">Address this entry to someone — it shows up as a message for them.</span></div>'+
+    '<div id="luTagBox" class="tagpick"'+(open?'':' hidden')+'>'+boxes+'</div>';
+}
+function toggleLogTags(){
+  var box=document.getElementById('luTagBox'); if(!box) return;
+  box.hidden=!box.hidden;
+  var b=document.getElementById('luTagBtn');
+  if(b){ b.classList.toggle('primary',!box.hidden); b.classList.toggle('ghost',box.hidden); }
+}
+/* Ids ticked in the tag picker (empty when the picker is closed or nothing ticked). */
+function logTagsChecked(){
+  if(typeof document==='undefined') return [];
+  var box=document.getElementById('luTagBox'); if(!box || box.hidden) return [];
+  var out=[]; var nodes=box.querySelectorAll ? box.querySelectorAll('.luTag') : [];
+  for(var i=0;i<nodes.length;i++){ if(nodes[i].checked) out.push(nodes[i].value); }
+  return out;
+}
+/* Build one status-log entry. Pure, so the Node tests can exercise the tagging
+   rule without a DOM. forIds is stored only when someone is actually tagged. */
+function buildLogEntry(code, by, note, forIds){
+  var e={ time:new Date().toISOString(), code:code, by:by, note:note };
+  var ids=(forIds||[]).filter(function(id,i,a){ return staffById(id) && a.indexOf(id)===i; });
+  if(ids.length) e.for=ids;
+  return e;
+}
+function logUpdate(id, withTags){
   var j=jobById(id);
   var opts = STATUS_ORDER.map(function(c){return '<option value="'+c+'"'+(c===j.status?' selected':'')+'>'+c+' — '+esc(STATUS[c])+'</option>';}).join('');
   // No preselection — the person logging must deliberately pick who is updating,
@@ -2311,7 +2373,8 @@ function logUpdate(id){
   openModal('Log clipboard update',
     field('Status code','<select id="luCode">'+opts+'</select>')+
     field('Updated by','<select id="luBy">'+who+'</select>','Required — records who made this update')+
-    field('Note','<textarea id="luNote" rows="2" placeholder="e.g. Brake pads installed, bleeding lines."></textarea>'),
+    field('Note','<textarea id="luNote" rows="2" placeholder="e.g. Brake pads installed, bleeding lines."></textarea>')+
+    logTagPickerHTML(!!withTags),
     { onOk:'saveUpdate', okText:'Log' });
   setTimeout(function(){ openModalCtx=id; },10);
 }
@@ -2345,9 +2408,25 @@ function saveUpdate(){
     if(ne){ try{ ne.focus(); }catch(e){} }
     return;
   }
+  var tags=logTagsChecked();
+  // A tagged entry is a message to those people — an empty message is noise.
+  if(tags.length && !String(note).trim()){
+    toast('Write the message in the note — tagged people need something to read','err');
+    var te=document.getElementById('luNote');
+    var tb=(te && te.closest) ? te.closest('.fld') : null;
+    if(tb){ tb.classList.add('needfill');
+      var tclr=function(){ if(String(val('luNote')).trim()){ tb.classList.remove('needfill'); te.removeEventListener('input',tclr); } };
+      te.addEventListener('input',tclr);
+    }
+    if(te){ try{ te.focus(); }catch(e){} }
+    return;
+  }
   j.status=code;
-  j.statusLog.push({ time:new Date().toISOString(), code:code, by:by, note:note });
-  persist(); closeModal(); toast('Update logged'); render();
+  var entry=buildLogEntry(code, by, note, tags);
+  j.statusLog.push(entry);
+  persist(); closeModal();
+  toast(entry.for ? 'Logged · message for '+entry.for.map(staffName).join(', ') : 'Update logged');
+  render();
 }
 
 /* ---- Lines panel ---------------------------------------------------------- */
@@ -5838,6 +5917,7 @@ if (typeof module!=='undefined' && module.exports){
     can:can, routeAllowed:routeAllowed, setCurrentUser:function(u){ CURRENT_USER=u; },
     clearDataBlockers:clearDataBlockers,
     commissionTable:commissionTable, jobLaborCommission:jobLaborCommission, jobLaborCommissionMap:jobLaborCommissionMap, jobLaborCommissionMapAll:jobLaborCommissionMapAll, laborTotal:laborTotal,
+    buildLogEntry:buildLogEntry, logEntryFor:logEntryFor, jobStatusPanel:jobStatusPanel, lastLogForLabel:lastLogForLabel,
     jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
     allocateSeriesNumber:allocateSeriesNumber, maxSeriesNo:maxSeriesNo, nextNo:nextNo,
     jobCostOfParts:jobCostOfParts, jobRevenueExVat:jobRevenueExVat, jobGrossMargin:jobGrossMargin, jobNetProfit:jobNetProfit,

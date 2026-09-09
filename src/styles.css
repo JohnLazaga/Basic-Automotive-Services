@@ -300,6 +300,14 @@ textarea{resize:vertical} .chk{display:flex;align-items:center;gap:8px;font-size
 .curstat{font-size:13px;margin-bottom:10px} .due-banner{background:#fff6db;border-radius:9px;padding:7px 11px;font-size:12.5px;margin-bottom:10px}
 .log{display:flex;flex-direction:column;gap:2px} .log-row{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--hair)}
 .log-row:last-child{border-bottom:0} .log-body{flex:1} .log-note{font-size:13px} .log-meta{font-size:11.5px;color:var(--ink2)}
+.log-row.tagged{background:#fffbea;border-radius:9px;padding:8px 10px;margin:2px 0}
+.log-for{font-size:12px;font-weight:600;color:#9a7400;margin-bottom:3px;display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+.tagpick-cta{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:4px 0 8px}
+.tagpick{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:6px 12px;background:var(--canvas);border-radius:9px;padding:10px 12px;margin-bottom:8px}
+.tagpick[hidden]{display:none}
+.tagpick-item{display:flex;align-items:center;justify-content:flex-start;gap:8px;font-size:13px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tagpick-item input[type=checkbox]{width:17px;height:17px;flex:0 0 auto;margin:0;cursor:pointer;accent-color:var(--brand)}
+.jcard-for{font-size:11.5px;font-weight:600;color:#9a7400}
 .kv{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;padding:3px 0} .kv-k{color:var(--ink2)} .kv-v{font-weight:600;text-align:right}
 .notes{margin-top:10px} .notes p{margin:4px 0 0;font-size:13px}
 .addl-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--hair)}
@@ -532,6 +540,7 @@ a.lnk{color:var(--brand);cursor:pointer;font-weight:600}
 [data-theme="dark"] .sbadge.gA{background:rgba(110,128,255,.2);color:#aeb6ff}
 [data-theme="dark"] .released{background:rgba(52,199,89,.14);color:#5fe08a}
 [data-theme="dark"] .due-banner{background:#2a2206}
+[data-theme="dark"] .log-row.tagged{background:#2a2206} [data-theme="dark"] .log-for,[data-theme="dark"] .jcard-for{color:#ffd60a}
 [data-theme="dark"] .nextsvc.due{color:#ff8a8a}
 [data-theme="dark"] .bay-car:hover{background:rgba(242,23,23,.28)}
 [data-theme="dark"] .p-due{border-color:rgba(242,23,23,.4)!important;background:rgba(242,23,23,.08)!important}

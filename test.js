@@ -923,6 +923,45 @@ section('Device gate: base64url round-trip and refusal messages');
   ok('devices card is inert without cloud', !threw && card==='');
 })();
 
+/* ---------------------------------------------------------------- TEST */
+section('Clipboard log as a message board: tagging people');
+(function(){
+  const s = fresh();
+  const jun = s.staff.find(function(x){ return x.name==='Jun Reyes'; });
+  const toto = s.staff.find(function(x){ return x.name==='Toto Bautista'; });
+  const sv = s.staff.find(function(x){ return x.role==='SV'; });
+
+  /* A plain update stores no "for" key at all, so old entries and new untagged
+     ones look identical on disk and in the cloud. */
+  const plain = M.buildLogEntry('B2', sv.id, 'Brake pads on', []);
+  ok('untagged entry has no for[]', !('for' in plain) && plain.code==='B2' && plain.by===sv.id);
+  ok('untagged entry reads as addressed to nobody', M.logEntryFor(plain).length===0);
+
+  /* Tagged: ids are kept, duplicates collapse, unknown ids are dropped. */
+  const msg = M.buildLogEntry('B4', sv.id, 'Need the torque spec before you refit the hub', [jun.id, toto.id, jun.id, 'st_ghost']);
+  ok('tagged entry keeps each real person once', JSON.stringify(msg.for)===JSON.stringify([jun.id,toto.id]));
+  ok('logEntryFor ignores staff who no longer exist', M.logEntryFor({ for:[jun.id,'st_gone'] }).length===1);
+  ok('logEntryFor tolerates a non-array', M.logEntryFor({ for:'oops' }).length===0 && M.logEntryFor(null).length===0);
+
+  /* Panel shows the call-to-action and the "For:" chips with the tagged names. */
+  const j = s.jobs[0]; j.statusLog.push(plain, msg); M.setS(s);
+  const html = M.jobStatusPanel(j);
+  ok('panel carries the Message someone call-to-action', html.indexOf('Message someone')>-1);
+  ok('tagged row lists both names', html.indexOf('For:')>-1 && html.indexOf('Jun Reyes')>-1 && html.indexOf('Toto Bautista')>-1);
+  ok('tagged row is highlighted', html.indexOf('log-row tagged')>-1);
+  ok('the note itself is escaped', M.jobStatusPanel({ id:'x', status:'A1', statusLog:[{ code:'A1', by:sv.id, note:'<b>x</b>', time:new Date().toISOString() }] }).indexOf('<b>x</b>')<0);
+
+  /* Board card flags the latest entry when it is addressed to someone. */
+  ok('board card label names the tagged people', /📣 for Jun Reyes, Toto Bautista/.test(M.lastLogForLabel(j)));
+  j.statusLog.push(M.buildLogEntry('B2', sv.id, 'back to work', []));
+  ok('board card label clears once a plain update follows', M.lastLogForLabel(j)==='');
+
+  /* Board search finds a unit by the name of a person tagged in its log. */
+  M.setBoardQ('toto');
+  ok('board search matches a tagged name', M.boardMatch(j)===true);
+  M.setBoardQ('');
+})();
+
 /* ---------------------------------------------------------------- SUMMARY */
 console.log('\n────────────────────────────────────────');
 console.log('  PASS: '+pass+'   FAIL: '+fail);

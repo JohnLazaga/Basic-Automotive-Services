@@ -70,7 +70,9 @@ var BOARD_Q='';
 function boardMatch(j){
   if(!BOARD_Q) return true; var q=BOARD_Q.toLowerCase();
   var mechs=staffSearchStr((j.mechanicIds||[]).concat([j.saId]));
-  return [j.plate,j.owner,j.contactPerson,j.make,j.model,j.make+' '+j.model,mechs,
+  // People tagged in the clipboard log — lets a mechanic find "messages for me".
+  var tagged=staffSearchStr((j.statusLog||[]).reduce(function(a,e){ return a.concat(logEntryFor(e)); },[]));
+  return [j.plate,j.owner,j.contactPerson,j.make,j.model,j.make+' '+j.model,mechs,tagged,
           j.no,j.orNumber,digitsOf(j.no),digitsOf(j.orNumber)]
     .some(function(x){ return String(x||'').toLowerCase().indexOf(q)>=0; });
 }
@@ -107,6 +109,12 @@ function lastLogTimeLabel(j){
   var log=j.statusLog||[]; if(!log.length) return '—';
   return fmtDateTime(log[log.length-1].time);
 }
+/* "📣 for Jun, Toto" when the latest log entry is addressed to someone, else ''. */
+function lastLogForLabel(j){
+  var log=j.statusLog||[]; if(!log.length) return '';
+  var ids=logEntryFor(log[log.length-1]); if(!ids.length) return '';
+  return '📣 for '+ids.map(staffName).join(', ');
+}
 function jobCardMini(j){
   var due = isUpdateDue(j);
   return '<div class="jcard" onclick="go(\'job\',\''+j.id+'\')">'+
@@ -115,7 +123,8 @@ function jobCardMini(j){
       (due?'<span class="duedot" title="Update due">●</span>':'')+'</div>'+
     '<div class="jcard-veh">'+esc(j.year+' '+j.make+' '+j.model)+'</div>'+
     '<div class="jcard-meta"><span>'+esc(bayName(j.bayId))+'</span><span>'+esc(mechName(j.mechanicIds))+'</span></div>'+
-    '<div class="jcard-meta"><span class="muted small">⏱ last log '+esc(lastLogTimeLabel(j))+'</span></div>'+
+    '<div class="jcard-meta"><span class="muted small">⏱ last log '+esc(lastLogTimeLabel(j))+'</span>'+
+      (lastLogForLabel(j)?'<span class="jcard-for">'+esc(lastLogForLabel(j))+'</span>':'')+'</div>'+
     '<div class="jcard-foot"><span class="muted">'+esc(j.no)+'</span>'+(canSeeJobPrices()?'<span class="bill">'+peso(jobGross(j))+'</span>':'')+'</div>'+
   '</div>';
 }

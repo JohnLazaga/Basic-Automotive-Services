@@ -304,19 +304,63 @@ function jobPrintButtons(j){
 }
 
 /* ---- Status / clipboard panel --------------------------------------------- */
+/* Staff ids a log entry is addressed to (the "📣 For" tags). Always an array. */
+function logEntryFor(e){ return (e && Array.isArray(e.for)) ? e.for.filter(function(id){ return !!staffById(id); }) : []; }
+/* "📣 For: Jun Reyes, Toto Bautista" chips for a tagged entry, or '' when untagged. */
+function logForHTML(e){
+  var ids=logEntryFor(e); if(!ids.length) return '';
+  return '<div class="log-for">📣 For: '+ids.map(function(id){ return '<span class="chip gold">'+esc(staffName(id))+'</span>'; }).join(' ')+'</div>';
+}
 function jobStatusPanel(j){
   var log = (j.statusLog||[]).slice().reverse().map(function(e){
-    return '<div class="log-row">'+statusBadge(e.code)+'<div class="log-body"><div class="log-note">'+esc(e.note||'')+'</div>'+
+    var tagged = logEntryFor(e).length;
+    return '<div class="log-row'+(tagged?' tagged':'')+'">'+statusBadge(e.code)+'<div class="log-body">'+logForHTML(e)+
+      '<div class="log-note">'+esc(e.note||'')+'</div>'+
       '<div class="log-meta">'+esc(staffName(e.by))+' · '+esc(fmtDateTime(e.time))+'</div></div></div>';
   }).join('') || emptyState('No updates logged yet.');
   var due = isUpdateDue(j) ? '<span class="amber">⚑ Update due (clipboard checkpoint passed)</span>' : '';
-  return '<div class="card"><div class="card-head"><h2>Status & Clipboard Log</h2>'+
-    '<button class="btn sm primary" onclick="logUpdate(\''+j.id+'\')">＋ Log update</button></div>'+
+  return '<div class="card"><div class="card-head"><h2>Status & Clipboard Log</h2><div class="row gap">'+
+    '<button class="btn sm ghost" onclick="logUpdate(\''+j.id+'\',true)" title="Log an update addressed to specific people">📣 Message someone</button>'+
+    '<button class="btn sm primary" onclick="logUpdate(\''+j.id+'\')">＋ Log update</button></div></div>'+
     (due?'<div class="due-banner">'+due+'</div>':'')+
     '<div class="curstat">Current: '+statusBadge(j.status)+' <span class="muted">'+esc(STATUS[j.status]||'')+'</span></div>'+
     '<div class="log">'+log+'</div></div>';
 }
-function logUpdate(id){
+/* The tag picker: one checkbox per staff member. Hidden until the "📣 Tag people"
+   call-to-action is pressed (or the panel's "Message someone" shortcut is used),
+   so a plain clipboard update stays a two-field form. */
+function logTagPickerHTML(open){
+  var boxes=(S.staff||[]).map(function(st){
+    return '<label class="tagpick-item"><input type="checkbox" class="luTag" value="'+attr(st.id)+'"><span>'+esc(st.name)+
+      (st.role?' <span class="muted small">· '+esc(st.role)+'</span>':'')+'</span></label>';
+  }).join('') || '<div class="muted small">No staff on file — add people under Staff first.</div>';
+  return '<div class="tagpick-cta"><button type="button" class="btn sm'+(open?' primary':' ghost')+'" id="luTagBtn" onclick="toggleLogTags()">📣 Tag people</button>'+
+    '<span class="muted small">Address this entry to someone — it shows up as a message for them.</span></div>'+
+    '<div id="luTagBox" class="tagpick"'+(open?'':' hidden')+'>'+boxes+'</div>';
+}
+function toggleLogTags(){
+  var box=document.getElementById('luTagBox'); if(!box) return;
+  box.hidden=!box.hidden;
+  var b=document.getElementById('luTagBtn');
+  if(b){ b.classList.toggle('primary',!box.hidden); b.classList.toggle('ghost',box.hidden); }
+}
+/* Ids ticked in the tag picker (empty when the picker is closed or nothing ticked). */
+function logTagsChecked(){
+  if(typeof document==='undefined') return [];
+  var box=document.getElementById('luTagBox'); if(!box || box.hidden) return [];
+  var out=[]; var nodes=box.querySelectorAll ? box.querySelectorAll('.luTag') : [];
+  for(var i=0;i<nodes.length;i++){ if(nodes[i].checked) out.push(nodes[i].value); }
+  return out;
+}
+/* Build one status-log entry. Pure, so the Node tests can exercise the tagging
+   rule without a DOM. forIds is stored only when someone is actually tagged. */
+function buildLogEntry(code, by, note, forIds){
+  var e={ time:new Date().toISOString(), code:code, by:by, note:note };
+  var ids=(forIds||[]).filter(function(id,i,a){ return staffById(id) && a.indexOf(id)===i; });
+  if(ids.length) e.for=ids;
+  return e;
+}
+function logUpdate(id, withTags){
   var j=jobById(id);
   var opts = STATUS_ORDER.map(function(c){return '<option value="'+c+'"'+(c===j.status?' selected':'')+'>'+c+' — '+esc(STATUS[c])+'</option>';}).join('');
   // No preselection — the person logging must deliberately pick who is updating,
@@ -325,7 +369,8 @@ function logUpdate(id){
   openModal('Log clipboard update',
     field('Status code','<select id="luCode">'+opts+'</select>')+
     field('Updated by','<select id="luBy">'+who+'</select>','Required — records who made this update')+
-    field('Note','<textarea id="luNote" rows="2" placeholder="e.g. Brake pads installed, bleeding lines."></textarea>'),
+    field('Note','<textarea id="luNote" rows="2" placeholder="e.g. Brake pads installed, bleeding lines."></textarea>')+
+    logTagPickerHTML(!!withTags),
     { onOk:'saveUpdate', okText:'Log' });
   setTimeout(function(){ openModalCtx=id; },10);
 }
@@ -359,9 +404,25 @@ function saveUpdate(){
     if(ne){ try{ ne.focus(); }catch(e){} }
     return;
   }
+  var tags=logTagsChecked();
+  // A tagged entry is a message to those people — an empty message is noise.
+  if(tags.length && !String(note).trim()){
+    toast('Write the message in the note — tagged people need something to read','err');
+    var te=document.getElementById('luNote');
+    var tb=(te && te.closest) ? te.closest('.fld') : null;
+    if(tb){ tb.classList.add('needfill');
+      var tclr=function(){ if(String(val('luNote')).trim()){ tb.classList.remove('needfill'); te.removeEventListener('input',tclr); } };
+      te.addEventListener('input',tclr);
+    }
+    if(te){ try{ te.focus(); }catch(e){} }
+    return;
+  }
   j.status=code;
-  j.statusLog.push({ time:new Date().toISOString(), code:code, by:by, note:note });
-  persist(); closeModal(); toast('Update logged'); render();
+  var entry=buildLogEntry(code, by, note, tags);
+  j.statusLog.push(entry);
+  persist(); closeModal();
+  toast(entry.for ? 'Logged · message for '+entry.for.map(staffName).join(', ') : 'Update logged');
+  render();
 }
 
 /* ---- Lines panel ---------------------------------------------------------- */

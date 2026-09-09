@@ -4,6 +4,18 @@ All notable changes to **Basic by JMSI — Shop Operations** are recorded here.
 The version shown in the app sidebar (and each branch's `version.txt`) matches the
 entries below. Newest first.
 
+## [Unreleased]
+
+### Added
+- **Clipboard log doubles as a message board.** The Status & Clipboard Log on a
+  job now has a **📣 Message someone** call-to-action (and a **📣 Tag people**
+  button inside *Log clipboard update*). Tick one or more staff and the entry is
+  addressed to them: it shows a **📣 For: …** line with their names, is
+  highlighted in the log, and the unit's card on the Operations Board shows
+  **📣 for …** while that entry is the latest. Board search matches tagged
+  names, so a mechanic can type their own name to find the units with messages
+  for them. A tagged entry must carry a note; untagged updates are unchanged.
+
 ## [1.2.0] — 2026-07-11
 
 ### Added
