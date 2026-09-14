@@ -23,16 +23,53 @@ function isUpdateDue(job){
   return lastTime < cpDate;
 }
 
+/* ---- PMS reminders ---------------------------------------------------------
+   A reminder is only meaningful for a unit whose PMS was actually performed
+   here. A job "performed PMS" when its tablet checklist was completed OR it
+   billed the reserved PMS LABOR line (shops that skip the checklist still bill
+   PMS). Anything else — a plain repair, a manually typed date — never prompts. */
+function jobPerformedPms(j){
+  if(!j) return false;
+  if(j.pms && j.pms.status==='done') return true;
+  return (j.lines||[]).some(function(l){ return !!l && l.type==='labor' && l.ref===PMS_LABOR_ID; });
+}
+/* True when at least one released job on this vehicle performed a PMS. */
+function vehiclePmsPerformed(v){
+  if(!v) return false;
+  var plate=String(v.plate||'').toUpperCase();
+  return (S.jobs||[]).some(function(j){
+    return j.stage==='Released' && jobPerformedPms(j) &&
+      (j.vehicleId===v.id || (plate && String(j.plate||'').toUpperCase()===plate));
+  });
+}
+/* 'due' (date passed) · 'soon' (within 14 days) · '' (nothing to show). */
+function pmsReminderState(v){
+  if(!v || !v.nextServiceDate || !vehiclePmsPerformed(v)) return '';
+  if(v.nextServiceDate < todayISO()) return 'due';
+  if(v.nextServiceDate <= todayISO(new Date(Date.now()+14*86400000))) return 'soon';
+  return '';
+}
+/* Schedule the next PMS off a release: 3 months out, 5,000 km on. */
+function scheduleNextService(v, reading){
+  var nd=new Date(); nd.setMonth(nd.getMonth()+3);
+  v.nextServiceDate=todayISO(nd); v.nextServiceOdo=(reading||v.odometer||0)+5000;
+}
+function clearNextService(v){ v.nextServiceDate=''; v.nextServiceOdo=''; }
+/* The ✕ on a board reminder (and "Clear reminder" on the vehicle page). */
+function dismissPmsReminder(id){
+  var v=vehicleById(id); if(!v) return;
+  confirmModal('Dismiss PMS reminder',
+    'Clear the next-service reminder for '+v.plate+'? The vehicle stays on file — the reminder comes back automatically when its next PMS is released.',
+    function(){ clearNextService(v); persist(); if(typeof publishPortalDoc==='function') publishPortalDoc(v.id); toast('Reminder dismissed'); render(); },
+    'Dismiss', true);
+}
 function alertStrip(){
   var alerts=[];
-  // PMS reminders
-  var today = todayISO();
+  // PMS reminders — only units where a PMS was actually performed (see above)
   S.vehicles.forEach(function(v){
-    if (v.nextServiceDate && v.nextServiceDate <= todayISO(new Date(Date.now()+14*86400000))){
-      var due = v.nextServiceDate < today;
-      alerts.push({ kind:due?'due':'soon', text:(due?'PMS overdue':'PMS due soon')+': '+v.plate+' ('+v.make+' '+v.model+') · '+fmtDate(v.nextServiceDate),
-        act:"go('vehicle','"+v.id+"')" });
-    }
+    var st=pmsReminderState(v); if(!st) return;
+    alerts.push({ kind:st, text:(st==='due'?'PMS overdue':'PMS due soon')+': '+v.plate+' ('+v.make+' '+v.model+') · '+fmtDate(v.nextServiceDate),
+      act:"go('vehicle','"+v.id+"')", dismiss:"dismissPmsReminder('"+v.id+"')" });
   });
   // low stock
   S.parts.forEach(function(p){
@@ -40,6 +77,8 @@ function alertStrip(){
   });
   if (!alerts.length) return '';
   return '<div class="alertstrip">'+alerts.slice(0,6).map(function(a){
+    if(a.dismiss) return '<span class="alert a-'+a.kind+'"><button class="alert-go" onclick="'+a.act+'">'+esc(a.text)+'</button>'+
+      '<button class="alert-x" onclick="'+a.dismiss+'" title="Dismiss this reminder" aria-label="Dismiss reminder">✕</button></span>';
     return '<button class="alert a-'+a.kind+'" onclick="'+a.act+'">'+esc(a.text)+'</button>';
   }).join('')+ (alerts.length>6?'<span class="alert-more">+'+(alerts.length-6)+' more</span>':'') +'</div>';
 }

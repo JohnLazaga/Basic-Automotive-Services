@@ -1411,8 +1411,10 @@ function releaseJob(id){
   // record the last service odometer on the vehicle and schedule next service
   var v=vehicleById(j.vehicleId); if(v){ var reading=Number(j.lastServiceOdo)||(j.inspection&&j.inspection.odometer)||j.odometer||0;
     v.odometer=Math.max(v.odometer||0, reading);
-    // Next service: 3 months after the last service (release) date, and 5,000 km after the last service odometer.
-    var nd=new Date(); nd.setMonth(nd.getMonth()+3); v.nextServiceDate=todayISO(nd); v.nextServiceOdo=(reading||v.odometer||0)+5000; }
+    // Next service (3 months / 5,000 km on) is scheduled ONLY when this job
+    // actually performed a PMS. A plain repair leaves the vehicle's reminder as
+    // it was, so the board never nags about units that were never serviced.
+    if(jobPerformedPms(j)) scheduleNextService(v, reading); }
   persist(); if(v && typeof publishPortalDoc==='function') publishPortalDoc(v.id);   // refresh public portal
   toast('Vehicle released ✓'); render();
 }

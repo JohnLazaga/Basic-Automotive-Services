@@ -962,6 +962,49 @@ section('Clipboard log as a message board: tagging people');
   M.setBoardQ('');
 })();
 
+/* ---------------------------------------------------------------- TEST */
+section('PMS reminders only for units whose PMS was actually performed');
+(function(){
+  const s = fresh();
+  const yesterday = M.todayISO(new Date(Date.now()-86400000));
+  const v = s.vehicles[0]; v.nextServiceDate = yesterday;     // seeded date, no PMS job behind it
+
+  /* A date alone is not enough: the seeded vehicle has never had a PMS here. */
+  s.jobs.forEach(function(j){ j.stage='Released'; j.lines=(j.lines||[]).filter(function(l){ return l.ref!=='lb_pms'; }); j.pms=null; });
+  M.setS(s);
+  ok('no PMS on record → no reminder state', M.pmsReminderState(v)==='');
+  ok('board strip stays silent for that unit', M.alertStrip().indexOf(v.plate)<0);
+  ok('a plain repair does not count as PMS', M.jobPerformedPms({ lines:[{type:'labor',ref:'lb_x',desc:'Brake job'}] })===false);
+
+  /* Billing the PMS LABOR line on a released job makes the unit eligible. */
+  const pmsJob = { id:'jpms', no:'JO-9001', vehicleId:v.id, plate:v.plate, stage:'Released', status:'C3', statusLog:[],
+    lines:[{ id:'l1', type:'labor', ref:'lb_pms', desc:'PMS LABOR', qty:1, price:1500 }], payments:[], mechanicIds:[] };
+  s.jobs.push(pmsJob); M.setS(s);
+  ok('PMS LABOR line counts as PMS performed', M.jobPerformedPms(pmsJob)===true);
+  ok('vehicle now has a PMS on record', M.vehiclePmsPerformed(v)===true);
+  ok('past date → overdue', M.pmsReminderState(v)==='due');
+  const strip = M.alertStrip();
+  ok('board strip shows the overdue unit', strip.indexOf('PMS overdue')>-1 && strip.indexOf(v.plate)>-1);
+  ok('board reminder carries a dismiss control', strip.indexOf("dismissPmsReminder('"+v.id+"')")>-1);
+
+  /* A completed tablet checklist counts even without the labor line. */
+  ok('completed checklist counts as PMS performed', M.jobPerformedPms({ pms:{ status:'done' }, lines:[] })===true);
+  ok('an open checklist does not', M.jobPerformedPms({ pms:{ status:'open' }, lines:[] })===false);
+
+  /* Within 14 days → "soon"; further out → nothing. */
+  v.nextServiceDate = M.todayISO(new Date(Date.now()+5*86400000));
+  ok('date within 14 days → soon', M.pmsReminderState(v)==='soon');
+  v.nextServiceDate = M.todayISO(new Date(Date.now()+40*86400000));
+  ok('date 40 days out → no prompt', M.pmsReminderState(v)==='');
+
+  /* Dismiss clears the schedule; the next PMS release re-creates it. */
+  M.clearNextService(v);
+  ok('dismiss clears date and odo', v.nextServiceDate==='' && v.nextServiceOdo==='');
+  M.scheduleNextService(v, 50000);
+  const inThree = new Date(); inThree.setMonth(inThree.getMonth()+3);
+  ok('release schedules 3 months / +5,000 km', v.nextServiceDate===M.todayISO(inThree) && v.nextServiceOdo===55000);
+})();
+
 /* ---------------------------------------------------------------- SUMMARY */
 console.log('\n────────────────────────────────────────');
 console.log('  PASS: '+pass+'   FAIL: '+fail);

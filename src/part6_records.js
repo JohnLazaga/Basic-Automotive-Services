@@ -50,11 +50,10 @@ function vehBodyHTML(){
   var list=S.vehicles.filter(vehMatch);
   if(!list.length) return emptyState(VEH_Q? 'No vehicles match “'+esc(VEH_Q)+'”.' : 'No vehicles.');
   var rows=list.map(function(v){
-    var due = v.nextServiceDate && v.nextServiceDate<=todayISO();
-    var soon = v.nextServiceDate && v.nextServiceDate<=todayISO(new Date(Date.now()+14*86400000));
+    var st = pmsReminderState(v);   // chips only for units whose PMS was actually performed
     return '<tr onclick="go(\'vehicle\',\''+v.id+'\')"><td><b>'+esc(v.plate)+'</b></td><td>'+esc(v.owner)+'</td>'+
       '<td>'+esc((v.year+' '+v.make+' '+v.model).trim()+(v.variant?' '+v.variant:''))+'</td><td class="r">'+odo(vehLastServiceOdo(v))+'</td>'+
-      '<td>'+(v.nextServiceDate? (due?chip('Overdue','due'):soon?chip('Due soon','gold'):fmtDate(v.nextServiceDate)) : '—')+'</td></tr>';
+      '<td>'+(v.nextServiceDate? (st==='due'?chip('Overdue','due'):st==='soon'?chip('Due soon','gold'):fmtDate(v.nextServiceDate)) : '—')+'</td></tr>';
   }).join('');
   return '<div class="card pad0"><table class="tbl click"><thead><tr><th>Plate</th><th>Owner</th><th>Vehicle</th><th class="r">Last service odo</th><th>Next service</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
 }
@@ -75,14 +74,17 @@ VIEWS.vehicle = function(id){
       '<div class="muted small">'+esc((j.lines||[]).map(function(l){return l.desc;}).join(', ')||'—')+'</div>'+
       '<div class="tl-amt">'+peso(jobGross(j))+'</div></div></div>';
   }).join('') : emptyState('No service history yet.');
-  var due = v.nextServiceDate && v.nextServiceDate<=todayISO();
+  var due = pmsReminderState(v)==='due';
   return '<div class="page"><div class="page-head"><div><a class="back" onclick="go(\'vehicles\')">‹ Vehicles</a><h1>'+esc(v.plate)+'</h1></div>'+
     '<div class="row gap"><button class="btn ghost" onclick="editVehicle(\''+v.id+'\')">Edit</button><button class="btn ghost" onclick="sendReminder(\''+v.id+'\')">Send reminder</button></div></div>'+
     '<div class="cols"><div class="colmain"><div class="card"><h2>Service history</h2><div class="timeline">'+timeline+'</div></div></div>'+
     '<div class="colside">'+
       '<div class="card"><h2>Next service / PMS</h2>'+
         '<div class="nextsvc '+(due?'due':'')+'">'+(v.nextServiceDate? (due?'⚠ Overdue · ':'')+fmtDate(v.nextServiceDate) : 'Not scheduled')+
-        (v.nextServiceOdo?'<div class="muted small">or at '+odo(v.nextServiceOdo)+' (now '+odo(v.odometer)+')</div>':'')+'</div></div>'+
+        (v.nextServiceOdo?'<div class="muted small">or at '+odo(v.nextServiceOdo)+' (now '+odo(v.odometer)+')</div>':'')+'</div>'+
+        (v.nextServiceDate ? '<div class="mt8"><button class="btn sm ghost" onclick="dismissPmsReminder(\''+v.id+'\')">✕ Clear reminder</button>'+
+          (vehiclePmsPerformed(v)?'':'<div class="muted small mt8">No PMS on record for this unit — it is not shown on the board.</div>')+'</div>' : '')+
+        '</div>'+
       '<div class="card center"><h2>Customer QR portal</h2><div id="vehQR" class="qrbox"></div>'+
         '<div class="row gap center mt8"><button class="btn sm ghost" onclick="printQRSticker(\''+v.id+'\')">⎙ Print sticker</button>'+
         '<button class="btn sm ghost" onclick="previewPortal(\''+v.id+'\')">Preview portal</button>'+

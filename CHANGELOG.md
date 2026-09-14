@@ -15,6 +15,17 @@ entries below. Newest first.
   **📣 for …** while that entry is the latest. Board search matches tagged
   names, so a mechanic can type their own name to find the units with messages
   for them. A tagged entry must carry a note; untagged updates are unchanged.
+- **Dismiss a PMS reminder.** Each PMS prompt on the Operations Board has a ✕
+  that clears the unit's next-service reminder (after a confirm). The vehicle
+  page has a matching **Clear reminder** button. The reminder returns on its
+  own when the unit's next PMS is released.
+
+### Changed
+- **PMS prompts only for units that actually had a PMS.** The board strip and
+  the Vehicles list now prompt only when a released job on that unit completed
+  the PMS checklist or billed the PMS LABOR line. Releasing a plain repair no
+  longer schedules a next service three months out, which is what made every
+  released unit nag "PMS due soon".
 
 ## [1.2.0] — 2026-07-11
 

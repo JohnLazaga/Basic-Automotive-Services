@@ -123,7 +123,9 @@ h2{font-size:16px;font-weight:700;letter-spacing:-.01em;margin:0 0 10px}
 
 /* ---- Alert strip ---- */
 .alertstrip{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
-.alert{border:1px solid var(--hair);background:#fff;border-radius:20px;padding:6px 13px;font-size:12.5px;font-weight:500;cursor:pointer}
+.alert{border:1px solid var(--hair);background:#fff;border-radius:20px;padding:6px 13px;font-size:12.5px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.alert-go,.alert-x{border:0;background:transparent;font:inherit;color:inherit;cursor:pointer;padding:0;line-height:inherit}
+.alert-x{opacity:.55;font-size:11px;padding-left:4px} .alert-x:hover{opacity:1}
 .alert.a-due{background:#fdecec;border-color:#f3b5b5;color:var(--brand-dark)}
 .alert.a-soon{background:#fff6db;border-color:#f0d89a;color:#9a7400}
 .alert.a-low{background:#fbfbfd;color:var(--ink2)} .alert-more{font-size:12px;color:var(--ink2);align-self:center}
@@ -636,7 +638,7 @@ var BRANCH = {"id":"main","slug":"fairview","name":"Basic by JMSI — Fairview (
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-09-09 · fc150b4';
+var APP_VERSION = 'v1.3.0 · 2026-09-14 · 305d313';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -1719,16 +1721,53 @@ function isUpdateDue(job){
   return lastTime < cpDate;
 }
 
+/* ---- PMS reminders ---------------------------------------------------------
+   A reminder is only meaningful for a unit whose PMS was actually performed
+   here. A job "performed PMS" when its tablet checklist was completed OR it
+   billed the reserved PMS LABOR line (shops that skip the checklist still bill
+   PMS). Anything else — a plain repair, a manually typed date — never prompts. */
+function jobPerformedPms(j){
+  if(!j) return false;
+  if(j.pms && j.pms.status==='done') return true;
+  return (j.lines||[]).some(function(l){ return !!l && l.type==='labor' && l.ref===PMS_LABOR_ID; });
+}
+/* True when at least one released job on this vehicle performed a PMS. */
+function vehiclePmsPerformed(v){
+  if(!v) return false;
+  var plate=String(v.plate||'').toUpperCase();
+  return (S.jobs||[]).some(function(j){
+    return j.stage==='Released' && jobPerformedPms(j) &&
+      (j.vehicleId===v.id || (plate && String(j.plate||'').toUpperCase()===plate));
+  });
+}
+/* 'due' (date passed) · 'soon' (within 14 days) · '' (nothing to show). */
+function pmsReminderState(v){
+  if(!v || !v.nextServiceDate || !vehiclePmsPerformed(v)) return '';
+  if(v.nextServiceDate < todayISO()) return 'due';
+  if(v.nextServiceDate <= todayISO(new Date(Date.now()+14*86400000))) return 'soon';
+  return '';
+}
+/* Schedule the next PMS off a release: 3 months out, 5,000 km on. */
+function scheduleNextService(v, reading){
+  var nd=new Date(); nd.setMonth(nd.getMonth()+3);
+  v.nextServiceDate=todayISO(nd); v.nextServiceOdo=(reading||v.odometer||0)+5000;
+}
+function clearNextService(v){ v.nextServiceDate=''; v.nextServiceOdo=''; }
+/* The ✕ on a board reminder (and "Clear reminder" on the vehicle page). */
+function dismissPmsReminder(id){
+  var v=vehicleById(id); if(!v) return;
+  confirmModal('Dismiss PMS reminder',
+    'Clear the next-service reminder for '+v.plate+'? The vehicle stays on file — the reminder comes back automatically when its next PMS is released.',
+    function(){ clearNextService(v); persist(); if(typeof publishPortalDoc==='function') publishPortalDoc(v.id); toast('Reminder dismissed'); render(); },
+    'Dismiss', true);
+}
 function alertStrip(){
   var alerts=[];
-  // PMS reminders
-  var today = todayISO();
+  // PMS reminders — only units where a PMS was actually performed (see above)
   S.vehicles.forEach(function(v){
-    if (v.nextServiceDate && v.nextServiceDate <= todayISO(new Date(Date.now()+14*86400000))){
-      var due = v.nextServiceDate < today;
-      alerts.push({ kind:due?'due':'soon', text:(due?'PMS overdue':'PMS due soon')+': '+v.plate+' ('+v.make+' '+v.model+') · '+fmtDate(v.nextServiceDate),
-        act:"go('vehicle','"+v.id+"')" });
-    }
+    var st=pmsReminderState(v); if(!st) return;
+    alerts.push({ kind:st, text:(st==='due'?'PMS overdue':'PMS due soon')+': '+v.plate+' ('+v.make+' '+v.model+') · '+fmtDate(v.nextServiceDate),
+      act:"go('vehicle','"+v.id+"')", dismiss:"dismissPmsReminder('"+v.id+"')" });
   });
   // low stock
   S.parts.forEach(function(p){
@@ -1736,6 +1775,8 @@ function alertStrip(){
   });
   if (!alerts.length) return '';
   return '<div class="alertstrip">'+alerts.slice(0,6).map(function(a){
+    if(a.dismiss) return '<span class="alert a-'+a.kind+'"><button class="alert-go" onclick="'+a.act+'">'+esc(a.text)+'</button>'+
+      '<button class="alert-x" onclick="'+a.dismiss+'" title="Dismiss this reminder" aria-label="Dismiss reminder">✕</button></span>';
     return '<button class="alert a-'+a.kind+'" onclick="'+a.act+'">'+esc(a.text)+'</button>';
   }).join('')+ (alerts.length>6?'<span class="alert-more">+'+(alerts.length-6)+' more</span>':'') +'</div>';
 }
@@ -3415,8 +3456,10 @@ function releaseJob(id){
   // record the last service odometer on the vehicle and schedule next service
   var v=vehicleById(j.vehicleId); if(v){ var reading=Number(j.lastServiceOdo)||(j.inspection&&j.inspection.odometer)||j.odometer||0;
     v.odometer=Math.max(v.odometer||0, reading);
-    // Next service: 3 months after the last service (release) date, and 5,000 km after the last service odometer.
-    var nd=new Date(); nd.setMonth(nd.getMonth()+3); v.nextServiceDate=todayISO(nd); v.nextServiceOdo=(reading||v.odometer||0)+5000; }
+    // Next service (3 months / 5,000 km on) is scheduled ONLY when this job
+    // actually performed a PMS. A plain repair leaves the vehicle's reminder as
+    // it was, so the board never nags about units that were never serviced.
+    if(jobPerformedPms(j)) scheduleNextService(v, reading); }
   persist(); if(v && typeof publishPortalDoc==='function') publishPortalDoc(v.id);   // refresh public portal
   toast('Vehicle released ✓'); render();
 }
@@ -3607,11 +3650,10 @@ function vehBodyHTML(){
   var list=S.vehicles.filter(vehMatch);
   if(!list.length) return emptyState(VEH_Q? 'No vehicles match “'+esc(VEH_Q)+'”.' : 'No vehicles.');
   var rows=list.map(function(v){
-    var due = v.nextServiceDate && v.nextServiceDate<=todayISO();
-    var soon = v.nextServiceDate && v.nextServiceDate<=todayISO(new Date(Date.now()+14*86400000));
+    var st = pmsReminderState(v);   // chips only for units whose PMS was actually performed
     return '<tr onclick="go(\'vehicle\',\''+v.id+'\')"><td><b>'+esc(v.plate)+'</b></td><td>'+esc(v.owner)+'</td>'+
       '<td>'+esc((v.year+' '+v.make+' '+v.model).trim()+(v.variant?' '+v.variant:''))+'</td><td class="r">'+odo(vehLastServiceOdo(v))+'</td>'+
-      '<td>'+(v.nextServiceDate? (due?chip('Overdue','due'):soon?chip('Due soon','gold'):fmtDate(v.nextServiceDate)) : '—')+'</td></tr>';
+      '<td>'+(v.nextServiceDate? (st==='due'?chip('Overdue','due'):st==='soon'?chip('Due soon','gold'):fmtDate(v.nextServiceDate)) : '—')+'</td></tr>';
   }).join('');
   return '<div class="card pad0"><table class="tbl click"><thead><tr><th>Plate</th><th>Owner</th><th>Vehicle</th><th class="r">Last service odo</th><th>Next service</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
 }
@@ -3632,14 +3674,17 @@ VIEWS.vehicle = function(id){
       '<div class="muted small">'+esc((j.lines||[]).map(function(l){return l.desc;}).join(', ')||'—')+'</div>'+
       '<div class="tl-amt">'+peso(jobGross(j))+'</div></div></div>';
   }).join('') : emptyState('No service history yet.');
-  var due = v.nextServiceDate && v.nextServiceDate<=todayISO();
+  var due = pmsReminderState(v)==='due';
   return '<div class="page"><div class="page-head"><div><a class="back" onclick="go(\'vehicles\')">‹ Vehicles</a><h1>'+esc(v.plate)+'</h1></div>'+
     '<div class="row gap"><button class="btn ghost" onclick="editVehicle(\''+v.id+'\')">Edit</button><button class="btn ghost" onclick="sendReminder(\''+v.id+'\')">Send reminder</button></div></div>'+
     '<div class="cols"><div class="colmain"><div class="card"><h2>Service history</h2><div class="timeline">'+timeline+'</div></div></div>'+
     '<div class="colside">'+
       '<div class="card"><h2>Next service / PMS</h2>'+
         '<div class="nextsvc '+(due?'due':'')+'">'+(v.nextServiceDate? (due?'⚠ Overdue · ':'')+fmtDate(v.nextServiceDate) : 'Not scheduled')+
-        (v.nextServiceOdo?'<div class="muted small">or at '+odo(v.nextServiceOdo)+' (now '+odo(v.odometer)+')</div>':'')+'</div></div>'+
+        (v.nextServiceOdo?'<div class="muted small">or at '+odo(v.nextServiceOdo)+' (now '+odo(v.odometer)+')</div>':'')+'</div>'+
+        (v.nextServiceDate ? '<div class="mt8"><button class="btn sm ghost" onclick="dismissPmsReminder(\''+v.id+'\')">✕ Clear reminder</button>'+
+          (vehiclePmsPerformed(v)?'':'<div class="muted small mt8">No PMS on record for this unit — it is not shown on the board.</div>')+'</div>' : '')+
+        '</div>'+
       '<div class="card center"><h2>Customer QR portal</h2><div id="vehQR" class="qrbox"></div>'+
         '<div class="row gap center mt8"><button class="btn sm ghost" onclick="printQRSticker(\''+v.id+'\')">⎙ Print sticker</button>'+
         '<button class="btn sm ghost" onclick="previewPortal(\''+v.id+'\')">Preview portal</button>'+
@@ -5917,6 +5962,8 @@ if (typeof module!=='undefined' && module.exports){
     can:can, routeAllowed:routeAllowed, setCurrentUser:function(u){ CURRENT_USER=u; },
     clearDataBlockers:clearDataBlockers,
     commissionTable:commissionTable, jobLaborCommission:jobLaborCommission, jobLaborCommissionMap:jobLaborCommissionMap, jobLaborCommissionMapAll:jobLaborCommissionMapAll, laborTotal:laborTotal,
+    jobPerformedPms:jobPerformedPms, vehiclePmsPerformed:vehiclePmsPerformed, pmsReminderState:pmsReminderState,
+    scheduleNextService:scheduleNextService, clearNextService:clearNextService, alertStrip:alertStrip,
     buildLogEntry:buildLogEntry, logEntryFor:logEntryFor, jobStatusPanel:jobStatusPanel, lastLogForLabel:lastLogForLabel,
     jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
     allocateSeriesNumber:allocateSeriesNumber, maxSeriesNo:maxSeriesNo, nextNo:nextNo,

@@ -330,6 +330,8 @@ if (typeof module!=='undefined' && module.exports){
     can:can, routeAllowed:routeAllowed, setCurrentUser:function(u){ CURRENT_USER=u; },
     clearDataBlockers:clearDataBlockers,
     commissionTable:commissionTable, jobLaborCommission:jobLaborCommission, jobLaborCommissionMap:jobLaborCommissionMap, jobLaborCommissionMapAll:jobLaborCommissionMapAll, laborTotal:laborTotal,
+    jobPerformedPms:jobPerformedPms, vehiclePmsPerformed:vehiclePmsPerformed, pmsReminderState:pmsReminderState,
+    scheduleNextService:scheduleNextService, clearNextService:clearNextService, alertStrip:alertStrip,
     buildLogEntry:buildLogEntry, logEntryFor:logEntryFor, jobStatusPanel:jobStatusPanel, lastLogForLabel:lastLogForLabel,
     jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
     allocateSeriesNumber:allocateSeriesNumber, maxSeriesNo:maxSeriesNo, nextNo:nextNo,
