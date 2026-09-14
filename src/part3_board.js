@@ -139,19 +139,89 @@ VIEWS.board = function(){
   var search='<input class="searchbox" id="boardSearch" value="'+attr(BOARD_Q)+'" oninput="boardSearch(this.value)" placeholder="Search JO # / OR # / plate / owner / make / model / mechanic…" autocomplete="off">';
   return '<div class="page">'+
     '<div class="page-head"><h1>Operations Board</h1><div class="row gap wrap">'+search+toggle+'</div></div>'+
-    alertStrip()+ boardKPIs()+ '<div id="boardBody">'+boardBody()+'</div>'+
+    messageStrip()+ alertStrip()+ boardKPIs()+ '<div id="boardBody">'+boardBody()+'</div>'+
   '</div>';
 };
+
+/* ---- Tagged-message inbox ----------------------------------------------------
+   Every clipboard entry addressed to someone (entry.for) is a message. It stays
+   unread for each tagged person until they press "Got it" on the board, which
+   stamps entry.ack[staffId]. The board strip lists who has unread messages so
+   whoever is at the counter (or the person themselves) sees it without opening
+   a job. Released and cancelled units drop out — that unit is done with. */
+function messageAcked(e, staffId){ return !!(e && e.ack && e.ack[staffId]); }
+/* Unread messages for one person (or everyone when staffId is null), newest first. */
+function unreadMessages(staffId){
+  var out=[];
+  (S.jobs||[]).forEach(function(j){
+    if(j.stage==='Released' || !jobLive(j)) return;
+    (j.statusLog||[]).forEach(function(e, idx){
+      logEntryFor(e).forEach(function(id){
+        if(staffId && id!==staffId) return;
+        if(messageAcked(e,id)) return;
+        out.push({ job:j, entry:e, idx:idx, staffId:id });
+      });
+    });
+  });
+  out.sort(function(a,b){ return String(b.entry.time).localeCompare(String(a.entry.time)); });
+  return out;
+}
+/* Staff ids that belong to the signed-in account: an explicit link (the
+   account's "Staff record", set under Accounts & Roles) or a same-name match. */
+function myStaffIds(){
+  if(typeof CURRENT_USER==='undefined' || !CURRENT_USER) return [];
+  var ids=[]; var nm=String(CURRENT_USER.name||'').trim().toLowerCase();
+  (S.staff||[]).forEach(function(st){
+    if((CURRENT_USER.staffId && st.id===CURRENT_USER.staffId) || (nm && String(st.name||'').trim().toLowerCase()===nm)) ids.push(st.id);
+  });
+  return ids;
+}
+/* One chip per person with unread messages; the signed-in person's chip comes
+   first, in red, labelled "You". */
+function messageStrip(){
+  var all=unreadMessages(null); if(!all.length) return '';
+  var mine=myStaffIds();
+  var count={}; var order=[];
+  all.forEach(function(m){ if(!count[m.staffId]){ count[m.staffId]=0; order.push(m.staffId); } count[m.staffId]++; });
+  order.sort(function(a,b){ var ma=mine.indexOf(a)>=0?0:1, mb=mine.indexOf(b)>=0?0:1; return (ma-mb) || staffName(a).localeCompare(staffName(b)); });
+  return '<div class="msgstrip">'+order.map(function(id){
+    var me=mine.indexOf(id)>=0, n=count[id];
+    return '<button class="msgchip'+(me?' me':'')+'" onclick="openInbox(\''+id+'\')" title="Open messages for '+attr(staffName(id))+'">📣 '+
+      esc(me?'You · '+staffName(id):staffName(id))+' <b>'+n+'</b> '+(n===1?'message':'messages')+'</button>';
+  }).join('')+'</div>';
+}
+function openInbox(staffId){
+  var list=unreadMessages(staffId);
+  var body=list.length? list.map(function(m){
+    var j=m.job, e=m.entry;
+    return '<div class="inbox-row"><div class="inbox-body">'+
+      '<div class="inbox-head"><a onclick="closeModal();go(\'job\',\''+j.id+'\')"><b>'+esc(j.no)+'</b> · '+esc(j.plate)+(j.owner?' · '+esc(j.owner):'')+'</a>'+statusBadge(e.code)+'</div>'+
+      '<div class="inbox-note">'+esc(e.note||'')+'</div>'+
+      '<div class="log-meta">'+esc(staffName(e.by))+' · '+esc(fmtDateTime(e.time))+'</div></div>'+
+      '<button class="btn sm primary" onclick="ackMessage(\''+j.id+'\','+m.idx+',\''+staffId+'\')">✓ Got it</button></div>';
+  }).join('') : emptyState('No unread messages.');
+  openModal('Messages for '+staffName(staffId), '<div class="inbox">'+body+'</div>',
+    { footer:'<button class="btn ghost" onclick="closeModal()">Close</button>', width:'640px' });
+}
+/* "Got it": stamps the reader on the entry. The stamp stays on the job's log
+   ("read by …"), so the sender can see it landed. */
+function ackMessage(jobId, idx, staffId){
+  var j=jobById(jobId); var e=j && (j.statusLog||[])[idx]; if(!e) return;
+  e.ack=e.ack||{}; e.ack[staffId]=new Date().toISOString();
+  persist(); render();
+  if(unreadMessages(staffId).length) openInbox(staffId); else { closeModal(); toast('All read'); }
+}
 
 /* Time of the most recent status/clipboard log entry for a job (or '—'). */
 function lastLogTimeLabel(j){
   var log=j.statusLog||[]; if(!log.length) return '—';
   return fmtDateTime(log[log.length-1].time);
 }
-/* "📣 for Jun, Toto" when the latest log entry is addressed to someone, else ''. */
+/* "📣 for Jun, Toto" while anyone still has an unread message on this job. */
 function lastLogForLabel(j){
-  var log=j.statusLog||[]; if(!log.length) return '';
-  var ids=logEntryFor(log[log.length-1]); if(!ids.length) return '';
+  var ids=[];
+  (j.statusLog||[]).forEach(function(e){ logEntryFor(e).forEach(function(id){ if(!messageAcked(e,id) && ids.indexOf(id)<0) ids.push(id); }); });
+  if(!ids.length) return '';
   return '📣 for '+ids.map(staffName).join(', ');
 }
 function jobCardMini(j){

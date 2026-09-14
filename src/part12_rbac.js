@@ -329,6 +329,8 @@ function editAccountDialog(uid){
     field('Name','<input id="edName" value="'+attr(u.name||'')+'">')+
     field(u.username?'Username':'Email','<input value="'+attr(u.username||u.email||'')+'" disabled>','This is the login — to change it, remove the account and add a new one.')+
     field('Role','<select id="edRole">'+ROLE_LIST.map(function(r){return '<option value="'+r+'"'+(u.role===r?' selected':'')+'>'+esc(roleLabel(r))+'</option>';}).join('')+'</select>')+
+    field('Staff record','<select id="edStaff">'+optionList(S.staff||[], u.staffId||'', false)+'</select>',
+      'Which person on the Staff list this login is — messages tagged to them light up as "You" on the board. Same-name matches work without this.')+
     '<label class="chk"><input type="checkbox" id="edAdmin" '+(u.isAdmin?'checked':'')+(me?' disabled':'')+'> Full admin access</label>'+
     '<label class="chk"><input type="checkbox" id="edActive" '+(u.active===false?'':'checked')+(me?' disabled':'')+'> Account active (can sign in)</label>'+
     (me?'<p class="muted small">You can’t change your own admin/active status (prevents locking yourself out).</p>':''),
@@ -340,7 +342,7 @@ function editAccountDialog(uid){
 function saveAccount(){
   var u=(ACCOUNTS||[]).find(function(x){return x.uid===acEditCtx;}); if(!u){ closeModal(); return; }
   var me = CURRENT_USER && CURRENT_USER.uid===u.uid;
-  var data={ name:val('edName'), role:val('edRole') };
+  var data={ name:val('edName'), role:val('edRole'), staffId:val('edStaff')||'' };
   if(!me){ data.isAdmin=checked('edAdmin'); data.active=checked('edActive'); }
   if (typeof dataLocal==='function' && dataLocal()){
     _postJSON(branchBase()+'/auth/users/'+encodeURIComponent(u.uid), data).then(function(d){

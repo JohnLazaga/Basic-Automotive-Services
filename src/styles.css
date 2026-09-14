@@ -112,6 +112,15 @@ h2{font-size:16px;font-weight:700;letter-spacing:-.01em;margin:0 0 10px}
 
 /* ---- Alert strip ---- */
 .alertstrip{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+.msgstrip{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.msgchip{border:1px solid #f0d89a;background:#fff6db;color:#9a7400;border-radius:20px;padding:7px 14px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px}
+.msgchip:hover{box-shadow:var(--sh-1)}
+.msgchip.me{background:var(--brand);border-color:var(--brand);color:#fff;box-shadow:0 0 0 3px rgba(242,23,23,.18)}
+.inbox{display:flex;flex-direction:column;gap:8px}
+.inbox-row{display:flex;gap:12px;align-items:flex-start;background:#fffbea;border-radius:9px;padding:10px 12px}
+.inbox-body{flex:1;min-width:0} .inbox-head{display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap}
+.inbox-head a{cursor:pointer;color:var(--brand-dark)} .inbox-head a:hover{text-decoration:underline}
+.inbox-note{font-size:13.5px;white-space:pre-wrap;word-break:break-word;margin-bottom:3px}
 .alert{border:1px solid var(--hair);background:#fff;border-radius:20px;padding:6px 13px;font-size:12.5px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
 .alert-go,.alert-x{border:0;background:transparent;font:inherit;color:inherit;cursor:pointer;padding:0;line-height:inherit}
 .alert-x{opacity:.55;font-size:11px;padding-left:4px} .alert-x:hover{opacity:1}
@@ -542,7 +551,9 @@ a.lnk{color:var(--brand);cursor:pointer;font-weight:600}
 [data-theme="dark"] .sbadge.gA{background:rgba(110,128,255,.2);color:#aeb6ff}
 [data-theme="dark"] .released{background:rgba(52,199,89,.14);color:#5fe08a}
 [data-theme="dark"] .due-banner{background:#2a2206}
-[data-theme="dark"] .log-row.tagged{background:#2a2206} [data-theme="dark"] .log-for,[data-theme="dark"] .jcard-for{color:#ffd60a}
+[data-theme="dark"] .log-row.tagged,[data-theme="dark"] .inbox-row{background:#2a2206}
+[data-theme="dark"] .msgchip{background:rgba(255,192,0,.13);border-color:rgba(255,192,0,.32);color:#ffd60a}
+[data-theme="dark"] .msgchip.me{background:var(--brand);border-color:var(--brand);color:#fff} [data-theme="dark"] .log-for,[data-theme="dark"] .jcard-for{color:#ffd60a}
 [data-theme="dark"] .nextsvc.due{color:#ff8a8a}
 [data-theme="dark"] .bay-car:hover{background:rgba(242,23,23,.28)}
 [data-theme="dark"] .p-due{border-color:rgba(242,23,23,.4)!important;background:rgba(242,23,23,.08)!important}

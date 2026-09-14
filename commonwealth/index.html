@@ -123,6 +123,15 @@ h2{font-size:16px;font-weight:700;letter-spacing:-.01em;margin:0 0 10px}
 
 /* ---- Alert strip ---- */
 .alertstrip{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+.msgstrip{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.msgchip{border:1px solid #f0d89a;background:#fff6db;color:#9a7400;border-radius:20px;padding:7px 14px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px}
+.msgchip:hover{box-shadow:var(--sh-1)}
+.msgchip.me{background:var(--brand);border-color:var(--brand);color:#fff;box-shadow:0 0 0 3px rgba(242,23,23,.18)}
+.inbox{display:flex;flex-direction:column;gap:8px}
+.inbox-row{display:flex;gap:12px;align-items:flex-start;background:#fffbea;border-radius:9px;padding:10px 12px}
+.inbox-body{flex:1;min-width:0} .inbox-head{display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap}
+.inbox-head a{cursor:pointer;color:var(--brand-dark)} .inbox-head a:hover{text-decoration:underline}
+.inbox-note{font-size:13.5px;white-space:pre-wrap;word-break:break-word;margin-bottom:3px}
 .alert{border:1px solid var(--hair);background:#fff;border-radius:20px;padding:6px 13px;font-size:12.5px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
 .alert-go,.alert-x{border:0;background:transparent;font:inherit;color:inherit;cursor:pointer;padding:0;line-height:inherit}
 .alert-x{opacity:.55;font-size:11px;padding-left:4px} .alert-x:hover{opacity:1}
@@ -553,7 +562,9 @@ a.lnk{color:var(--brand);cursor:pointer;font-weight:600}
 [data-theme="dark"] .sbadge.gA{background:rgba(110,128,255,.2);color:#aeb6ff}
 [data-theme="dark"] .released{background:rgba(52,199,89,.14);color:#5fe08a}
 [data-theme="dark"] .due-banner{background:#2a2206}
-[data-theme="dark"] .log-row.tagged{background:#2a2206} [data-theme="dark"] .log-for,[data-theme="dark"] .jcard-for{color:#ffd60a}
+[data-theme="dark"] .log-row.tagged,[data-theme="dark"] .inbox-row{background:#2a2206}
+[data-theme="dark"] .msgchip{background:rgba(255,192,0,.13);border-color:rgba(255,192,0,.32);color:#ffd60a}
+[data-theme="dark"] .msgchip.me{background:var(--brand);border-color:var(--brand);color:#fff} [data-theme="dark"] .log-for,[data-theme="dark"] .jcard-for{color:#ffd60a}
 [data-theme="dark"] .nextsvc.due{color:#ff8a8a}
 [data-theme="dark"] .bay-car:hover{background:rgba(242,23,23,.28)}
 [data-theme="dark"] .p-due{border-color:rgba(242,23,23,.4)!important;background:rgba(242,23,23,.08)!important}
@@ -638,7 +649,7 @@ var BRANCH = {"id":"commonwealth","slug":"commonwealth","name":"Basic by JMSI �
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-09-14 · a7ce0a3';
+var APP_VERSION = 'v1.3.0 · 2026-09-14 · e18856d';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -1837,19 +1848,89 @@ VIEWS.board = function(){
   var search='<input class="searchbox" id="boardSearch" value="'+attr(BOARD_Q)+'" oninput="boardSearch(this.value)" placeholder="Search JO # / OR # / plate / owner / make / model / mechanic…" autocomplete="off">';
   return '<div class="page">'+
     '<div class="page-head"><h1>Operations Board</h1><div class="row gap wrap">'+search+toggle+'</div></div>'+
-    alertStrip()+ boardKPIs()+ '<div id="boardBody">'+boardBody()+'</div>'+
+    messageStrip()+ alertStrip()+ boardKPIs()+ '<div id="boardBody">'+boardBody()+'</div>'+
   '</div>';
 };
+
+/* ---- Tagged-message inbox ----------------------------------------------------
+   Every clipboard entry addressed to someone (entry.for) is a message. It stays
+   unread for each tagged person until they press "Got it" on the board, which
+   stamps entry.ack[staffId]. The board strip lists who has unread messages so
+   whoever is at the counter (or the person themselves) sees it without opening
+   a job. Released and cancelled units drop out — that unit is done with. */
+function messageAcked(e, staffId){ return !!(e && e.ack && e.ack[staffId]); }
+/* Unread messages for one person (or everyone when staffId is null), newest first. */
+function unreadMessages(staffId){
+  var out=[];
+  (S.jobs||[]).forEach(function(j){
+    if(j.stage==='Released' || !jobLive(j)) return;
+    (j.statusLog||[]).forEach(function(e, idx){
+      logEntryFor(e).forEach(function(id){
+        if(staffId && id!==staffId) return;
+        if(messageAcked(e,id)) return;
+        out.push({ job:j, entry:e, idx:idx, staffId:id });
+      });
+    });
+  });
+  out.sort(function(a,b){ return String(b.entry.time).localeCompare(String(a.entry.time)); });
+  return out;
+}
+/* Staff ids that belong to the signed-in account: an explicit link (the
+   account's "Staff record", set under Accounts & Roles) or a same-name match. */
+function myStaffIds(){
+  if(typeof CURRENT_USER==='undefined' || !CURRENT_USER) return [];
+  var ids=[]; var nm=String(CURRENT_USER.name||'').trim().toLowerCase();
+  (S.staff||[]).forEach(function(st){
+    if((CURRENT_USER.staffId && st.id===CURRENT_USER.staffId) || (nm && String(st.name||'').trim().toLowerCase()===nm)) ids.push(st.id);
+  });
+  return ids;
+}
+/* One chip per person with unread messages; the signed-in person's chip comes
+   first, in red, labelled "You". */
+function messageStrip(){
+  var all=unreadMessages(null); if(!all.length) return '';
+  var mine=myStaffIds();
+  var count={}; var order=[];
+  all.forEach(function(m){ if(!count[m.staffId]){ count[m.staffId]=0; order.push(m.staffId); } count[m.staffId]++; });
+  order.sort(function(a,b){ var ma=mine.indexOf(a)>=0?0:1, mb=mine.indexOf(b)>=0?0:1; return (ma-mb) || staffName(a).localeCompare(staffName(b)); });
+  return '<div class="msgstrip">'+order.map(function(id){
+    var me=mine.indexOf(id)>=0, n=count[id];
+    return '<button class="msgchip'+(me?' me':'')+'" onclick="openInbox(\''+id+'\')" title="Open messages for '+attr(staffName(id))+'">📣 '+
+      esc(me?'You · '+staffName(id):staffName(id))+' <b>'+n+'</b> '+(n===1?'message':'messages')+'</button>';
+  }).join('')+'</div>';
+}
+function openInbox(staffId){
+  var list=unreadMessages(staffId);
+  var body=list.length? list.map(function(m){
+    var j=m.job, e=m.entry;
+    return '<div class="inbox-row"><div class="inbox-body">'+
+      '<div class="inbox-head"><a onclick="closeModal();go(\'job\',\''+j.id+'\')"><b>'+esc(j.no)+'</b> · '+esc(j.plate)+(j.owner?' · '+esc(j.owner):'')+'</a>'+statusBadge(e.code)+'</div>'+
+      '<div class="inbox-note">'+esc(e.note||'')+'</div>'+
+      '<div class="log-meta">'+esc(staffName(e.by))+' · '+esc(fmtDateTime(e.time))+'</div></div>'+
+      '<button class="btn sm primary" onclick="ackMessage(\''+j.id+'\','+m.idx+',\''+staffId+'\')">✓ Got it</button></div>';
+  }).join('') : emptyState('No unread messages.');
+  openModal('Messages for '+staffName(staffId), '<div class="inbox">'+body+'</div>',
+    { footer:'<button class="btn ghost" onclick="closeModal()">Close</button>', width:'640px' });
+}
+/* "Got it": stamps the reader on the entry. The stamp stays on the job's log
+   ("read by …"), so the sender can see it landed. */
+function ackMessage(jobId, idx, staffId){
+  var j=jobById(jobId); var e=j && (j.statusLog||[])[idx]; if(!e) return;
+  e.ack=e.ack||{}; e.ack[staffId]=new Date().toISOString();
+  persist(); render();
+  if(unreadMessages(staffId).length) openInbox(staffId); else { closeModal(); toast('All read'); }
+}
 
 /* Time of the most recent status/clipboard log entry for a job (or '—'). */
 function lastLogTimeLabel(j){
   var log=j.statusLog||[]; if(!log.length) return '—';
   return fmtDateTime(log[log.length-1].time);
 }
-/* "📣 for Jun, Toto" when the latest log entry is addressed to someone, else ''. */
+/* "📣 for Jun, Toto" while anyone still has an unread message on this job. */
 function lastLogForLabel(j){
-  var log=j.statusLog||[]; if(!log.length) return '';
-  var ids=logEntryFor(log[log.length-1]); if(!ids.length) return '';
+  var ids=[];
+  (j.statusLog||[]).forEach(function(e){ logEntryFor(e).forEach(function(id){ if(!messageAcked(e,id) && ids.indexOf(id)<0) ids.push(id); }); });
+  if(!ids.length) return '';
   return '📣 for '+ids.map(staffName).join(', ');
 }
 function jobCardMini(j){
@@ -2354,7 +2435,10 @@ function logEntryFor(e){ return (e && Array.isArray(e.for)) ? e.for.filter(funct
 /* "📣 For: Jun Reyes, Toto Bautista" chips for a tagged entry, or '' when untagged. */
 function logForHTML(e){
   var ids=logEntryFor(e); if(!ids.length) return '';
-  return '<div class="log-for">📣 For: '+ids.map(function(id){ return '<span class="chip gold">'+esc(staffName(id))+'</span>'; }).join(' ')+'</div>';
+  return '<div class="log-for">📣 For: '+ids.map(function(id){
+    var read=messageAcked(e,id);
+    return '<span class="chip '+(read?'ok':'gold')+'" title="'+(read?'Read '+attr(fmtDateTime(e.ack[id])):'Unread')+'">'+esc(staffName(id))+(read?' ✓':'')+'</span>';
+  }).join(' ')+'</div>';
 }
 function jobStatusPanel(j){
   var log = (j.statusLog||[]).slice().reverse().map(function(e){
@@ -5964,6 +6048,7 @@ if (typeof module!=='undefined' && module.exports){
     commissionTable:commissionTable, jobLaborCommission:jobLaborCommission, jobLaborCommissionMap:jobLaborCommissionMap, jobLaborCommissionMapAll:jobLaborCommissionMapAll, laborTotal:laborTotal,
     jobPerformedPms:jobPerformedPms, vehiclePmsPerformed:vehiclePmsPerformed, pmsReminderState:pmsReminderState,
     scheduleNextService:scheduleNextService, clearNextService:clearNextService, alertStrip:alertStrip,
+    unreadMessages:unreadMessages, messageStrip:messageStrip, myStaffIds:myStaffIds, messageAcked:messageAcked,
     buildLogEntry:buildLogEntry, logEntryFor:logEntryFor, jobStatusPanel:jobStatusPanel, lastLogForLabel:lastLogForLabel,
     jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
     allocateSeriesNumber:allocateSeriesNumber, maxSeriesNo:maxSeriesNo, nextNo:nextNo,
@@ -7364,6 +7449,8 @@ function editAccountDialog(uid){
     field('Name','<input id="edName" value="'+attr(u.name||'')+'">')+
     field(u.username?'Username':'Email','<input value="'+attr(u.username||u.email||'')+'" disabled>','This is the login — to change it, remove the account and add a new one.')+
     field('Role','<select id="edRole">'+ROLE_LIST.map(function(r){return '<option value="'+r+'"'+(u.role===r?' selected':'')+'>'+esc(roleLabel(r))+'</option>';}).join('')+'</select>')+
+    field('Staff record','<select id="edStaff">'+optionList(S.staff||[], u.staffId||'', false)+'</select>',
+      'Which person on the Staff list this login is — messages tagged to them light up as "You" on the board. Same-name matches work without this.')+
     '<label class="chk"><input type="checkbox" id="edAdmin" '+(u.isAdmin?'checked':'')+(me?' disabled':'')+'> Full admin access</label>'+
     '<label class="chk"><input type="checkbox" id="edActive" '+(u.active===false?'':'checked')+(me?' disabled':'')+'> Account active (can sign in)</label>'+
     (me?'<p class="muted small">You can’t change your own admin/active status (prevents locking yourself out).</p>':''),
@@ -7375,7 +7462,7 @@ function editAccountDialog(uid){
 function saveAccount(){
   var u=(ACCOUNTS||[]).find(function(x){return x.uid===acEditCtx;}); if(!u){ closeModal(); return; }
   var me = CURRENT_USER && CURRENT_USER.uid===u.uid;
-  var data={ name:val('edName'), role:val('edRole') };
+  var data={ name:val('edName'), role:val('edRole'), staffId:val('edStaff')||'' };
   if(!me){ data.isAdmin=checked('edAdmin'); data.active=checked('edActive'); }
   if (typeof dataLocal==='function' && dataLocal()){
     _postJSON(branchBase()+'/auth/users/'+encodeURIComponent(u.uid), data).then(function(d){

@@ -954,7 +954,32 @@ section('Clipboard log as a message board: tagging people');
   /* Board card flags the latest entry when it is addressed to someone. */
   ok('board card label names the tagged people', /📣 for Jun Reyes, Toto Bautista/.test(M.lastLogForLabel(j)));
   j.statusLog.push(M.buildLogEntry('B2', sv.id, 'back to work', []));
-  ok('board card label clears once a plain update follows', M.lastLogForLabel(j)==='');
+  ok('board card label stays while the message is unread', /Jun Reyes, Toto Bautista/.test(M.lastLogForLabel(j)));
+
+  /* ---- Inbox: whoever is tagged sees it on the board until they press Got it. */
+  ok('two unread messages in total (one per tagged person)', M.unreadMessages(null).length===2);
+  ok('one unread for Jun', M.unreadMessages(jun.id).length===1 && M.unreadMessages(jun.id)[0].job===j);
+  var strip = M.messageStrip();
+  ok('board strip lists both people', strip.indexOf('Jun Reyes')>-1 && strip.indexOf('Toto Bautista')>-1);
+  ok('strip chips open that person\'s inbox', strip.indexOf("openInbox('"+jun.id+"')")>-1);
+  ok('nobody is "You" while signed out', strip.indexOf('You ·')<0);
+
+  M.setCurrentUser({ uid:'u1', name:'jun reyes', role:'Mechanic' });      // same-name match, case-insensitive
+  ok('signed-in account maps to the staff record by name', JSON.stringify(M.myStaffIds())===JSON.stringify([jun.id]));
+  strip = M.messageStrip();
+  ok('own chip is flagged "You" and comes first', strip.indexOf('msgchip me')>-1 && strip.indexOf('You · Jun Reyes')>-1 && strip.indexOf('Jun Reyes')<strip.indexOf('Toto Bautista'));
+  M.setCurrentUser({ uid:'u2', name:'Somebody Else', role:'SA', staffId:toto.id });   // explicit link wins over name
+  ok('explicit Staff record link maps the account', JSON.stringify(M.myStaffIds())===JSON.stringify([toto.id]));
+  M.setCurrentUser(null);
+
+  msg.ack={}; msg.ack[jun.id]=new Date().toISOString();                     // Jun pressed Got it
+  ok('acked entry reads as read for Jun only', M.messageAcked(msg,jun.id)===true && M.messageAcked(msg,toto.id)===false);
+  ok('Jun\'s inbox is empty, Toto\'s is not', M.unreadMessages(jun.id).length===0 && M.unreadMessages(toto.id).length===1);
+  ok('board card label drops the reader', M.lastLogForLabel(j)==='📣 for Toto Bautista');
+  ok('job log shows the read tick', M.jobStatusPanel(j).indexOf('Jun Reyes ✓')>-1);
+  j.stage='Released';
+  ok('a released unit drops out of the inbox', M.unreadMessages(toto.id).length===0 && M.messageStrip()==='');
+  j.stage='Job Order';
 
   /* Board search finds a unit by the name of a person tagged in its log. */
   M.setBoardQ('toto');

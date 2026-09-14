@@ -15,6 +15,16 @@ entries below. Newest first.
   **📣 for …** while that entry is the latest. Board search matches tagged
   names, so a mechanic can type their own name to find the units with messages
   for them. A tagged entry must carry a note; untagged updates are unchanged.
+- **Tagged people are alerted on the board.** The Operations Board now opens
+  with a **📣 message strip**: one chip per person with unread tagged messages
+  ("📣 Jun Reyes 2 messages"). When the signed-in account is that person
+  (matched by name, or by the new **Staff record** field under Accounts &
+  Roles), the chip is red and reads "You". Tapping a chip opens that person's
+  inbox — each message with its JO, plate, note and a **✓ Got it** button.
+  Got it marks it read for that person only; the job's log then shows a ✓
+  next to their name so the sender knows it landed. Units stay flagged
+  "📣 for …" on their board card until everyone tagged has read it. Released
+  units drop out of the inbox.
 - **Dismiss a PMS reminder.** Each PMS prompt on the Operations Board has a ✕
   that clears the unit's next-service reminder (after a confirm). The vehicle
   page has a matching **Clear reminder** button. The reminder returns on its

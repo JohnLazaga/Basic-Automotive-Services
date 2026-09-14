@@ -309,7 +309,10 @@ function logEntryFor(e){ return (e && Array.isArray(e.for)) ? e.for.filter(funct
 /* "📣 For: Jun Reyes, Toto Bautista" chips for a tagged entry, or '' when untagged. */
 function logForHTML(e){
   var ids=logEntryFor(e); if(!ids.length) return '';
-  return '<div class="log-for">📣 For: '+ids.map(function(id){ return '<span class="chip gold">'+esc(staffName(id))+'</span>'; }).join(' ')+'</div>';
+  return '<div class="log-for">📣 For: '+ids.map(function(id){
+    var read=messageAcked(e,id);
+    return '<span class="chip '+(read?'ok':'gold')+'" title="'+(read?'Read '+attr(fmtDateTime(e.ack[id])):'Unread')+'">'+esc(staffName(id))+(read?' ✓':'')+'</span>';
+  }).join(' ')+'</div>';
 }
 function jobStatusPanel(j){
   var log = (j.statusLog||[]).slice().reverse().map(function(e){
