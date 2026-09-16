@@ -27,9 +27,15 @@ function portalLink(vid){ return (S.shop.portalUrl||'').replace(/\/+$/,'')+'/#v=
 
 /* ---- Vehicles ------------------------------------------------------------- */
 var VEH_Q='';
+/* Plate / owner / contact, plus the vehicle itself: make, model, variant, year.
+   Every word typed must appear somewhere in the unit's details, in any order —
+   so "vios", "toyota vios", "2019 vios" and "vios 2019" all find the same unit. */
 function vehMatch(v){
-  if(!VEH_Q) return true; var q=VEH_Q.toLowerCase();
-  return [v.plate,v.owner,v.contactPerson].some(function(x){ return String(x||'').toLowerCase().indexOf(q)>=0; });
+  if(!VEH_Q) return true;
+  var words=VEH_Q.toLowerCase().split(/\s+/).filter(Boolean); if(!words.length) return true;
+  var hay=[v.plate,v.owner,v.contactPerson,v.year,v.make,v.model,v.variant]
+    .map(function(x){ return String(x==null?'':x).toLowerCase(); }).join(' ');
+  return words.every(function(w){ return hay.indexOf(w)>=0; });
 }
 /* The odometer at this vehicle's most recent service. v.odometer only receives a
    job's last-service reading at RELEASE (and via Math.max, so a lower later reading
@@ -59,7 +65,7 @@ function vehBodyHTML(){
 }
 function vehSearch(v){ VEH_Q=v; var el=document.getElementById('vehBody'); if(el) el.innerHTML=vehBodyHTML(); }
 VIEWS.vehicles = function(){
-  var search='<input class="searchbox" id="vehSearch" value="'+attr(VEH_Q)+'" oninput="vehSearch(this.value)" placeholder="Search plate / owner / contact…" autocomplete="off">';
+  var search='<input class="searchbox" id="vehSearch" value="'+attr(VEH_Q)+'" oninput="vehSearch(this.value)" placeholder="Search plate / owner / contact / make / model…" autocomplete="off">';
   return '<div class="page"><div class="page-head"><h1>Vehicles</h1><div class="row gap wrap">'+search+'<button class="btn primary" onclick="editVehicle()">＋ Add vehicle</button></div></div>'+
     '<div id="vehBody">'+vehBodyHTML()+'</div></div>';
 };

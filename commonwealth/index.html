@@ -649,7 +649,7 @@ var BRANCH = {"id":"commonwealth","slug":"commonwealth","name":"Basic by JMSI �
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-09-14 · c13dcad';
+var APP_VERSION = 'v1.3.0 · 2026-09-16 · 4511206';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -3711,9 +3711,15 @@ function portalLink(vid){ return (S.shop.portalUrl||'').replace(/\/+$/,'')+'/#v=
 
 /* ---- Vehicles ------------------------------------------------------------- */
 var VEH_Q='';
+/* Plate / owner / contact, plus the vehicle itself: make, model, variant, year.
+   Every word typed must appear somewhere in the unit's details, in any order —
+   so "vios", "toyota vios", "2019 vios" and "vios 2019" all find the same unit. */
 function vehMatch(v){
-  if(!VEH_Q) return true; var q=VEH_Q.toLowerCase();
-  return [v.plate,v.owner,v.contactPerson].some(function(x){ return String(x||'').toLowerCase().indexOf(q)>=0; });
+  if(!VEH_Q) return true;
+  var words=VEH_Q.toLowerCase().split(/\s+/).filter(Boolean); if(!words.length) return true;
+  var hay=[v.plate,v.owner,v.contactPerson,v.year,v.make,v.model,v.variant]
+    .map(function(x){ return String(x==null?'':x).toLowerCase(); }).join(' ');
+  return words.every(function(w){ return hay.indexOf(w)>=0; });
 }
 /* The odometer at this vehicle's most recent service. v.odometer only receives a
    job's last-service reading at RELEASE (and via Math.max, so a lower later reading
@@ -3743,7 +3749,7 @@ function vehBodyHTML(){
 }
 function vehSearch(v){ VEH_Q=v; var el=document.getElementById('vehBody'); if(el) el.innerHTML=vehBodyHTML(); }
 VIEWS.vehicles = function(){
-  var search='<input class="searchbox" id="vehSearch" value="'+attr(VEH_Q)+'" oninput="vehSearch(this.value)" placeholder="Search plate / owner / contact…" autocomplete="off">';
+  var search='<input class="searchbox" id="vehSearch" value="'+attr(VEH_Q)+'" oninput="vehSearch(this.value)" placeholder="Search plate / owner / contact / make / model…" autocomplete="off">';
   return '<div class="page"><div class="page-head"><h1>Vehicles</h1><div class="row gap wrap">'+search+'<button class="btn primary" onclick="editVehicle()">＋ Add vehicle</button></div></div>'+
     '<div id="vehBody">'+vehBodyHTML()+'</div></div>';
 };
@@ -6029,6 +6035,7 @@ if (typeof module!=='undefined' && module.exports){
     arJobs:arJobs, jobByNo:jobByNo, vehicleByPlate:vehicleByPlate, vehDupe:vehDupe, partById:partById,
     jobMatch:jobMatch, setJobQ:function(q){ JOB_Q=q; },
     boardMatch:boardMatch, setBoardQ:function(q){ BOARD_Q=q; },
+    vehMatch:vehMatch, setVehQ:function(q){ VEH_Q=q; },
     /* Sync-merge hooks. Closures, not direct refs: _cloudSnap is declared in a
        later part, so it is still undefined when this object is built. */
     applyRemoteSnapshot:function(c,inc){ return applyRemoteSnapshot(c,inc); },

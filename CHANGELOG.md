@@ -31,6 +31,9 @@ entries below. Newest first.
   own when the unit's next PMS is released.
 
 ### Changed
+- **Vehicles search covers make and model.** The Vehicles tab search box now
+  matches make, model, variant and year as well as plate, owner and contact —
+  so "vios", "toyota vios" or "2019 vios" all find the unit.
 - **PMS prompts only for units that actually had a PMS.** The board strip and
   the Vehicles list now prompt only when a released job on that unit completed
   the PMS checklist or billed the PMS LABOR line. Releasing a plain repair no

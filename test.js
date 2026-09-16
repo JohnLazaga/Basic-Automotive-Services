@@ -1030,6 +1030,26 @@ section('PMS reminders only for units whose PMS was actually performed');
   ok('release schedules 3 months / +5,000 km', v.nextServiceDate===M.todayISO(inThree) && v.nextServiceOdo===55000);
 })();
 
+/* ---------------------------------------------------------------- TEST */
+section('Vehicles search matches make and model');
+(function(){
+  const s = fresh(); M.setS(s);
+  const vios = s.vehicles.find(function(v){ return v.model==='Vios'; });
+  const montero = s.vehicles.find(function(v){ return v.model==='Montero Sport'; });
+  function hits(q){ M.setVehQ(q); var r=s.vehicles.filter(M.vehMatch); M.setVehQ(''); return r; }
+  ok('make finds the unit', hits('toyota').indexOf(vios)>-1 && hits('toyota').indexOf(montero)<0);
+  ok('model finds the unit, any case', hits('VIOS').indexOf(vios)>-1);
+  ok('partial model works', hits('montero').indexOf(montero)>-1);
+  ok('make + model together', hits('toyota vios').indexOf(vios)>-1);
+  ok('year + model together', hits('2019 vios').indexOf(vios)>-1);
+  ok('words in any order', hits('vios toyota').indexOf(vios)>-1);
+  ok('every word must match', hits('toyota montero').length===0);
+  ok('variant is searchable', hits('1.3 e').indexOf(vios)>-1);
+  ok('plate / owner still work', hits('abc').indexOf(vios)>-1 && hits(String(vios.owner).slice(0,4).toLowerCase()).indexOf(vios)>-1);
+  ok('no match → empty', hits('ferrari').length===0);
+  ok('empty query → everyone', hits('').length===s.vehicles.length);
+})();
+
 /* ---------------------------------------------------------------- SUMMARY */
 console.log('\n────────────────────────────────────────');
 console.log('  PASS: '+pass+'   FAIL: '+fail);

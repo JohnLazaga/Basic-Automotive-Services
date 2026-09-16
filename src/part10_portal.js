@@ -313,6 +313,7 @@ if (typeof module!=='undefined' && module.exports){
     arJobs:arJobs, jobByNo:jobByNo, vehicleByPlate:vehicleByPlate, vehDupe:vehDupe, partById:partById,
     jobMatch:jobMatch, setJobQ:function(q){ JOB_Q=q; },
     boardMatch:boardMatch, setBoardQ:function(q){ BOARD_Q=q; },
+    vehMatch:vehMatch, setVehQ:function(q){ VEH_Q=q; },
     /* Sync-merge hooks. Closures, not direct refs: _cloudSnap is declared in a
        later part, so it is still undefined when this object is built. */
     applyRemoteSnapshot:function(c,inc){ return applyRemoteSnapshot(c,inc); },
