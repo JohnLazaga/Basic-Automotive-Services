@@ -24,13 +24,36 @@ entries below. Newest first.
   Got it marks it read for that person only; the job's log then shows a ✓
   next to their name so the sender knows it landed. Units stay flagged
   "📣 for …" on their board card until everyone tagged has read it. Released
-  units drop out of the inbox.
+  units drop out of the inbox. Each message also has a **↩ Reply** button: it
+  logs your answer on the same job, addressed back to whoever wrote it (and to
+  anyone else it was sent to), carrying the original status code so replying
+  never moves the job. Sending a reply marks the original read. Each message
+  names the unit — "2019 Toyota Vios" beside the plate — so a mechanic knows
+  which vehicle it is about without opening the job.
 - **Dismiss a PMS reminder.** Each PMS prompt on the Operations Board has a ✕
   that clears the unit's next-service reminder (after a confirm). The vehicle
   page has a matching **Clear reminder** button. The reminder returns on its
   own when the unit's next PMS is released.
 
 ### Changed
+- **Post Job Report carries *After-service notes*, and they gate billing.** The
+  Post Job Report no longer reprints *Service notes* (the customer's reported
+  concern, which already prints on the Job Order). In its place is an
+  **After-service notes** block: what was actually found and done, written after
+  the work. A new **After-service notes** panel appears in the job's Pipeline
+  card from the Post Job Report stage on, and **Final Billing cannot be created
+  until it is filled out and signed** — the *Create Final Billing* button opens a
+  checklist of what is still missing instead. Only a **Supervisor, Service
+  Adviser or Secretary (Accounts)** may write the notes, and the *Filled out by*
+  name must hold one of those roles; a mechanic account sees the panel but
+  cannot edit it. The notes print on the Post Job Report with the signer's name
+  and the date, and an unsigned report prints the gate line in place of them.
+  Once the OR is issued the notes lock, unless the account has *Edit billing
+  after it is done*.
+- **Job description shows under the clipboard log.** A **Job Description** card
+  now sits directly beneath Status & Clipboard Log on a job order, carrying the
+  concerns reported at Ingress, with Add/Edit in place. Job Details points to it
+  instead of repeating the text; prints are unchanged.
 - **Vehicles search covers make and model.** The Vehicles tab search box now
   matches make, model, variant and year as well as plate, owner and contact —
   so "vios", "toyota vios" or "2019 vios" all find the unit.

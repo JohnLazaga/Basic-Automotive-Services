@@ -61,6 +61,34 @@ section('3. Post Job Report: includes prices + "Approved for release by"');
   const doc=M.docPostJob(j);
   ok('Post Job Report shows prices (₱)', doc.indexOf('₱')>-1);
   ok('Post Job Report has approval line', /Approved for release by/i.test(doc));
+  /* After-service notes replace the old "Service notes" echo of the customer's
+     complaint, and gate Final Billing. */
+  ok('Post Job Report prints After-service notes', /After-service notes/i.test(doc));
+  ok('Post Job Report no longer prints Service notes', !/>Service notes|<b>Service notes/i.test(doc));
+  ok('unfilled notes print the gate line', /before Final Billing/i.test(doc));
+  ok('unfilled notes block billing', M.afterServiceMissing(j).indexOf('After-service notes')>-1);
+  const sv=s.staff.find(x=>x.role==='SV'), mech=s.staff.find(x=>M.getS()&&(x.role==='Mechanic'||x.role==='SM'));
+  j.afterServiceNotes='Replaced front pads; road tested clear.';
+  ok('notes without a signer still block billing', M.afterServiceMissing(j).length>0);
+  j.afterServiceBy=mech?mech.id:'nope';
+  ok('a mechanic cannot sign the notes', M.afterServiceMissing(j).length>0);
+  j.afterServiceBy=sv.id; j.afterServiceAt=M.todayISO();
+  ok('Supervisor-signed notes clear the gate', M.afterServiceDone(j)===true);
+  ok('signed notes print with the signer', M.docPostJob(j).indexOf('Replaced front pads')>-1 && /Filled out by/.test(M.docPostJob(j)));
+  ok('signer list holds only SV / SA / Secretary',
+    M.afterServiceStaff().every(x=>['SV','SA','Secretary'].indexOf(x.role)>-1));
+  /* Who may WRITE them: the three roles plus Admin; a mechanic may not. */
+  M.setCurrentUser({uid:'u1',role:'Mechanic',isAdmin:false});
+  ok('mechanic account cannot write after-service notes', M.canWriteAfterService()===false);
+  M.setCurrentUser({uid:'u2',role:'Secretary',isAdmin:false});
+  ok('secretary account can write after-service notes', M.canWriteAfterService()===true);
+  M.setCurrentUser({uid:'u3',role:'SA',isAdmin:false});
+  ok('service adviser can write after-service notes', M.canWriteAfterService()===true);
+  M.setCurrentUser(null);
+  j.stage='Post Job Report';
+  ok('pipeline shows the after-service block', /After-service notes/.test(M.afterServiceBlock(j)));
+  j.afterServiceNotes=''; j.afterServiceBy=null;
+  ok('empty block shows the billing lock', /locked until/i.test(M.afterServiceBlock(j)));
 })();
 
 /* ---------------------------------------------------------------- TEST 4 */
@@ -981,6 +1009,27 @@ section('Clipboard log as a message board: tagging people');
   ok('a released unit drops out of the inbox', M.unreadMessages(toto.id).length===0 && M.messageStrip()==='');
   j.stage='Job Order';
 
+  /* ---- The unit is named, not just plated, wherever a message is read. */
+  ok('vehicle label reads year make model', M.jobVehicleLabel(j)==='2019 Toyota Vios 1.3 E');
+  ok('inbox names the unit beside the plate', M.messageStrip() && M.jobVehicleLabel(j).length>0);
+  ok('label falls back to the vehicle record', M.jobVehicleLabel({ vehicleId:s.vehicles[0].id })===M.jobVehicleLabel(j));
+  ok('a job with no vehicle yields an empty label', M.jobVehicleLabel({ id:'x' })==='');
+
+  /* ---- Reply: goes back to the sender and to anyone else on the message. */
+  ok('reply goes to the sender plus the other recipient', JSON.stringify(M.replyRecipients(msg, toto.id))===JSON.stringify([sv.id, jun.id]));
+  ok('the replier is never addressed to themselves', M.replyRecipients(msg, jun.id).indexOf(jun.id)<0);
+  ok('an untagged entry has nobody but its author to reply to', JSON.stringify(M.replyRecipients({ by:sv.id }, toto.id))===JSON.stringify([sv.id]));
+  ok('replying to your own untagged note has no recipients', M.replyRecipients({ by:toto.id }, toto.id).length===0);
+
+  /* A reply is an ordinary tagged entry, so it shows up in the sender's inbox. */
+  const reply = M.buildLogEntry(msg.code, toto.id, 'Copy. Torqued to 110 Nm.', M.replyRecipients(msg, toto.id));
+  j.statusLog.push(reply);
+  msg.ack[toto.id]=new Date().toISOString();          // sending marks the original read
+  ok('reply carries the original status code', reply.code===msg.code);
+  ok('reply is addressed to the original sender', M.logEntryFor(reply).indexOf(sv.id)>-1);
+  ok('the sender now has an unread reply', M.unreadMessages(sv.id).length===1);
+  ok('answering clears it from the replier\'s inbox', M.unreadMessages(toto.id).length===0);
+
   /* Board search finds a unit by the name of a person tagged in its log. */
   M.setBoardQ('toto');
   ok('board search matches a tagged name', M.boardMatch(j)===true);
@@ -1048,6 +1097,36 @@ section('Vehicles search matches make and model');
   ok('plate / owner still work', hits('abc').indexOf(vios)>-1 && hits(String(vios.owner).slice(0,4).toLowerCase()).indexOf(vios)>-1);
   ok('no match → empty', hits('ferrari').length===0);
   ok('empty query → everyone', hits('').length===s.vehicles.length);
+})();
+
+/* ---------------------------------------------------------------- TEST */
+section('Job description sits under the Status & Clipboard Log');
+(function(){
+  const s = fresh(); M.setS(s);
+  const j = s.jobs[0];
+  j.notes = 'Grinding noise on braking, pulls right.';
+  const page = M.VIEWS().job(j.id);
+
+  ok('the job page carries a Job Description card', page.indexOf('Job Description')>-1);
+  ok('it renders the reported concerns', page.indexOf('Grinding noise on braking')>-1);
+  ok('it sits below the clipboard log', page.indexOf('Status & Clipboard Log') < page.indexOf('Job Description'));
+  /* Match the Parts card's heading, not the bare word — the seeded clipboard
+     log contains "Parts complete, work ongoing." above it. */
+  ok('it sits above the lines panel', page.indexOf('Job Description') < page.indexOf('<h2>Parts</h2>'));
+  ok('the text is not repeated in Job Details', page.split('Grinding noise on braking').length===2);
+
+  /* Escaped, not injected. */
+  j.notes = '<img src=x onerror=alert(1)>';
+  ok('description text is escaped', M.jobDescriptionPanel(j).indexOf('<img src=x')<0);
+
+  /* Empty is a prompt to fill it in, not a blank card. */
+  j.notes = '';
+  const empty = M.jobDescriptionPanel(j);
+  ok('an empty description invites one', empty.indexOf('No description yet')>-1);
+  ok('the button reads Add when empty', empty.indexOf('＋ Add')>-1);
+  j.notes = 'x';
+  ok('the button reads Edit once filled', M.jobDescriptionPanel(j).indexOf('>Edit<')>-1);
+  ok('whitespace-only counts as empty', M.jobDescriptionPanel({ id:j.id, notes:'   ' }).indexOf('No description yet')>-1);
 })();
 
 /* ---------------------------------------------------------------- SUMMARY */

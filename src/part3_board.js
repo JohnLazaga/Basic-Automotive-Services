@@ -195,10 +195,14 @@ function openInbox(staffId){
   var body=list.length? list.map(function(m){
     var j=m.job, e=m.entry;
     return '<div class="inbox-row"><div class="inbox-body">'+
-      '<div class="inbox-head"><a onclick="closeModal();go(\'job\',\''+j.id+'\')"><b>'+esc(j.no)+'</b> · '+esc(j.plate)+(j.owner?' · '+esc(j.owner):'')+'</a>'+statusBadge(e.code)+'</div>'+
+      '<div class="inbox-head"><a onclick="closeModal();go(\'job\',\''+j.id+'\')"><b>'+esc(j.no)+'</b> · '+esc(j.plate)+'</a>'+statusBadge(e.code)+
+        '<span class="inbox-veh">'+esc(jobVehicleLabel(j))+(j.owner?' · '+esc(j.owner):'')+'</span></div>'+
       '<div class="inbox-note">'+esc(e.note||'')+'</div>'+
       '<div class="log-meta">'+esc(staffName(e.by))+' · '+esc(fmtDateTime(e.time))+'</div></div>'+
-      '<button class="btn sm primary" onclick="ackMessage(\''+j.id+'\','+m.idx+',\''+staffId+'\')">✓ Got it</button></div>';
+      '<div class="inbox-acts">'+
+        '<button class="btn sm primary" onclick="ackMessage(\''+j.id+'\','+m.idx+',\''+staffId+'\')">✓ Got it</button>'+
+        '<button class="btn sm ghost" onclick="replyToMessage(\''+j.id+'\','+m.idx+',\''+staffId+'\')">↩ Reply</button>'+
+      '</div></div>';
   }).join('') : emptyState('No unread messages.');
   openModal('Messages for '+staffName(staffId), '<div class="inbox">'+body+'</div>',
     { footer:'<button class="btn ghost" onclick="closeModal()">Close</button>', width:'640px' });
@@ -210,6 +214,65 @@ function ackMessage(jobId, idx, staffId){
   e.ack=e.ack||{}; e.ack[staffId]=new Date().toISOString();
   persist(); render();
   if(unreadMessages(staffId).length) openInbox(staffId); else { closeModal(); toast('All read'); }
+}
+
+/* "2019 Toyota Vios 1.3 E" for a job — the unit as the shop says it out loud.
+   Falls back to the vehicle record when the job snapshot is thin. */
+function jobVehicleLabel(j){
+  if(!j) return '';
+  var v=(j.vehicleId && typeof vehicleById==='function') ? vehicleById(j.vehicleId) : null;
+  var parts=[j.year||(v&&v.year), j.make||(v&&v.make), j.model||(v&&v.model), j.variant||(v&&v.variant)];
+  return parts.filter(function(x){ return x!=null && String(x).trim()!==''; }).join(' ').trim();
+}
+
+/* ---- Reply -------------------------------------------------------------------
+   A reply is just another clipboard entry on the same job, logged BY the person
+   who was tagged and addressed back TO whoever wrote the message (plus anyone
+   else it was addressed to, so a two-mechanic thread stays together). Sending
+   also marks the original read — you have plainly seen it if you answered it.
+   The status code is carried over so a reply never silently moves the job. */
+var _replyCtx=null;
+function replyRecipients(e, meId){
+  var to=[]; if(e && e.by && e.by!==meId) to.push(e.by);
+  logEntryFor(e).forEach(function(id){ if(id!==meId && to.indexOf(id)<0) to.push(id); });
+  return to;
+}
+function replyToMessage(jobId, idx, staffId){
+  var j=jobById(jobId); var e=j && (j.statusLog||[])[idx]; if(!e) return;
+  var to=replyRecipients(e, staffId);
+  if(!to.length){ toast('Nobody to reply to on this message','err'); return; }
+  _replyCtx={ jobId:jobId, idx:idx, staffId:staffId };
+  openModal('Reply · '+j.no+' · '+j.plate+(jobVehicleLabel(j)?' · '+jobVehicleLabel(j):''),
+    '<div class="reply-quote"><div class="log-meta">'+esc(staffName(e.by))+' · '+esc(fmtDateTime(e.time))+'</div>'+
+      '<div class="inbox-note">'+esc(e.note||'')+'</div></div>'+
+    '<div class="fld"><span class="fld-l">To</span><div class="tags">'+
+      to.map(function(id){ return '<span class="chip gold">'+esc(staffName(id))+'</span>'; }).join(' ')+'</div>'+
+      '<span class="fld-h">Replying as '+esc(staffName(staffId))+' — it lands on this job\'s clipboard log.</span></div>'+
+    field('Your reply','<textarea id="rpNote" rows="3" placeholder="e.g. Copy. Torqued to 110 Nm, hub refitted."></textarea>'),
+    { onOk:'sendReply', okText:'↩ Send reply', width:'560px',
+      after:function(){ var t=document.getElementById('rpNote'); if(t){ try{ t.focus(); }catch(err){} } } });
+}
+function sendReply(){
+  if(!_replyCtx) return;
+  var j=jobById(_replyCtx.jobId); var e=j && (j.statusLog||[])[_replyCtx.idx]; if(!e){ closeModal(); return; }
+  var note=val('rpNote');
+  if(!String(note).trim()){
+    toast('Write your reply before sending','err');
+    var el=document.getElementById('rpNote'); var box=(el && el.closest) ? el.closest('.fld') : null;
+    if(box){ box.classList.add('needfill');
+      var clr=function(){ if(String(val('rpNote')).trim()){ box.classList.remove('needfill'); el.removeEventListener('input',clr); } };
+      el.addEventListener('input',clr);
+    }
+    if(el){ try{ el.focus(); }catch(err){} }
+    return;
+  }
+  var me=_replyCtx.staffId;
+  j.statusLog.push(buildLogEntry(e.code || j.status, me, note, replyRecipients(e, me)));
+  e.ack=e.ack||{}; e.ack[me]=new Date().toISOString();     // answering it counts as reading it
+  var staffId=me; _replyCtx=null;
+  persist(); closeModal(); toast('Reply logged');
+  render();
+  if(unreadMessages(staffId).length) openInbox(staffId);
 }
 
 /* Time of the most recent status/clipboard log entry for a job (or '—'). */

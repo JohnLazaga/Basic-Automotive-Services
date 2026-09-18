@@ -31,6 +31,7 @@ function blankJob(){
     workAuth:[],    // customer authorizations for extra work: {id,desc,amount,approvedBy,method,note,at}
     workLog:[],     // per-mechanic labor timer segments: {id,mechId,start,end|null}
     status:'A1', statusLog:[], addlWork:[], approvedReleaseBy:null, paymentReceivedBy:null,
+    afterServiceNotes:'', afterServiceBy:null, afterServiceAt:null,   // gate: must be filled before Final Billing
     discount:{ parts:0, labor:0, other:0, otherNote:'' }, payments:[], orNumber:null, billedAt:null, releaseSignature:null,
     orVoid:null,     // {at,by,byName,reason} — receipt voided; the job and its OR number are KEPT
     joCancel:null,   // {at,by,byName,reason} — unbilled job order cancelled; its JO number is KEPT
@@ -97,6 +98,40 @@ function postJobMissingFields(j){
   if(!(j.mechanicIds||[]).filter(function(id){return id&&id!=='TBA';}).length) missing.push('Mechanic(s)');
   return missing;
 }
+
+/* ---- After-service notes (gate before Final Billing) -----------------------
+   What was actually found and done, written AFTER the work — not the customer's
+   reported concern (that stays the Job Description / "Service notes" on the Job
+   Order). It prints on the Post Job Report in place of the old Service notes
+   block, and Final Billing cannot be created until it is written and signed by
+   one of the three roles allowed to close a job out. */
+var AFTER_SERVICE_ROLES = ['SV','SA','Secretary'];
+var AFTER_SERVICE_ROLE_TEXT = 'Supervisor, Service Adviser or Secretary (Accounts)';
+/* Everyone who may sign the notes — the three roles above, in role order. */
+function afterServiceStaff(){
+  return AFTER_SERVICE_ROLES.reduce(function(list,r){ return list.concat(staffByRole(r)); }, []);
+}
+/* May the SIGNED-IN account write the notes? Pre-auth / local / tests: yes,
+   matching the can() convention. Admins always. */
+function canWriteAfterService(){
+  if (typeof CURRENT_USER==='undefined' || !CURRENT_USER) return true;
+  return !!CURRENT_USER.isAdmin || AFTER_SERVICE_ROLES.indexOf(CURRENT_USER.role)>-1;
+}
+/* Name of the signer, but only if that staff record still holds one of the
+   three allowed roles — a stale reference prints blank, like staffNameIfRole. */
+function afterServiceSignerName(j){
+  var s=staffById(j&&j.afterServiceBy);
+  return (s && AFTER_SERVICE_ROLES.indexOf(s.role)>-1) ? s.name : '';
+}
+/* What still blocks Final Billing. Empty array = the gate is satisfied. */
+function afterServiceMissing(j){
+  var missing=[];
+  if(!j) return ['After-service notes'];
+  if(!String(j.afterServiceNotes||'').trim()) missing.push('After-service notes');
+  if(!afterServiceSignerName(j)) missing.push('Notes filled out by ('+AFTER_SERVICE_ROLE_TEXT+')');
+  return missing;
+}
+function afterServiceDone(j){ return afterServiceMissing(j).length===0; }
 /* Map each "missing field" label to the input it corresponds to in the Ingress
    form and the Edit-Job-Details form, so a gate prompt can visually highlight
    the exact boxes still to fill. Fields captured elsewhere (Service Adviser /
@@ -277,6 +312,7 @@ VIEWS.job = function(id){
     '<div class="cols">'+
       '<div class="colmain">'+
         jobStatusPanel(j)+
+        jobDescriptionPanel(j)+
         jobTimerPanel(j)+
         jobLinesPanel(j)+
         jobWorkAuthPanel(j)+
@@ -363,6 +399,37 @@ function buildLogEntry(code, by, note, forIds){
   if(ids.length) e.for=ids;
   return e;
 }
+/* ---- Job description -------------------------------------------------------
+   What the unit came in for, in the customer's words — captured at Ingress as
+   "Concerns / reported issues". It sits directly under the clipboard log
+   because that is the pairing the mechanic reads: what was asked for, then
+   what has been done about it. Editable in place; the same text still shows in
+   Job Details and prints as "Service notes". */
+function jobDescriptionPanel(j){
+  var txt=String(j.notes||'').trim();
+  return '<div class="card"><div class="card-head"><h2>Job Description</h2>'+
+    '<button class="btn sm ghost" onclick="editJobDescription(\''+j.id+'\')">'+(txt?'Edit':'＋ Add')+'</button></div>'+
+    (txt? '<div class="jobdesc">'+esc(txt)+'</div>'
+        : emptyState('No description yet — what did the customer bring it in for?'))+
+  '</div>';
+}
+var _descCtx=null;
+function editJobDescription(id){
+  var j=jobById(id); if(!j) return;
+  _descCtx=id;
+  openModal('Job description',
+    field('Concerns / reported issues',
+      '<textarea id="jdescNote" rows="4" placeholder="e.g. Grinding noise on braking, pulls right. Customer wants PMS done at the same time.">'+esc(j.notes||'')+'</textarea>',
+      'What the customer reported. Shows on the Job Order print as Service notes.'),
+    { onOk:'saveJobDescription', okText:'Save', width:'560px',
+      after:function(){ var t=document.getElementById('jdescNote'); if(t){ try{ t.focus(); }catch(e){} } } });
+}
+function saveJobDescription(){
+  var j=jobById(_descCtx); if(!j){ closeModal(); return; }
+  j.notes=val('jdescNote'); _descCtx=null;
+  persist(); closeModal(); toast('Job description saved'); render();
+}
+
 function logUpdate(id, withTags){
   var j=jobById(id);
   var opts = STATUS_ORDER.map(function(c){return '<option value="'+c+'"'+(c===j.status?' selected':'')+'>'+c+' — '+esc(STATUS[c])+'</option>';}).join('');
@@ -1098,7 +1165,8 @@ function jobDetailsPanel(j){
       kv('Job hours', num(j.jobHours))+ kv('Assessed by', esc(staffName(j.assessedBy)))+
       kv('SI ref', esc(j.siRef||'—'))+ kv('PMS ref', esc(j.pmsRef||'—'))+
     '</div>'+
-    (j.notes? '<div class="notes"><b>Concerns / reported issues</b><p>'+esc(j.notes)+'</p></div>':'')+
+    /* The text itself lives in the Job Description card under the clipboard log. */
+    (j.notes? '<div class="notes"><b>Concerns / reported issues</b><p class="muted small">Shown in full under Job Description.</p></div>':'')+
   '</div>';
 }
 function editJobDetails(id){
@@ -1155,6 +1223,7 @@ function jobStagePanel(j,b){
           '<button class="btn sm full" onclick="quickC3(\''+j.id+'\')">Mark C3 (Release cleared)</button>');
   } else if (j.stage==='Post Job Report'){
     html+='<p class="muted small">Apply discounts and issue the BIR VAT invoice in <b>Final Billing</b>.</p>'+
+      afterServiceBlock(j)+
       discountEditor(j,'dsc')+
       '<button class="btn ghost sm" onclick="applyDiscount(\''+j.id+'\')">Apply discount</button>'+
       '<div class="grid2 mt8">'+
@@ -1162,14 +1231,63 @@ function jobStagePanel(j,b){
       field('Payment received by (Secretary)','<select onchange="setJobField(\''+j.id+'\',\'paymentReceivedBy\',this.value)">'+optionList(staffByRole('Secretary'),j.paymentReceivedBy,true)+'</select>')+'</div>'+
       '<button class="btn primary full mt8" onclick="advanceBilling(\''+j.id+'\')">Create Final Billing (assign OR #) →</button>';
   } else if (j.stage==='Final Billing'){
-    html+= billingEditBlock(j) + jobPaymentBlock(j,b);
+    html+= afterServiceBlock(j) + billingEditBlock(j) + jobPaymentBlock(j,b);
   } else {
     html+='<div class="released">✓ Released'+(j.orNumber?' · OR '+esc(j.orNumber):'')+'<div class="muted small">'+esc(fmtDateTime(j.billedAt))+'</div></div>'+
-      billingEditBlock(j);
+      afterServiceBlock(j) + billingEditBlock(j);
   }
   html+='</div>';
   return html;
 }
+/* ---- After-service notes panel (sits in the Pipeline card) ------------------
+   Shown from the Post Job Report stage on. Before billing it is a red gate;
+   once written it prints on the Post Job Report and stays visible (and, with
+   the 'billing_edit' capability, correctable) after the OR is issued. */
+function afterServiceBlock(j){
+  var txt=String(j.afterServiceNotes||'').trim();
+  var signer=afterServiceSignerName(j);
+  var editable=(j.stage==='Post Job Report') || can('billing_edit');
+  var mayWrite=canWriteAfterService();
+  var btn = (editable && mayWrite)
+    ? '<button class="btn sm ghost" onclick="editAfterService(\''+j.id+'\')">'+(txt?'Edit':'＋ Fill out')+'</button>' : '';
+  var body = txt
+    ? '<div class="jobdesc">'+esc(txt)+'</div>'+
+      '<div class="muted small mt8">Filled out by '+esc(signer||'—')+
+        (j.afterServiceAt?' · '+esc(fmtDateTime(j.afterServiceAt)):'')+'</div>'+
+      (signer?'':'<div class="lock">🔒 Needs a '+esc(AFTER_SERVICE_ROLE_TEXT)+' on record before Final Billing.</div>')
+    : '<div class="lock">🔒 Final Billing is locked until the after-service notes are filled out by the '+
+        esc(AFTER_SERVICE_ROLE_TEXT)+'.</div>'+
+      (mayWrite?'':'<div class="muted small">Your role cannot write these notes — ask the '+esc(AFTER_SERVICE_ROLE_TEXT)+'.</div>');
+  return '<div class="asblock"><div class="card-head"><h3>After-service notes</h3>'+btn+'</div>'+body+'</div>';
+}
+var _asCtx=null;
+function editAfterService(id){
+  var j=jobById(id); if(!j) return;
+  if(!canWriteAfterService()){ toast('Only the '+AFTER_SERVICE_ROLE_TEXT+' may fill these out','err'); return; }
+  if(j.stage==='Job Order'){ toast('Create the Post Job Report first','err'); return; }
+  if(j.orNumber && !can('billing_edit')){ toast('Billing is already issued','err'); return; }
+  _asCtx=id;
+  openModal('After-service notes',
+    field('What was found and done',
+      '<textarea id="asNote" rows="5" placeholder="e.g. Replaced front pads and machined both front discs. Grinding gone on road test. Rear pads at 4mm — advise replacement next PMS.">'+esc(j.afterServiceNotes||'')+'</textarea>',
+      'Written after the work, not the customer’s complaint. Prints on the Post Job Report.')+
+    field('Filled out by',
+      '<select id="asBy">'+optionList(afterServiceStaff(), j.afterServiceBy, false)+'</select>',
+      AFTER_SERVICE_ROLE_TEXT+' only.'),
+    { onOk:'saveAfterService', okText:'Save', width:'560px',
+      after:function(){ var t=document.getElementById('asNote'); if(t){ try{ t.focus(); }catch(e){} } } });
+}
+function saveAfterService(){
+  var j=jobById(_asCtx); if(!j){ closeModal(); return; }
+  var txt=String(val('asNote')||'').trim();
+  if(!txt){ toast('Write the after-service notes first','err'); return; }
+  var by=staffById(val('asBy'));
+  if(!by || AFTER_SERVICE_ROLES.indexOf(by.role)<0){ toast('Select who filled this out — '+AFTER_SERVICE_ROLE_TEXT,'err'); return; }
+  j.afterServiceNotes=txt; j.afterServiceBy=by.id; j.afterServiceAt=new Date().toISOString();
+  _asCtx=null;
+  persist(); closeModal(); toast('After-service notes saved'); render();
+}
+
 /* Re-open billing: discount, SI reference and (via the lines panel) line items can
    be edited even after Final Billing is issued — gated by the 'billing_edit' cap. */
 function billingEditBlock(j){
@@ -1292,6 +1410,17 @@ var _issuingOR={};
 function advanceBilling(id){
   var j=jobById(id);
   if(!j || j.stage!=='Post Job Report' || j.orNumber) return;   // already issued / wrong stage
+  var asMissing=afterServiceMissing(j);
+  if(asMissing.length){
+    openModal('After-service notes required',
+      '<p class="muted small">Final Billing can’t be created until the after-service notes are completed by the '+
+        esc(AFTER_SERVICE_ROLE_TEXT)+'. Still missing:</p>'+
+      missingChecklist(asMissing),
+      { footer:'<button class="btn ghost" onclick="closeModal()">Close</button>'+
+        (canWriteAfterService()? '<button class="btn primary" onclick="closeModal();editAfterService(\''+j.id+'\')">Fill out now</button>':''),
+        width:'520px' });
+    return;
+  }
   var sup=staffById(j.approvedReleaseBy);
   if(!sup || sup.role!=='SV'){ toast('Select the approving Supervisor first','err'); return; }
   var sec=staffById(j.paymentReceivedBy);

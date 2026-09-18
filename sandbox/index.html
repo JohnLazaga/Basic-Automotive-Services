@@ -132,6 +132,9 @@ h2{font-size:16px;font-weight:700;letter-spacing:-.01em;margin:0 0 10px}
 .inbox-body{flex:1;min-width:0} .inbox-head{display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap}
 .inbox-head a{cursor:pointer;color:var(--brand-dark)} .inbox-head a:hover{text-decoration:underline}
 .inbox-note{font-size:13.5px;white-space:pre-wrap;word-break:break-word;margin-bottom:3px}
+.inbox-veh{font-size:12px;color:var(--ink2);flex-basis:100%}
+.inbox-acts{display:flex;flex-direction:column;gap:6px;flex:0 0 auto}
+.reply-quote{background:var(--canvas);border-radius:9px;padding:9px 12px;margin-bottom:12px;border-left:3px solid var(--brand)}
 .alert{border:1px solid var(--hair);background:#fff;border-radius:20px;padding:6px 13px;font-size:12.5px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
 .alert-go,.alert-x{border:0;background:transparent;font:inherit;color:inherit;cursor:pointer;padding:0;line-height:inherit}
 .alert-x{opacity:.55;font-size:11px;padding-left:4px} .alert-x:hover{opacity:1}
@@ -332,6 +335,7 @@ textarea{resize:vertical} .chk{display:flex;align-items:center;gap:8px;font-size
 .jcard-for{font-size:11.5px;font-weight:600;color:#9a7400}
 .kv{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;padding:3px 0} .kv-k{color:var(--ink2)} .kv-v{font-weight:600;text-align:right}
 .notes{margin-top:10px} .notes p{margin:4px 0 0;font-size:13px}
+.jobdesc{font-size:13.5px;white-space:pre-wrap;word-break:break-word;line-height:1.5}
 .addl-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--hair)}
 .addl-row:last-child{border-bottom:0}
 .checklist{margin-top:10px} .cl-title{font-size:12px;font-weight:700;color:var(--ink2);margin:6px 0} .cl-items{display:grid;grid-template-columns:1fr 1fr;gap:2px}
@@ -348,6 +352,9 @@ textarea{resize:vertical} .chk{display:flex;align-items:center;gap:8px;font-size
 .switch .knob{position:absolute;top:3px;left:3px;width:18px;height:18px;background:#fff;border-radius:50%;transition:transform .15s;box-shadow:0 1px 2px rgba(0,0,0,.3)}
 .switch input:checked + .track{background:var(--brand)}
 .switch input:checked + .track .knob{transform:translateX(18px)}
+.asblock{border:1px solid var(--hair);border-radius:9px;padding:10px 12px;margin:10px 0;background:var(--canvas)}
+.asblock .card-head{margin-bottom:8px}
+.asblock h3{margin:0;font-size:14px}
 .billedit{border:1px solid var(--hair);border-radius:9px;padding:8px 10px;margin:10px 0;background:var(--canvas)}
 .billedit summary{cursor:pointer;font-weight:600;font-size:13px;color:var(--brand)}
 .billedit[open]{padding-bottom:10px}
@@ -563,6 +570,7 @@ a.lnk{color:var(--brand);cursor:pointer;font-weight:600}
 [data-theme="dark"] .released{background:rgba(52,199,89,.14);color:#5fe08a}
 [data-theme="dark"] .due-banner{background:#2a2206}
 [data-theme="dark"] .log-row.tagged,[data-theme="dark"] .inbox-row{background:#2a2206}
+[data-theme="dark"] .reply-quote{background:#1c1c1e}
 [data-theme="dark"] .msgchip{background:rgba(255,192,0,.13);border-color:rgba(255,192,0,.32);color:#ffd60a}
 [data-theme="dark"] .msgchip.me{background:var(--brand);border-color:var(--brand);color:#fff} [data-theme="dark"] .log-for,[data-theme="dark"] .jcard-for{color:#ffd60a}
 [data-theme="dark"] .nextsvc.due{color:#ff8a8a}
@@ -649,7 +657,7 @@ var BRANCH = {"id":"sandbox","slug":"sandbox","name":"Basic by JMSI — Sandbox 
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-09-16 · 7c20ced';
+var APP_VERSION = 'v1.3.0 · 2026-09-18 · 09fe61b';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -1904,10 +1912,14 @@ function openInbox(staffId){
   var body=list.length? list.map(function(m){
     var j=m.job, e=m.entry;
     return '<div class="inbox-row"><div class="inbox-body">'+
-      '<div class="inbox-head"><a onclick="closeModal();go(\'job\',\''+j.id+'\')"><b>'+esc(j.no)+'</b> · '+esc(j.plate)+(j.owner?' · '+esc(j.owner):'')+'</a>'+statusBadge(e.code)+'</div>'+
+      '<div class="inbox-head"><a onclick="closeModal();go(\'job\',\''+j.id+'\')"><b>'+esc(j.no)+'</b> · '+esc(j.plate)+'</a>'+statusBadge(e.code)+
+        '<span class="inbox-veh">'+esc(jobVehicleLabel(j))+(j.owner?' · '+esc(j.owner):'')+'</span></div>'+
       '<div class="inbox-note">'+esc(e.note||'')+'</div>'+
       '<div class="log-meta">'+esc(staffName(e.by))+' · '+esc(fmtDateTime(e.time))+'</div></div>'+
-      '<button class="btn sm primary" onclick="ackMessage(\''+j.id+'\','+m.idx+',\''+staffId+'\')">✓ Got it</button></div>';
+      '<div class="inbox-acts">'+
+        '<button class="btn sm primary" onclick="ackMessage(\''+j.id+'\','+m.idx+',\''+staffId+'\')">✓ Got it</button>'+
+        '<button class="btn sm ghost" onclick="replyToMessage(\''+j.id+'\','+m.idx+',\''+staffId+'\')">↩ Reply</button>'+
+      '</div></div>';
   }).join('') : emptyState('No unread messages.');
   openModal('Messages for '+staffName(staffId), '<div class="inbox">'+body+'</div>',
     { footer:'<button class="btn ghost" onclick="closeModal()">Close</button>', width:'640px' });
@@ -1919,6 +1931,65 @@ function ackMessage(jobId, idx, staffId){
   e.ack=e.ack||{}; e.ack[staffId]=new Date().toISOString();
   persist(); render();
   if(unreadMessages(staffId).length) openInbox(staffId); else { closeModal(); toast('All read'); }
+}
+
+/* "2019 Toyota Vios 1.3 E" for a job — the unit as the shop says it out loud.
+   Falls back to the vehicle record when the job snapshot is thin. */
+function jobVehicleLabel(j){
+  if(!j) return '';
+  var v=(j.vehicleId && typeof vehicleById==='function') ? vehicleById(j.vehicleId) : null;
+  var parts=[j.year||(v&&v.year), j.make||(v&&v.make), j.model||(v&&v.model), j.variant||(v&&v.variant)];
+  return parts.filter(function(x){ return x!=null && String(x).trim()!==''; }).join(' ').trim();
+}
+
+/* ---- Reply -------------------------------------------------------------------
+   A reply is just another clipboard entry on the same job, logged BY the person
+   who was tagged and addressed back TO whoever wrote the message (plus anyone
+   else it was addressed to, so a two-mechanic thread stays together). Sending
+   also marks the original read — you have plainly seen it if you answered it.
+   The status code is carried over so a reply never silently moves the job. */
+var _replyCtx=null;
+function replyRecipients(e, meId){
+  var to=[]; if(e && e.by && e.by!==meId) to.push(e.by);
+  logEntryFor(e).forEach(function(id){ if(id!==meId && to.indexOf(id)<0) to.push(id); });
+  return to;
+}
+function replyToMessage(jobId, idx, staffId){
+  var j=jobById(jobId); var e=j && (j.statusLog||[])[idx]; if(!e) return;
+  var to=replyRecipients(e, staffId);
+  if(!to.length){ toast('Nobody to reply to on this message','err'); return; }
+  _replyCtx={ jobId:jobId, idx:idx, staffId:staffId };
+  openModal('Reply · '+j.no+' · '+j.plate+(jobVehicleLabel(j)?' · '+jobVehicleLabel(j):''),
+    '<div class="reply-quote"><div class="log-meta">'+esc(staffName(e.by))+' · '+esc(fmtDateTime(e.time))+'</div>'+
+      '<div class="inbox-note">'+esc(e.note||'')+'</div></div>'+
+    '<div class="fld"><span class="fld-l">To</span><div class="tags">'+
+      to.map(function(id){ return '<span class="chip gold">'+esc(staffName(id))+'</span>'; }).join(' ')+'</div>'+
+      '<span class="fld-h">Replying as '+esc(staffName(staffId))+' — it lands on this job\'s clipboard log.</span></div>'+
+    field('Your reply','<textarea id="rpNote" rows="3" placeholder="e.g. Copy. Torqued to 110 Nm, hub refitted."></textarea>'),
+    { onOk:'sendReply', okText:'↩ Send reply', width:'560px',
+      after:function(){ var t=document.getElementById('rpNote'); if(t){ try{ t.focus(); }catch(err){} } } });
+}
+function sendReply(){
+  if(!_replyCtx) return;
+  var j=jobById(_replyCtx.jobId); var e=j && (j.statusLog||[])[_replyCtx.idx]; if(!e){ closeModal(); return; }
+  var note=val('rpNote');
+  if(!String(note).trim()){
+    toast('Write your reply before sending','err');
+    var el=document.getElementById('rpNote'); var box=(el && el.closest) ? el.closest('.fld') : null;
+    if(box){ box.classList.add('needfill');
+      var clr=function(){ if(String(val('rpNote')).trim()){ box.classList.remove('needfill'); el.removeEventListener('input',clr); } };
+      el.addEventListener('input',clr);
+    }
+    if(el){ try{ el.focus(); }catch(err){} }
+    return;
+  }
+  var me=_replyCtx.staffId;
+  j.statusLog.push(buildLogEntry(e.code || j.status, me, note, replyRecipients(e, me)));
+  e.ack=e.ack||{}; e.ack[me]=new Date().toISOString();     // answering it counts as reading it
+  var staffId=me; _replyCtx=null;
+  persist(); closeModal(); toast('Reply logged');
+  render();
+  if(unreadMessages(staffId).length) openInbox(staffId);
 }
 
 /* Time of the most recent status/clipboard log entry for a job (or '—'). */
@@ -2157,6 +2228,7 @@ function blankJob(){
     workAuth:[],    // customer authorizations for extra work: {id,desc,amount,approvedBy,method,note,at}
     workLog:[],     // per-mechanic labor timer segments: {id,mechId,start,end|null}
     status:'A1', statusLog:[], addlWork:[], approvedReleaseBy:null, paymentReceivedBy:null,
+    afterServiceNotes:'', afterServiceBy:null, afterServiceAt:null,   // gate: must be filled before Final Billing
     discount:{ parts:0, labor:0, other:0, otherNote:'' }, payments:[], orNumber:null, billedAt:null, releaseSignature:null,
     orVoid:null,     // {at,by,byName,reason} — receipt voided; the job and its OR number are KEPT
     joCancel:null,   // {at,by,byName,reason} — unbilled job order cancelled; its JO number is KEPT
@@ -2223,6 +2295,40 @@ function postJobMissingFields(j){
   if(!(j.mechanicIds||[]).filter(function(id){return id&&id!=='TBA';}).length) missing.push('Mechanic(s)');
   return missing;
 }
+
+/* ---- After-service notes (gate before Final Billing) -----------------------
+   What was actually found and done, written AFTER the work — not the customer's
+   reported concern (that stays the Job Description / "Service notes" on the Job
+   Order). It prints on the Post Job Report in place of the old Service notes
+   block, and Final Billing cannot be created until it is written and signed by
+   one of the three roles allowed to close a job out. */
+var AFTER_SERVICE_ROLES = ['SV','SA','Secretary'];
+var AFTER_SERVICE_ROLE_TEXT = 'Supervisor, Service Adviser or Secretary (Accounts)';
+/* Everyone who may sign the notes — the three roles above, in role order. */
+function afterServiceStaff(){
+  return AFTER_SERVICE_ROLES.reduce(function(list,r){ return list.concat(staffByRole(r)); }, []);
+}
+/* May the SIGNED-IN account write the notes? Pre-auth / local / tests: yes,
+   matching the can() convention. Admins always. */
+function canWriteAfterService(){
+  if (typeof CURRENT_USER==='undefined' || !CURRENT_USER) return true;
+  return !!CURRENT_USER.isAdmin || AFTER_SERVICE_ROLES.indexOf(CURRENT_USER.role)>-1;
+}
+/* Name of the signer, but only if that staff record still holds one of the
+   three allowed roles — a stale reference prints blank, like staffNameIfRole. */
+function afterServiceSignerName(j){
+  var s=staffById(j&&j.afterServiceBy);
+  return (s && AFTER_SERVICE_ROLES.indexOf(s.role)>-1) ? s.name : '';
+}
+/* What still blocks Final Billing. Empty array = the gate is satisfied. */
+function afterServiceMissing(j){
+  var missing=[];
+  if(!j) return ['After-service notes'];
+  if(!String(j.afterServiceNotes||'').trim()) missing.push('After-service notes');
+  if(!afterServiceSignerName(j)) missing.push('Notes filled out by ('+AFTER_SERVICE_ROLE_TEXT+')');
+  return missing;
+}
+function afterServiceDone(j){ return afterServiceMissing(j).length===0; }
 /* Map each "missing field" label to the input it corresponds to in the Ingress
    form and the Edit-Job-Details form, so a gate prompt can visually highlight
    the exact boxes still to fill. Fields captured elsewhere (Service Adviser /
@@ -2403,6 +2509,7 @@ VIEWS.job = function(id){
     '<div class="cols">'+
       '<div class="colmain">'+
         jobStatusPanel(j)+
+        jobDescriptionPanel(j)+
         jobTimerPanel(j)+
         jobLinesPanel(j)+
         jobWorkAuthPanel(j)+
@@ -2489,6 +2596,37 @@ function buildLogEntry(code, by, note, forIds){
   if(ids.length) e.for=ids;
   return e;
 }
+/* ---- Job description -------------------------------------------------------
+   What the unit came in for, in the customer's words — captured at Ingress as
+   "Concerns / reported issues". It sits directly under the clipboard log
+   because that is the pairing the mechanic reads: what was asked for, then
+   what has been done about it. Editable in place; the same text still shows in
+   Job Details and prints as "Service notes". */
+function jobDescriptionPanel(j){
+  var txt=String(j.notes||'').trim();
+  return '<div class="card"><div class="card-head"><h2>Job Description</h2>'+
+    '<button class="btn sm ghost" onclick="editJobDescription(\''+j.id+'\')">'+(txt?'Edit':'＋ Add')+'</button></div>'+
+    (txt? '<div class="jobdesc">'+esc(txt)+'</div>'
+        : emptyState('No description yet — what did the customer bring it in for?'))+
+  '</div>';
+}
+var _descCtx=null;
+function editJobDescription(id){
+  var j=jobById(id); if(!j) return;
+  _descCtx=id;
+  openModal('Job description',
+    field('Concerns / reported issues',
+      '<textarea id="jdescNote" rows="4" placeholder="e.g. Grinding noise on braking, pulls right. Customer wants PMS done at the same time.">'+esc(j.notes||'')+'</textarea>',
+      'What the customer reported. Shows on the Job Order print as Service notes.'),
+    { onOk:'saveJobDescription', okText:'Save', width:'560px',
+      after:function(){ var t=document.getElementById('jdescNote'); if(t){ try{ t.focus(); }catch(e){} } } });
+}
+function saveJobDescription(){
+  var j=jobById(_descCtx); if(!j){ closeModal(); return; }
+  j.notes=val('jdescNote'); _descCtx=null;
+  persist(); closeModal(); toast('Job description saved'); render();
+}
+
 function logUpdate(id, withTags){
   var j=jobById(id);
   var opts = STATUS_ORDER.map(function(c){return '<option value="'+c+'"'+(c===j.status?' selected':'')+'>'+c+' — '+esc(STATUS[c])+'</option>';}).join('');
@@ -3224,7 +3362,8 @@ function jobDetailsPanel(j){
       kv('Job hours', num(j.jobHours))+ kv('Assessed by', esc(staffName(j.assessedBy)))+
       kv('SI ref', esc(j.siRef||'—'))+ kv('PMS ref', esc(j.pmsRef||'—'))+
     '</div>'+
-    (j.notes? '<div class="notes"><b>Concerns / reported issues</b><p>'+esc(j.notes)+'</p></div>':'')+
+    /* The text itself lives in the Job Description card under the clipboard log. */
+    (j.notes? '<div class="notes"><b>Concerns / reported issues</b><p class="muted small">Shown in full under Job Description.</p></div>':'')+
   '</div>';
 }
 function editJobDetails(id){
@@ -3281,6 +3420,7 @@ function jobStagePanel(j,b){
           '<button class="btn sm full" onclick="quickC3(\''+j.id+'\')">Mark C3 (Release cleared)</button>');
   } else if (j.stage==='Post Job Report'){
     html+='<p class="muted small">Apply discounts and issue the BIR VAT invoice in <b>Final Billing</b>.</p>'+
+      afterServiceBlock(j)+
       discountEditor(j,'dsc')+
       '<button class="btn ghost sm" onclick="applyDiscount(\''+j.id+'\')">Apply discount</button>'+
       '<div class="grid2 mt8">'+
@@ -3288,14 +3428,63 @@ function jobStagePanel(j,b){
       field('Payment received by (Secretary)','<select onchange="setJobField(\''+j.id+'\',\'paymentReceivedBy\',this.value)">'+optionList(staffByRole('Secretary'),j.paymentReceivedBy,true)+'</select>')+'</div>'+
       '<button class="btn primary full mt8" onclick="advanceBilling(\''+j.id+'\')">Create Final Billing (assign OR #) →</button>';
   } else if (j.stage==='Final Billing'){
-    html+= billingEditBlock(j) + jobPaymentBlock(j,b);
+    html+= afterServiceBlock(j) + billingEditBlock(j) + jobPaymentBlock(j,b);
   } else {
     html+='<div class="released">✓ Released'+(j.orNumber?' · OR '+esc(j.orNumber):'')+'<div class="muted small">'+esc(fmtDateTime(j.billedAt))+'</div></div>'+
-      billingEditBlock(j);
+      afterServiceBlock(j) + billingEditBlock(j);
   }
   html+='</div>';
   return html;
 }
+/* ---- After-service notes panel (sits in the Pipeline card) ------------------
+   Shown from the Post Job Report stage on. Before billing it is a red gate;
+   once written it prints on the Post Job Report and stays visible (and, with
+   the 'billing_edit' capability, correctable) after the OR is issued. */
+function afterServiceBlock(j){
+  var txt=String(j.afterServiceNotes||'').trim();
+  var signer=afterServiceSignerName(j);
+  var editable=(j.stage==='Post Job Report') || can('billing_edit');
+  var mayWrite=canWriteAfterService();
+  var btn = (editable && mayWrite)
+    ? '<button class="btn sm ghost" onclick="editAfterService(\''+j.id+'\')">'+(txt?'Edit':'＋ Fill out')+'</button>' : '';
+  var body = txt
+    ? '<div class="jobdesc">'+esc(txt)+'</div>'+
+      '<div class="muted small mt8">Filled out by '+esc(signer||'—')+
+        (j.afterServiceAt?' · '+esc(fmtDateTime(j.afterServiceAt)):'')+'</div>'+
+      (signer?'':'<div class="lock">🔒 Needs a '+esc(AFTER_SERVICE_ROLE_TEXT)+' on record before Final Billing.</div>')
+    : '<div class="lock">🔒 Final Billing is locked until the after-service notes are filled out by the '+
+        esc(AFTER_SERVICE_ROLE_TEXT)+'.</div>'+
+      (mayWrite?'':'<div class="muted small">Your role cannot write these notes — ask the '+esc(AFTER_SERVICE_ROLE_TEXT)+'.</div>');
+  return '<div class="asblock"><div class="card-head"><h3>After-service notes</h3>'+btn+'</div>'+body+'</div>';
+}
+var _asCtx=null;
+function editAfterService(id){
+  var j=jobById(id); if(!j) return;
+  if(!canWriteAfterService()){ toast('Only the '+AFTER_SERVICE_ROLE_TEXT+' may fill these out','err'); return; }
+  if(j.stage==='Job Order'){ toast('Create the Post Job Report first','err'); return; }
+  if(j.orNumber && !can('billing_edit')){ toast('Billing is already issued','err'); return; }
+  _asCtx=id;
+  openModal('After-service notes',
+    field('What was found and done',
+      '<textarea id="asNote" rows="5" placeholder="e.g. Replaced front pads and machined both front discs. Grinding gone on road test. Rear pads at 4mm — advise replacement next PMS.">'+esc(j.afterServiceNotes||'')+'</textarea>',
+      'Written after the work, not the customer’s complaint. Prints on the Post Job Report.')+
+    field('Filled out by',
+      '<select id="asBy">'+optionList(afterServiceStaff(), j.afterServiceBy, false)+'</select>',
+      AFTER_SERVICE_ROLE_TEXT+' only.'),
+    { onOk:'saveAfterService', okText:'Save', width:'560px',
+      after:function(){ var t=document.getElementById('asNote'); if(t){ try{ t.focus(); }catch(e){} } } });
+}
+function saveAfterService(){
+  var j=jobById(_asCtx); if(!j){ closeModal(); return; }
+  var txt=String(val('asNote')||'').trim();
+  if(!txt){ toast('Write the after-service notes first','err'); return; }
+  var by=staffById(val('asBy'));
+  if(!by || AFTER_SERVICE_ROLES.indexOf(by.role)<0){ toast('Select who filled this out — '+AFTER_SERVICE_ROLE_TEXT,'err'); return; }
+  j.afterServiceNotes=txt; j.afterServiceBy=by.id; j.afterServiceAt=new Date().toISOString();
+  _asCtx=null;
+  persist(); closeModal(); toast('After-service notes saved'); render();
+}
+
 /* Re-open billing: discount, SI reference and (via the lines panel) line items can
    be edited even after Final Billing is issued — gated by the 'billing_edit' cap. */
 function billingEditBlock(j){
@@ -3418,6 +3607,17 @@ var _issuingOR={};
 function advanceBilling(id){
   var j=jobById(id);
   if(!j || j.stage!=='Post Job Report' || j.orNumber) return;   // already issued / wrong stage
+  var asMissing=afterServiceMissing(j);
+  if(asMissing.length){
+    openModal('After-service notes required',
+      '<p class="muted small">Final Billing can’t be created until the after-service notes are completed by the '+
+        esc(AFTER_SERVICE_ROLE_TEXT)+'. Still missing:</p>'+
+      missingChecklist(asMissing),
+      { footer:'<button class="btn ghost" onclick="closeModal()">Close</button>'+
+        (canWriteAfterService()? '<button class="btn primary" onclick="closeModal();editAfterService(\''+j.id+'\')">Fill out now</button>':''),
+        width:'520px' });
+    return;
+  }
   var sup=staffById(j.approvedReleaseBy);
   if(!sup || sup.role!=='SV'){ toast('Select the approving Supervisor first','err'); return; }
   var sec=staffById(j.paymentReceivedBy);
@@ -5353,6 +5553,23 @@ function workAuthDoc(j){
     '</tbody></table>';
 }
 
+/* ---- After-service notes ---------------------------------------------------
+   Replaces the old "Service notes" block on the Post Job Report. That block
+   echoed the customer's complaint (j.notes), which already prints on the Job
+   Order; this one is what was actually found and done, written after the work
+   by the Supervisor, Service Adviser or Secretary (Accounts) and gating Final
+   Billing. It always prints — an unfilled block shows the gate, so a report
+   handed over before billing shows what is still owed. */
+function afterServiceDoc(j){
+  var txt=String(j.afterServiceNotes||'').trim();
+  var by=(typeof afterServiceSignerName==='function')?afterServiceSignerName(j):staffName(j.afterServiceBy);
+  return '<div class="notes"><b>After-service notes:</b> '+
+    (txt? esc(txt)+'<div style="margin-top:6px;color:#6E6E73;font-size:11px">Filled out by '+esc(by||'—')+
+            (j.afterServiceAt?' · '+esc(fmtDateTime(j.afterServiceAt)):'')+'</div>'
+        : '<i>to be completed by the Supervisor, Service Adviser or Secretary (Accounts) before Final Billing</i>')+
+    '</div>';
+}
+
 /* ---- Post Job Report: prices + Approved for release by -------------------- */
 function docPostJob(j){
   var body=docHeader('Post Job Report · '+j.no)+
@@ -5365,7 +5582,7 @@ function docPostJob(j){
     comebackNote(j)+
     pricedLinesTable(j,{sku:true})+ totalsBox(j,{discount:false})+
     workAuthDoc(j)+
-    (j.notes?'<div class="notes"><b>Service notes:</b> '+esc(j.notes)+'</div>':'')+
+    afterServiceDoc(j)+
     '<div class="sig-grid"><div class="sigline">Checked by (Service Adviser)<br>'+esc(staffName(j.saId))+'</div>'+
       '<div class="sigline">Approved for release by (Supervisor)<br>'+esc(staffNameIfRole(j.approvedReleaseBy,'SV'))+'</div>'+
       '<div class="sigline">Customer<br>'+esc(j.owner||'')+'</div></div>'+
@@ -6055,9 +6272,11 @@ if (typeof module!=='undefined' && module.exports){
     commissionTable:commissionTable, jobLaborCommission:jobLaborCommission, jobLaborCommissionMap:jobLaborCommissionMap, jobLaborCommissionMapAll:jobLaborCommissionMapAll, laborTotal:laborTotal,
     jobPerformedPms:jobPerformedPms, vehiclePmsPerformed:vehiclePmsPerformed, pmsReminderState:pmsReminderState,
     scheduleNextService:scheduleNextService, clearNextService:clearNextService, alertStrip:alertStrip,
-    unreadMessages:unreadMessages, messageStrip:messageStrip, myStaffIds:myStaffIds, messageAcked:messageAcked,
+    jobVehicleLabel:jobVehicleLabel, replyRecipients:replyRecipients, unreadMessages:unreadMessages, messageStrip:messageStrip, myStaffIds:myStaffIds, messageAcked:messageAcked,
     buildLogEntry:buildLogEntry, logEntryFor:logEntryFor, jobStatusPanel:jobStatusPanel, lastLogForLabel:lastLogForLabel,
-    jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
+    jobDescriptionPanel:jobDescriptionPanel, jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
+    afterServiceMissing:afterServiceMissing, afterServiceDone:afterServiceDone, afterServiceStaff:afterServiceStaff,
+    canWriteAfterService:canWriteAfterService, afterServiceSignerName:afterServiceSignerName, afterServiceBlock:afterServiceBlock,
     allocateSeriesNumber:allocateSeriesNumber, maxSeriesNo:maxSeriesNo, nextNo:nextNo,
     jobCostOfParts:jobCostOfParts, jobRevenueExVat:jobRevenueExVat, jobGrossMargin:jobGrossMargin, jobNetProfit:jobNetProfit,
     jobMechActualHours:jobMechActualHours, jobHasTimer:jobHasTimer, jobActualHoursTotal:jobActualHoursTotal, timerRunning:timerRunning,

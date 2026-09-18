@@ -183,6 +183,23 @@ function workAuthDoc(j){
     '</tbody></table>';
 }
 
+/* ---- After-service notes ---------------------------------------------------
+   Replaces the old "Service notes" block on the Post Job Report. That block
+   echoed the customer's complaint (j.notes), which already prints on the Job
+   Order; this one is what was actually found and done, written after the work
+   by the Supervisor, Service Adviser or Secretary (Accounts) and gating Final
+   Billing. It always prints — an unfilled block shows the gate, so a report
+   handed over before billing shows what is still owed. */
+function afterServiceDoc(j){
+  var txt=String(j.afterServiceNotes||'').trim();
+  var by=(typeof afterServiceSignerName==='function')?afterServiceSignerName(j):staffName(j.afterServiceBy);
+  return '<div class="notes"><b>After-service notes:</b> '+
+    (txt? esc(txt)+'<div style="margin-top:6px;color:#6E6E73;font-size:11px">Filled out by '+esc(by||'—')+
+            (j.afterServiceAt?' · '+esc(fmtDateTime(j.afterServiceAt)):'')+'</div>'
+        : '<i>to be completed by the Supervisor, Service Adviser or Secretary (Accounts) before Final Billing</i>')+
+    '</div>';
+}
+
 /* ---- Post Job Report: prices + Approved for release by -------------------- */
 function docPostJob(j){
   var body=docHeader('Post Job Report · '+j.no)+
@@ -195,7 +212,7 @@ function docPostJob(j){
     comebackNote(j)+
     pricedLinesTable(j,{sku:true})+ totalsBox(j,{discount:false})+
     workAuthDoc(j)+
-    (j.notes?'<div class="notes"><b>Service notes:</b> '+esc(j.notes)+'</div>':'')+
+    afterServiceDoc(j)+
     '<div class="sig-grid"><div class="sigline">Checked by (Service Adviser)<br>'+esc(staffName(j.saId))+'</div>'+
       '<div class="sigline">Approved for release by (Supervisor)<br>'+esc(staffNameIfRole(j.approvedReleaseBy,'SV'))+'</div>'+
       '<div class="sigline">Customer<br>'+esc(j.owner||'')+'</div></div>'+
