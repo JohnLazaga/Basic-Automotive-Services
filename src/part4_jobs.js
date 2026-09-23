@@ -3,11 +3,29 @@
    ========================================================================== */
 
 /* ---- Vehicle auto-create -------------------------------------------------- */
+/* Owner / vehicle fields a job carries that also belong on the Vehicles record. */
+var VEHICLE_SYNC_FIELDS = ['owner','address','contactPerson','contactNumber','chassis','year','make','model','variant'];
+/* Copy the job's filled-in details onto BLANK vehicle fields — never overwrites
+   what the Vehicles record already holds. A job created with "finish later" makes
+   the vehicle with gaps; without this, completing the job later left the vehicle
+   (and its public portal page) blank forever. Placeholders typed to get past
+   the gate ("N/A", "---") are not copied. Returns true if anything changed. */
+var VEHICLE_PLACEHOLDER = /^(n\/?a|none|tba|[-.\s]+)$/i;
+function fillVehicleBlanks(v, snap){
+  if(!v || !snap) return false;
+  var changed=false;
+  VEHICLE_SYNC_FIELDS.forEach(function(k){
+    var cur=String(v[k]==null?'':v[k]).trim(), nv=String(snap[k]==null?'':snap[k]).trim();
+    if(!cur && nv && !VEHICLE_PLACEHOLDER.test(nv)){ v[k]=snap[k]; changed=true; }
+  });
+  return changed;
+}
 function ensureVehicle(snap){
   var v = vehicleByPlate(snap.plate);
   if (v){
     // refresh light fields
     if (snap.odometer) v.odometer = snap.odometer;
+    if (fillVehicleBlanks(v, snap) && typeof publishPortalDoc==='function') publishPortalDoc(v.id);
     return v;
   }
   v = { id:uid('vh'), plate:(snap.plate||'').trim().toUpperCase(), owner:snap.owner||snap.contactPerson||'',
@@ -47,7 +65,7 @@ async function createJob(base){
   if (!j.statusLog.length) j.statusLog=[{ time:new Date().toISOString(), code:j.status||'A1', by:j.saId||'', note:'Job Order created.' }];
   var v = ensureVehicle(j);
   j.vehicleId = v.id;
-  ['owner','address','contactPerson','contactNumber','chassis','year','make','model','variant'].forEach(function(k){
+  VEHICLE_SYNC_FIELDS.forEach(function(k){
     if(!j[k]) j[k]=v[k];
   });
   if (depAmt>0) j.payments.push({ amount:round2(depAmt), method:depM, date:new Date().toISOString(), note:'Deposit (intake)' });
@@ -1208,7 +1226,10 @@ function saveJobDetails(){
   j.odometer=Number(val('jdOdo'))||0; j.lastServiceOdo=val('jdLastOdo')===''?'':Number(val('jdLastOdo'))||0; j.jobHours=Number(val('jdHours'))||0; j.assessedBy=val('jdAssess');
   j.inspection=j.inspection||{}; j.inspection.fuel=(val('jdFuel')===''?'':Number(val('jdFuel'))||0); j.inspection.condition=val('jdCond');
   j.siRef=val('jdSI'); j.pmsRef=val('jdPMS'); j.notes=val('jdNotes');
-  persist(); closeModal(); render();
+  var v=vehicleById(j.vehicleId)||vehicleByPlate(j.plate);
+  var vChanged=fillVehicleBlanks(v, j);
+  persist(); if(vChanged && typeof publishPortalDoc==='function') publishPortalDoc(v.id);
+  closeModal(); render();
 }
 
 /* ---- Stage advancement panel ---------------------------------------------- */

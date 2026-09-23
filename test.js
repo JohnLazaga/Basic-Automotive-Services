@@ -295,6 +295,26 @@ await (async function(){
   ok('commission based on discounted labor (40.00)', cm[mech.id]===40);
 })();
 
+/* -------------------------------------------- Vehicle record fills its gaps */
+section('Vehicle record picks up details completed on the job');
+await (async function(){
+  const s=fresh();
+  // "Create, finish later": only plate + odometer at ingress.
+  const j=await M.createJob({plate:'GAP 0001', odometer:500});
+  const v=s.vehicles.find(function(x){return x.id===j.vehicleId;});
+  ok('vehicle created blank from a partial ingress', v && !v.make && !v.owner);
+  // Details completed later on the job (what saveJobDetails does) flow to blanks.
+  Object.assign(j,{owner:'JUAN', make:'TOYOTA', model:'VIOS', year:'2020', chassis:'CH123'});
+  ok('fillVehicleBlanks reports a change', M.fillVehicleBlanks(v,j)===true);
+  ok('vehicle now has the job details', v.owner==='JUAN' && v.make==='TOYOTA' && v.model==='VIOS' && v.chassis==='CH123');
+  // Never overwrites what the vehicle already holds.
+  ok('existing vehicle data is not overwritten', M.fillVehicleBlanks(v,{owner:'OTHER', make:'HONDA'})===false && v.owner==='JUAN' && v.make==='TOYOTA');
+  ok('placeholders are not copied', M.fillVehicleBlanks(v,{address:'N/A', contactNumber:'---'})===false && !v.address);
+  // A return visit with full details also fills a still-blank vehicle.
+  const j2=await M.createJob({plate:'GAP 0001', address:'QC', contactNumber:'09170000000'});
+  ok('return visit fills remaining blanks', v.address==='QC' && v.contactNumber==='09170000000' && j2.vehicleId===v.id);
+})();
+
 /* -------------------------------------------------- Series-number uniqueness */
 section('Series numbers never duplicate (stale/behind counter)');
 await (async function(){
