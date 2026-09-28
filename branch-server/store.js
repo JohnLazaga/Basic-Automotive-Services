@@ -5,7 +5,7 @@
 const { DatabaseSync } = require('node:sqlite');
 const crypto = require('crypto');
 
-const COLLECTIONS = ['staff', 'bays', 'parts', 'labor', 'vehicles', 'estimates', 'jobs', 'appointments', 'purchaseOrders'];
+const COLLECTIONS = ['staff', 'bays', 'parts', 'labor', 'vehicles', 'estimates', 'jobs', 'appointments', 'purchaseOrders', 'expenses'];
 
 function createStore(file) {
   const db = new DatabaseSync(file);

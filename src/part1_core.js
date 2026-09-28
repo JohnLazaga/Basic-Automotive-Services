@@ -542,6 +542,7 @@ function seedState(){
     jobs:[job1],
     appointments:[appt1,appt2],
     purchaseOrders:[po1],
+    expenses:[],
     counters:{ est:0, jo:1, or:1000, po:1 }
   };
 }
@@ -554,7 +555,7 @@ async function loadState(){
   }
   if (!S || S.version!==2){ S = seedState(); persist(); }
   // migration safety: ensure arrays exist
-  ['staff','bays','parts','labor','vehicles','estimates','jobs','appointments','purchaseOrders'].forEach(function(k){
+  ['staff','bays','parts','labor','vehicles','estimates','jobs','appointments','purchaseOrders','expenses'].forEach(function(k){
     if (!Array.isArray(S[k])) S[k]=[];
   });
   if (!S.counters) S.counters = { est:0, jo:0, or:1000, po:0 };

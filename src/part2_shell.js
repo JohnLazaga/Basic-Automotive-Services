@@ -32,7 +32,8 @@ var NAV = [
     { id:'reports', label:'Reports', icon:'▣', adminOnly:true },
     { id:'dailyclose', label:'Daily Close', icon:'◷', cap:'dailyclose' },
     { id:'productivity', label:'Productivity', icon:'⚙', cap:'productivity' },
-    { id:'receivables', label:'Receivables', icon:'₱', cap:'receivables' }
+    { id:'receivables', label:'Receivables', icon:'₱', cap:'receivables' },
+    { id:'expenses', label:'Expenses & P&L', icon:'◔', finance:true }
   ]},
   { group:'RECORDS', items:[
     { id:'vehicles', label:'Vehicles', icon:'⛛' },
@@ -48,6 +49,7 @@ var NAV = [
 ];
 function navAllowed(it){
   if (it.adminOnly) return (typeof canSeeReports!=='function') || canSeeReports();  // hard admin-only items (e.g. Reports)
+  if (it.finance) return (typeof canFinance!=='function') || canFinance();         // admins + Secretary (Expenses)
   return (typeof can!=='function') || !it.cap || can(it.cap);
 }
 
@@ -245,7 +247,7 @@ function topbarHTML(){
 function viewTitle(v){
   var map={ board:'Operations Board', appointments:'Appointments', jobs:'Job Orders', job:'Job Order',
     estimates:'Estimates', estimate:'Estimate', reports:'Reports & Analytics', dailyclose:'Daily Close',
-    productivity:'Mechanic Productivity', receivables:'Receivables (A/R)', vehicles:'Vehicles', vehicle:'Vehicle',
+    productivity:'Mechanic Productivity', receivables:'Receivables (A/R)', expenses:'Expenses & P&L', vehicles:'Vehicles', vehicle:'Vehicle',
     parts:'Parts Catalog', labor:'Labor Catalog', purchaseorders:'Purchase Orders', po:'Purchase Order',
     staff:'Staff', settings:'Settings' };
   return map[v]||'Basic by JMSI';

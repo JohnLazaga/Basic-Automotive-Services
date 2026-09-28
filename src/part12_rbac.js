@@ -444,5 +444,6 @@ var VIEW_CAP = {
 };
 function routeAllowed(view){
   if (view==='reports') return canSeeReports();   // Reports & Analytics: admins only
+  if (view==='expenses') return canFinance();     // Expenses & P&L: admins + Secretary
   var c=VIEW_CAP[view]; return !c || can(c);
 }

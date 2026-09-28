@@ -332,6 +332,7 @@ textarea{resize:vertical} .chk{display:flex;align-items:center;gap:8px;font-size
 
 /* ---- Bill card ---- */
 .billcard .l2,.bill-mini .l2,.estsum .l2{display:flex;justify-content:space-between;font-size:13px;padding:4px 0}
+.card .l2{display:flex;justify-content:space-between;gap:12px;font-size:13px;padding:3px 0}   /* label left, amount right — Reports, Expenses & P&L */
 .l2.disc span:last-child{color:var(--brand-dark)} .l2.tot{font-weight:800;font-size:14.5px;border-top:1px solid var(--hair);padding-top:7px;margin-top:3px}
 .bill-sep{height:1px;background:var(--hair);margin:6px 0} .estsum{margin-top:10px;border-top:1px solid var(--hair);padding-top:8px;max-width:320px;margin-left:auto}
 .lock{background:var(--canvas);border-radius:9px;padding:10px;text-align:center;font-size:12.5px;color:var(--ink2);margin:8px 0}

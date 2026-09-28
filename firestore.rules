@@ -85,7 +85,19 @@ service cloud.firestore {
                               && coll != 'portal' && coll != 'appt_requests'
                               && coll != 'portal_claims'
                               && coll != 'sessions' && coll != 'shopnet'
-                              && coll != 'devices' && coll != 'webauthn_challenges';
+                              && coll != 'devices' && coll != 'webauthn_challenges'
+                              && coll != 'expenses';
+      }
+
+      /* Operating expenses and staff base pay (part17_expenses.js). Admins and
+         the Secretary (Accounts) only — a mechanic must not be able to read
+         everyone's salary straight out of the database. The client only syncs
+         this collection for those two (syncCollections in part11_cloud.js). */
+      match /expenses/{doc} {
+        allow read, write: if isOwner()
+                              || (activeMember(b)
+                                  && (get(acctPath(b)).data.get('isAdmin', false) == true
+                                      || get(acctPath(b)).data.get('role', '') == 'Secretary'));
       }
 
       match /meta/shop {

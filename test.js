@@ -327,6 +327,45 @@ await (async function(){
   ok('still no false match', !hit('toyota vios'));
 })();
 
+section('Operating expenses & business P&L');
+await (async function(){
+  const s=fresh();
+  const m='2026-08';
+  // One released job billed in August: ₱1,000 labor, no parts.
+  const j=await M.createJob({plate:'PNL 0001', owner:'A'});
+  j.lines=[{id:'l1',type:'labor',desc:'Tune up',qty:1,price:1000}];
+  j.stage='Released'; j.billedAt='2026-08-10T03:00:00.000Z'; j.orNumber='OR-9999';
+  const before=M.plFor(m);
+  ok('no expenses → net profit equals gross profit', before.net===before.gross && before.opex.total===0);
+  const staffId=s.staff[0].id;
+  s.expenses=[
+    {id:'e1',kind:'expense',date:'2026-08-05',category:'Supplies',amount:300},
+    {id:'e2',kind:'expense',date:'2026-09-01',category:'Supplies',amount:999},           // other month
+    {id:'r1',kind:'recurring',category:'Rent',amount:20000,startMonth:'2026-01',endMonth:''},
+    {id:'r2',kind:'recurring',category:'Water',amount:500,startMonth:'2026-01',endMonth:'2026-07'}, // ended
+    {id:'p1',kind:'pay',staffId:staffId,basis:'month',amount:15000,from:'2026-01'},
+    {id:'p2',kind:'pay',staffId:staffId,basis:'day',amount:600,daysPerMonth:26,from:'2026-09'}    // change later
+  ];
+  const p=M.plFor(m);
+  ok('opex = one-off + active recurring + base pay', p.opex.total===300+20000+15000);
+  ok('ended recurring item not counted', !p.opex.byCat.Water);
+  ok('other month expense not counted', p.opex.byCat.Supplies===300);
+  ok('net = gross − opex', p.net===M.round2(before.gross-p.opex.total));
+  ok('pay change applies from its month', M.monthlyPay(M.payFor(staffId,'2026-09'))===15600 && M.monthlyPay(M.payFor(staffId,'2026-08'))===15000);
+  ok('P&L month arithmetic wraps the year', M.addMonths('2026-12',1)==='2027-01' && M.addMonths('2026-01',-1)==='2025-12');
+  // Access: finance data syncs and routes only for admins and the Secretary.
+  M.setCurrentUser({uid:'u1',role:'Mechanic',isAdmin:false});
+  ok('mechanic does not sync expenses', M.syncCollections().indexOf('expenses')<0);
+  ok('mechanic cannot open Expenses', !M.routeAllowed('expenses'));
+  M.setCurrentUser({uid:'u2',role:'Secretary',isAdmin:false});
+  ok('secretary syncs expenses', M.syncCollections().indexOf('expenses')>=0);
+  ok('secretary can open Expenses', M.routeAllowed('expenses'));
+  ok('secretary does not see the P&L', !/Profit &amp; loss/.test(M.VIEWS().expenses()));
+  M.setCurrentUser({uid:'u3',role:'SV',isAdmin:true});
+  ok('admin sees the P&L', /Profit &amp; loss/.test(M.VIEWS().expenses()));
+  M.setCurrentUser(null);
+})();
+
 /* -------------------------------------------------- Series-number uniqueness */
 section('Series numbers never duplicate (stale/behind counter)');
 await (async function(){

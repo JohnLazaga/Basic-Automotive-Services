@@ -282,6 +282,13 @@ function renderCloudLoading(){
    - Job photos are uploaded to Firebase Storage so docs stay under 1 MB.
    ========================================================================== */
 var COLLECTIONS = ['staff','bays','parts','labor','vehicles','estimates','jobs','appointments','purchaseOrders'];
+/* Finance data (expenses, base pay) is readable only by admins and the Secretary
+   (firestore.rules). It is synced only for those users: for anyone else the
+   listener would be denied and the load would fail. */
+var FINANCE_COLLECTIONS = ['expenses'];
+function syncCollections(){
+  return (typeof canFinance==='function' && canFinance()) ? COLLECTIONS.concat(FINANCE_COLLECTIONS) : COLLECTIONS;
+}
 var _cloudSnap = {};       /* {collection: {id: jsonString}} — for diffing */
 var _metaSnap = { shop:null, counters:null };  /* last-synced meta docs */
 var _cloudSubs = [];       /* unsubscribe fns */
@@ -307,7 +314,7 @@ async function cloudLoadAll(){
 }
 
 function ensureStateShape(){
-  COLLECTIONS.forEach(function(c){ if(!Array.isArray(S[c])) S[c]=[]; });
+  COLLECTIONS.concat(FINANCE_COLLECTIONS).forEach(function(c){ if(!Array.isArray(S[c])) S[c]=[]; });
   if(!S.counters) S.counters={ est:0, jo:0, or:1000, po:0 };
   if(!S.shop) S.shop=seedState().shop;
   if(!S.shop.theme) S.shop.theme='light';
@@ -320,8 +327,9 @@ async function cloudFetchState(){
   if (shopDoc.exists) st.shop = Object.assign(st.shop, shopDoc.data());
   var cntDoc = await bcol('meta').doc('counters').get();
   if (cntDoc.exists) st.counters = Object.assign(st.counters, cntDoc.data());
-  for (var i=0;i<COLLECTIONS.length;i++){
-    var c = COLLECTIONS[i];
+  var cols = syncCollections();
+  for (var i=0;i<cols.length;i++){
+    var c = cols[i];
     var snap = await bcol(c).get();
     st[c] = snap.docs.map(function(d){ return d.data(); });
   }
@@ -371,8 +379,9 @@ async function cloudPersist(){
   if (cntJSON !== _metaSnap.counters){
     try { await bcol('meta').doc('counters').set(plain(S.counters)); _metaSnap.counters = cntJSON; } catch(e){ console.error('counters', e); }
   }
-  for (var i=0;i<COLLECTIONS.length;i++){
-    var c = COLLECTIONS[i];
+  var cols = syncCollections();
+  for (var i=0;i<cols.length;i++){
+    var c = cols[i];
     var cur = {}; (S[c]||[]).forEach(function(r){ cur[r.id]=r; });
     var prev = _cloudSnap[c] || (_cloudSnap[c]={});
     // upserts (new or changed) — each isolated so one failure never aborts the rest
@@ -398,7 +407,7 @@ async function cloudPersist(){
 }
 
 function rememberSnap(){
-  COLLECTIONS.forEach(function(c){
+  syncCollections().forEach(function(c){
     if (c==='jobs'){ var m={}; (S.jobs||[]).forEach(function(j){ if(j&&j.id) m[j.id]=JSON.stringify(jobDocForCloud(j)); }); _cloudSnap[c]=m; }
     else _cloudSnap[c]=snapMap(S[c]);
   });
@@ -618,7 +627,7 @@ function applyRemoteSnapshot(c, incoming){
 
 function cloudSubscribe(){
   cloudUnsub();
-  COLLECTIONS.forEach(function(c){
+  syncCollections().forEach(function(c){
     var u = bcol(c).onSnapshot(function(snap){
       if (snap.metadata.hasPendingWrites) return;             // ignore our own local writes
       _applyingRemote = true;
@@ -751,7 +760,7 @@ async function localLoadAll(){
     var st = seedState();
     if (d.shop) st.shop = Object.assign(st.shop, d.shop);
     if (d.counters) st.counters = Object.assign(st.counters, d.counters);
-    COLLECTIONS.forEach(function(c){ st[c] = (d.collections && d.collections[c]) || []; });
+    syncCollections().forEach(function(c){ st[c] = (d.collections && d.collections[c]) || []; });
     S = st;
   }
   ensureStateShape();
@@ -809,8 +818,9 @@ async function localPersist(){
   }
   var cntJSON = JSON.stringify(S.counters);
   if (cntJSON !== _metaSnap.counters){ await _postJSON(base+'/data/meta/counters', { value:plain(S.counters), origin:CLIENT_ID }); _metaSnap.counters = cntJSON; }
-  for (var i=0;i<COLLECTIONS.length;i++){
-    var c = COLLECTIONS[i];
+  var cols = syncCollections();
+  for (var i=0;i<cols.length;i++){
+    var c = cols[i];
     var cur = {}; (S[c]||[]).forEach(function(r){ cur[r.id]=r; });
     var prev = _cloudSnap[c] || (_cloudSnap[c]={});
     var ids = Object.keys(cur);
