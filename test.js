@@ -315,6 +315,18 @@ await (async function(){
   ok('return visit fills remaining blanks', v.address==='QC' && v.contactNumber==='09170000000' && j2.vehicleId===v.id);
 })();
 
+section('Job Orders search: contact #, chassis # and full vehicle');
+await (async function(){
+  const s=fresh();
+  const j=await M.createJob({plate:'SRC 0001', owner:'ANA', contactNumber:'0917 555 1234', chassis:'MMBJKR10NH009999', year:'2022', make:'MITSUBISHI', model:'MONTERO', variant:'2.4'});
+  const hit=function(q){ M.setJobQ(q); const r=M.jobMatch(j); M.setJobQ(''); return r; };
+  ok('finds by contact # typed without spaces', hit('09175551234'));
+  ok('finds by chassis #', hit('nh009999'));
+  ok('finds by year + make', hit('2022 mitsubishi'));
+  ok('finds by model + variant', hit('montero 2.4'));
+  ok('still no false match', !hit('toyota vios'));
+})();
+
 /* -------------------------------------------------- Series-number uniqueness */
 section('Series numbers never duplicate (stale/behind counter)');
 await (async function(){

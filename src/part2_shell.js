@@ -339,7 +339,18 @@ function render(){
   }
   // fast path: shell already in the DOM — swap only the content + light nav/topbar bits
   var c = document.getElementById('content');
+  /* A re-render (e.g. another device's save arriving) replaces the whole view,
+     which used to throw the cursor out of a search box mid-typing. Put focus
+     and the caret back on the field with the same id. */
+  var ae = document.activeElement, keep = null;
+  if (c && ae && ae.id && c.contains(ae) && /^(INPUT|TEXTAREA)$/.test(ae.tagName)){
+    keep = { id: ae.id, s: ae.selectionStart, e: ae.selectionEnd };
+  }
   if (c) c.innerHTML = renderView();
+  if (keep){
+    var nf = document.getElementById(keep.id);
+    if (nf && nf.focus){ try { nf.focus(); if (keep.s!=null && nf.setSelectionRange) nf.setSelectionRange(keep.s, keep.e); } catch(e){} }
+  }
   updateNavActive();
   updateTopbar();
   if (typeof afterRender==='function') afterRender();

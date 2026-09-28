@@ -252,8 +252,11 @@ function jobMatch(j){
      "or1234" and plain "1234" all find OR-1234. Same for JO numbers. */
   var qLoose=q.replace(/[^a-z0-9]/g,'');
   var staffTxt=staffSearchStr((j.mechanicIds||[]).concat([j.saId,j.assessedBy,j.partsSalesman]));
-  /* orNumber = the Final Billing receipt (OR) number. */
-  return [j.no,j.plate,j.owner,j.contactPerson,j.make+' '+j.model,j.orNumber,j.siRef,j.pmsRef,staffTxt].some(function(x){
+  /* orNumber = the Final Billing receipt (OR) number. The vehicle string runs
+     year → variant so "2022 Mitsubishi" and "Montero 2.4" both match; the
+     contact # and chassis # are what the search box hint promises. */
+  var vehTxt=[j.year,j.make,j.model,j.variant].join(' ');
+  return [j.no,j.plate,j.owner,j.contactPerson,j.contactNumber,j.chassis,vehTxt,j.orNumber,j.siRef,j.pmsRef,staffTxt].some(function(x){
     var s=String(x||'').toLowerCase();
     if(s.indexOf(q)>=0) return true;
     return !!qLoose && s.replace(/[^a-z0-9]/g,'').indexOf(qLoose)>=0;
@@ -284,7 +287,7 @@ function jobsBodyHTML(){
 }
 function jobsSearch(v){ JOB_Q=v; var el=document.getElementById('jobsBody'); if(el) el.innerHTML=jobsBodyHTML(); }
 VIEWS.jobs = function(){
-  var search='<input class="searchbox" id="jobsSearch" value="'+attr(JOB_Q)+'" oninput="jobsSearch(this.value)" placeholder="Search JO# / OR# / plate / owner / contact…" autocomplete="off">';
+  var search='<input class="searchbox" id="jobsSearch" value="'+attr(JOB_Q)+'" oninput="jobsSearch(this.value)" placeholder="Search JO# / OR# / plate / owner / contact / vehicle…" autocomplete="off">';
   return '<div class="page"><div class="page-head"><h1>Job Orders</h1><div class="row gap wrap">'+search+
     '<button class="btn primary" onclick="openIntake()">＋ New Ingress</button></div></div>'+
     '<div id="jobsBody">'+jobsBodyHTML()+'</div>'+
