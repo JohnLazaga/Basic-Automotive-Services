@@ -103,9 +103,13 @@ function eodRange(){
   var today=todayISO();
   return { from:EOD_FROM || today.slice(0,7)+'-01', to:EOD_TO || today };
 }
+/* Refresh only the figures, never the date boxes: Chrome fires `change` on
+   every keystroke that completes a valid date, and a full render() replaced
+   the box mid-typing, so a typed date came out wrong (08/15 became 01/01). */
 function setEodRange(which, v){
   if(which==='from') EOD_FROM=v; else EOD_TO=v;
-  render();
+  var el=(typeof document!=='undefined')?document.getElementById('eodRangeBody'):null;
+  if(el) el.innerHTML=eodRangeBodyHTML(eodRange()); else render();
 }
 function eodRangePreset(p){
   var today=todayISO();
@@ -116,15 +120,18 @@ function eodRangePreset(p){
 }
 function eodRangeCard(){
   var r=eodRange();
-  /* Guard a reversed range rather than silently showing nothing. */
-  if(r.from>r.to) return '<div class="card"><h2>Sales &amp; collections by date range</h2>'+
-    '<div class="row gap wrap mb8">'+eodRangeControls(r)+'</div>'+
-    '<div class="lg-msg err">The "from" date is after the "to" date.</div></div>';
-  var d=eodData(r.from, r.to);
   return '<div class="card"><div class="card-head"><h2>Sales &amp; collections by date range</h2>'+
     '<button class="btn sm ghost" onclick="printEodRange()">⎙ Print</button></div>'+
     '<div class="row gap wrap mb8">'+eodRangeControls(r)+'</div>'+
-    '<div class="muted small mb8">'+esc(fmtDate(r.from))+' – '+esc(fmtDate(r.to))+'</div>'+
+    '<div id="eodRangeBody">'+eodRangeBodyHTML(r)+'</div></div>';
+}
+/* The figures under the date boxes — re-rendered on their own by setEodRange. */
+function eodRangeBodyHTML(r){
+  /* Guard a half-typed or reversed range rather than silently showing nothing. */
+  if(!r.from || !r.to) return '<div class="muted small">Pick both dates.</div>';
+  if(r.from>r.to) return '<div class="lg-msg err">The "from" date is after the "to" date.</div>';
+  var d=eodData(r.from, r.to);
+  return '<div class="muted small mb8">'+esc(fmtDate(r.from))+' – '+esc(fmtDate(r.to))+'</div>'+
     '<div class="kpis">'+kpi('Collections',peso(d.collections))+kpi('Net sales (billed)',peso(d.net))+
       kpi('Output VAT',peso(d.vs.vat))+kpi('Discounts',peso(d.disc))+kpi('Transactions',d.txns.length)+'</div>'+
     '<div class="grid2cards">'+
@@ -133,12 +140,12 @@ function eodRangeCard(){
       '<div class="card"><h2>Sales mix</h2>'+line2('Parts',peso(d.partsRev))+line2('Labor',peso(d.laborRev))+
         '<div class="bill-sep"></div>'+line2('Receipts issued',String(d.receipts.length)+(d.voidCount?' ('+d.voidCount+' void)':''))+'</div>'+
     '</div>'+
-    eodReceiptsCard(d, true)+'</div>';
+    eodReceiptsCard(d, true);
 }
 function eodRangeControls(r){
-  return '<input type="date" value="'+attr(r.from)+'" onchange="setEodRange(\'from\',this.value)">'+
+  return '<input type="date" id="eodFrom" style="width:auto" value="'+attr(r.from)+'" onchange="setEodRange(\'from\',this.value)">'+
     '<span class="muted">to</span>'+
-    '<input type="date" value="'+attr(r.to)+'" onchange="setEodRange(\'to\',this.value)">'+
+    '<input type="date" id="eodTo" style="width:auto" value="'+attr(r.to)+'" onchange="setEodRange(\'to\',this.value)">'+
     '<button class="btn sm ghost" onclick="eodRangePreset(\'today\')">Today</button>'+
     '<button class="btn sm ghost" onclick="eodRangePreset(\'week\')">This week</button>'+
     '<button class="btn sm ghost" onclick="eodRangePreset(\'month\')">This month</button>';

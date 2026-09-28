@@ -532,7 +532,7 @@ a.lnk{color:var(--brand);cursor:pointer;font-weight:600}
 [data-theme="dark"] .btn.primary{background:var(--brand);border-color:var(--brand);color:#fff}
 [data-theme="dark"] .btn.danger{background:#1f1f22;border-color:#5a2a2d;color:#ff8a8a}
 [data-theme="dark"] .btn.danger:hover{background:#2a1416}
-[data-theme="dark"] input,[data-theme="dark"] select,[data-theme="dark"] textarea{background:#1f1f22;border-color:var(--hair);color:var(--ink)}
+[data-theme="dark"] input,[data-theme="dark"] select,[data-theme="dark"] textarea{background:#1f1f22;border-color:var(--hair);color:var(--ink);color-scheme:dark}   /* color-scheme: light calendar icon + dark picker */
 [data-theme="dark"] .tbl th{background:#1c1c1e}
 [data-theme="dark"] .tbl.click tbody tr:hover{background:rgba(242,23,23,.13)}
 [data-theme="dark"] .seg,[data-theme="dark"] .bar-track,[data-theme="dark"] .kcol,
