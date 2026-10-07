@@ -464,9 +464,11 @@ function delAppt(id){
   S.appointments=S.appointments.filter(function(x){return x.id!==id;}); persist(); closeModal(); render(); }
 function checkInAppt(id){
   var a=S.appointments.find(function(x){return x.id===id;}); if(!a) return;
-  createJobFromAppt(a).then(function(job){
-    a.status='Arrived'; a.jobId=job.id; persist();
-    toast('Checked in · '+job.no+' created'); go('job', job.id);
+  warnIfPlateOnBoard(a.plate, function(){
+    createJobFromAppt(a).then(function(job){
+      a.status='Arrived'; a.jobId=job.id; persist();
+      toast('Checked in · '+job.no+' created'); go('job', job.id);
+    });
   });
 }
 

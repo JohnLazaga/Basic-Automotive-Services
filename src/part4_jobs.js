@@ -216,7 +216,9 @@ function intakeForm(d){
 }
 function intakeLookup(){ var v=vehicleByPlate(val('inPlate')); if(v){ setVal('inCP',v.contactPerson); setVal('inContact',v.contactNumber);
   setVal('inOwner',v.owner); setVal('inAddr',v.address); setVal('inChassis',v.chassis); setVal('inYear',v.year); setVal('inMake',v.make); setVal('inModel',v.model); setVal('inVariant',v.variant); setVal('inOdo',v.odometer);
-  toast('Existing vehicle found — prefilled'); } }
+  var onBoard=openJobsForPlate(val('inPlate'));
+  if(onBoard.length) toast('Heads up: already on the board as '+onBoard.map(function(j){return j.no;}).join(', '),'err');
+  else toast('Existing vehicle found — prefilled'); } }
 function intakeSubmit(kind){
   var base={ plate:val('inPlate'), contactPerson:val('inCP'), contactNumber:val('inContact'), owner:val('inOwner'),
     address:val('inAddr'), chassis:val('inChassis'), year:val('inYear'), make:val('inMake'), model:val('inModel'), variant:val('inVariant'),
@@ -224,11 +226,46 @@ function intakeSubmit(kind){
     depositAmount:Number(val('inDeposit'))||0, depositMethod:val('inDepositM')||'Cash' };
   if (!base.plate){ toast('Plate is required','err'); return; }
   if (kind==='estimate'){ closeModal(); createEstimateFrom(base).then(function(e){ go('estimate', e.id); }); return; }
-  // Job Order: if ingress is incomplete, prompt to finish now or proceed and complete later.
-  var missing = jobMissingFields(base);
-  if (missing.length){ _ingressDraft=base; promptIncompleteIngress(missing); return; }
-  closeModal(); createJob(base).then(function(j){ toast('Job Order '+j.no+' created'); go('job', j.id); });
+  warnIfPlateOnBoard(base.plate, function(){
+    // Job Order: if ingress is incomplete, prompt to finish now or proceed and complete later.
+    var missing = jobMissingFields(base);
+    if (missing.length){ _ingressDraft=base; promptIncompleteIngress(missing); return; }
+    closeModal(); createJob(base).then(function(j){ toast('Job Order '+j.no+' created'); go('job', j.id); });
+  }, function(){ openIntake(base); });
 }
+
+/* ---- Same plate already on the board -------------------------------------- */
+/* Nothing used to stop a second open Job Order for a car that already had one,
+   so an old job could sit forgotten on the board under a new one (Sudipen
+   USL214: JO-0098 open since July under JO-0376). Every path that opens a job —
+   New Ingress, appointment check-in, estimate conversion — now warns first.
+   A warning, not a block: a separate concern or a comeback can be legitimate. */
+function plateKey(p){ return String(p||'').toUpperCase().replace(/[^A-Z0-9]/g,''); }
+function openJobsForPlate(plate){
+  var k=plateKey(plate); if(!k) return [];
+  return (S.jobs||[]).filter(function(j){ return j.stage!=='Released' && !jobCancelled(j) && plateKey(j.plate)===k; });
+}
+var _dupProceed=null, _dupBack=null;
+function warnIfPlateOnBoard(plate, proceed, back){
+  var open=openJobsForPlate(plate);
+  if(!open.length){ proceed(); return; }
+  _dupProceed=proceed; _dupBack=back||null;
+  openModal(esc(String(plate).toUpperCase())+' is already on the board',
+    '<p class="muted small">This vehicle already has an open Job Order:</p>'+
+    open.map(function(j){
+      return '<div class="row gap" style="justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--hair)">'+
+        '<div><b>'+esc(j.no)+'</b> · '+esc(j.stage)+' · '+statusBadge(j.status)+
+          '<div class="muted small">In '+esc(fmtDate(j.dateIn))+'</div></div>'+
+        '<button class="btn sm" onclick="dupOpen(\''+j.id+'\')">Open '+esc(j.no)+'</button></div>';
+    }).join('')+
+    '<p class="muted small mt8">Add new work to the open job instead. Create a second Job Order only for separate work — and close or cancel the old one if it is finished.</p>',
+    { footer:(back?'<button class="btn ghost" onclick="dupBack()">‹ Go back</button>':'<button class="btn ghost" onclick="dupCancel()">Cancel</button>')+
+        '<span style="flex:1"></span><button class="btn primary" onclick="dupProceed()">Create a new one anyway</button>', width:'520px' });
+}
+function dupProceed(){ var f=_dupProceed; _dupProceed=_dupBack=null; closeModal(); if(f) f(); }
+function dupBack(){ var f=_dupBack; _dupProceed=_dupBack=null; closeModal(); if(f) f(); }
+function dupCancel(){ _dupProceed=_dupBack=null; closeModal(); }
+function dupOpen(id){ _dupProceed=_dupBack=null; closeModal(); go('job', id); }
 var _ingressDraft=null;
 function promptIncompleteIngress(missing){
   openModal('Complete ingress details?',

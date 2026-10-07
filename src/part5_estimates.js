@@ -114,11 +114,11 @@ function delEstLine(id,lid){ var e=estById(id); e.lines=e.lines.filter(function(
 
 function convertEstimate(id){
   var e=estById(id);
-  createJob({ plate:e.plate, owner:e.owner, contactPerson:e.contactPerson, contactNumber:e.contactNumber,
+  warnIfPlateOnBoard(e.plate, function(){ createJob({ plate:e.plate, owner:e.owner, contactPerson:e.contactPerson, contactNumber:e.contactNumber,
     year:e.year, make:e.make, model:e.model, odometer:e.odometer, assessedBy:e.assessedBy, saId:e.approvedSA, notes:e.notes,
     lines: e.lines.map(function(l){ return { id:uid('ln'), type:l.type, ref:l.ref, desc:l.desc, qty:l.qty, price:l.price }; }) })
   .then(function(job){
     e.status='Converted'; persist();
     toast('Converted to '+job.no); go('job', job.id);
-  });
+  }); });
 }

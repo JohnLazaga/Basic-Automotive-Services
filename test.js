@@ -366,6 +366,20 @@ await (async function(){
   M.setCurrentUser(null);
 })();
 
+section('Same plate already on the board: warn before a second open job');
+await (async function(){
+  const s=fresh();
+  const j=await M.createJob({plate:'USL 214'});
+  ok('open job found however the plate is typed', M.openJobsForPlate('usl214').length===1 && M.openJobsForPlate(' USL-214 ').length===1);
+  ok('other plates not matched', M.openJobsForPlate('USL 215').length===0 && M.openJobsForPlate('').length===0);
+  let ran=false; M.warnIfPlateOnBoard('ZZZ 999', function(){ ran=true; });
+  ok('no open job → proceeds straight away', ran);
+  j.stage='Released';
+  ok('released job does not count', M.openJobsForPlate('USL214').length===0);
+  j.stage='Job Order'; j.joCancel={at:'2026-10-01T00:00:00Z',by:'x',reason:'test'};
+  ok('cancelled job does not count', M.openJobsForPlate('USL214').length===0);
+})();
+
 /* -------------------------------------------------- Series-number uniqueness */
 section('Series numbers never duplicate (stale/behind counter)');
 await (async function(){
