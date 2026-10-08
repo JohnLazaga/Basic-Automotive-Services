@@ -90,10 +90,65 @@ VIEWS.reports = function(){
         '</tbody></table>':emptyState('No commissions yet.'))+'</div>'+
     '</div></div>'+
     eodRangeCard()+
+    paymentChecksCard()+
     orSeriesCard()+
     joSeriesCard()+
   '</div>';
 };
+
+/* ---- Payment checks -------------------------------------------------------
+   Two lists for spotting and auditing payment mistakes in one place:
+   - Overpaid: billed jobs where more was recorded than was due — almost always
+     cash tendered encoded instead of the amount due (Commonwealth JO-0485).
+   - Corrections: every payment changed with the Correct button (part4), with
+     the before/after, who, when and why. */
+function overpaidJobs(){
+  return billedJobs().filter(function(j){ return !jobCancelled(j) && jobBalance(j) < -0.009; })
+    .map(function(j){ var due=jobGross(j), paid=jobPaid(j);
+      return { id:j.id, no:j.no, or:j.orNumber||'', plate:j.plate, stage:j.stage, billedAt:j.billedAt, due:due, paid:paid, over:round2(paid-due) }; })
+    .sort(function(a,b){ return String(b.billedAt||'').localeCompare(String(a.billedAt||'')); });
+}
+function paymentCorrections(){
+  var out=[];
+  (S.jobs||[]).forEach(function(j){ (j.payments||[]).forEach(function(p){ (p.corrections||[]).forEach(function(c){
+    out.push({ id:j.id, no:j.no, or:j.orNumber||'', plate:j.plate, payDate:p.date, at:c.at, from:c.from||{}, to:c.to||{}, byName:c.byName||'', reason:c.reason||'' });
+  }); }); });
+  return out.sort(function(a,b){ return String(b.at||'').localeCompare(String(a.at||'')); });
+}
+function paymentChecksCard(){
+  var over=overpaidJobs(), corr=paymentCorrections();
+  return '<div class="card"><div class="card-head"><h2>Payment checks</h2>'+
+      '<button class="btn sm ghost" onclick="printDoc(docPaymentChecks())">⎙ Print</button></div>'+
+    '<h3 class="mt8">Paid more than due <span class="muted small">· '+over.length+'</span></h3>'+
+    (over.length ? '<div class="card pad0"><table class="tbl click sm"><thead><tr><th>JO #</th><th>OR #</th><th>Plate</th><th>Billed</th><th class="r">Due</th><th class="r">Paid</th><th class="r">Over</th></tr></thead><tbody>'+
+        over.map(function(r){ return '<tr onclick="go(\'job\',\''+r.id+'\')"><td><b>'+esc(r.no)+'</b></td><td>'+esc(r.or)+'</td><td>'+esc(r.plate)+'</td>'+
+          '<td>'+esc(fmtDate(r.billedAt))+'</td><td class="r">'+peso(r.due)+'</td><td class="r">'+peso(r.paid)+'</td><td class="r st-bad-t"><b>'+peso(r.over)+'</b></td></tr>'; }).join('')+
+        '</tbody></table></div><p class="muted small">Usually the cash handed over was encoded instead of the amount due. Open the job and use <b>Correct</b> on the payment.</p>'
+      : '<div class="muted small">✓ No job has more paid than due.</div>')+
+    '<h3 class="mt8">Payment corrections <span class="muted small">· '+corr.length+'</span></h3>'+
+    (corr.length ? '<div class="card pad0"><table class="tbl click sm"><thead><tr><th>Corrected</th><th>JO # / OR #</th><th>Payment of</th><th class="r">Was</th><th class="r">Now</th><th>By</th><th>Reason</th></tr></thead><tbody>'+
+        corr.map(function(r){ return '<tr onclick="go(\'job\',\''+r.id+'\')"><td>'+esc(fmtDateTime(r.at))+'</td><td><b>'+esc(r.no)+'</b>'+(r.or?' <span class="muted small">'+esc(r.or)+'</span>':'')+'</td>'+
+          '<td>'+esc(fmtDate(r.payDate))+'</td><td class="r">'+peso(r.from.amount)+' <span class="muted small">'+esc(r.from.method||'')+'</span></td>'+
+          '<td class="r">'+peso(r.to.amount)+' <span class="muted small">'+esc(r.to.method||'')+'</span></td><td>'+esc(r.byName||'—')+'</td><td>'+esc(r.reason)+'</td></tr>'; }).join('')+
+        '</tbody></table></div>'
+      : '<div class="muted small">No payments have been corrected.</div>')+
+  '</div>';
+}
+function docPaymentChecks(){
+  var over=overpaidJobs(), corr=paymentCorrections();
+  var body=docHeader('Payment Checks')+
+    '<div class="eod-stamp">Printed <b>'+esc(fmtDateTime(new Date().toISOString()))+'</b></div>'+
+    '<div class="dtitle" style="font-size:12.5px">Paid more than due ('+over.length+')</div>'+
+    (over.length?'<table><thead><tr><th>JO #</th><th>OR #</th><th>Plate</th><th>Billed</th><th class="r">Due</th><th class="r">Paid</th><th class="r">Over</th></tr></thead><tbody>'+
+      over.map(function(r){ return '<tr><td>'+esc(r.no)+'</td><td>'+esc(r.or)+'</td><td>'+esc(r.plate)+'</td><td>'+esc(fmtDate(r.billedAt))+'</td>'+
+        '<td class="r">'+peso(r.due)+'</td><td class="r">'+peso(r.paid)+'</td><td class="r"><b>'+peso(r.over)+'</b></td></tr>'; }).join('')+'</tbody></table>':'<p>None.</p>')+
+    '<div class="dtitle" style="font-size:12.5px;margin-top:14px">Payment corrections ('+corr.length+')</div>'+
+    (corr.length?'<table><thead><tr><th>Corrected</th><th>JO # / OR #</th><th>Payment of</th><th class="r">Was</th><th class="r">Now</th><th>By</th><th>Reason</th></tr></thead><tbody>'+
+      corr.map(function(r){ return '<tr><td>'+esc(fmtDateTime(r.at))+'</td><td>'+esc(r.no)+(r.or?' / '+esc(r.or):'')+'</td><td>'+esc(fmtDate(r.payDate))+'</td>'+
+        '<td class="r">'+peso(r.from.amount)+' '+esc(r.from.method||'')+'</td><td class="r">'+peso(r.to.amount)+' '+esc(r.to.method||'')+'</td>'+
+        '<td>'+esc(r.byName||'—')+'</td><td>'+esc(r.reason)+'</td></tr>'; }).join('')+'</tbody></table>':'<p>None.</p>');
+  return docShell('Payment Checks', body);
+}
 
 /* ---- Sales & collections for a date range --------------------------------
    The Daily Close figures over any period, from the same eodData() aggregator,

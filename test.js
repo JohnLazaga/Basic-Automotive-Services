@@ -404,6 +404,26 @@ await (async function(){
   M.setCurrentUser(null);
 })();
 
+section('Payment checks report: overpaid jobs and corrections');
+await (async function(){
+  const s=fresh();
+  const j=await M.createJob({plate:'ZLP 878'});
+  j.lines=[{id:'l1',type:'labor',desc:'Align',qty:1,price:1000}];
+  j.stage='Released'; j.orNumber='OR-1485'; j.billedAt='2026-10-08T07:00:00.000Z';
+  const due=M.jobGross(j);
+  j.payments=[{amount:due+2560,method:'Cash',date:'2026-10-08T07:39:00.000Z'}];
+  const over=M.overpaidJobs().filter(r=>r.no===j.no);
+  ok('overpaid job listed with the excess', over.length===1 && over[0].over===2560);
+  M.setCurrentUser({uid:'s1',role:'SV',isAdmin:false,name:'Sup'});
+  M.correctPayment(j,0,due,'Cash','encoded cash tendered');
+  M.setCurrentUser(null);
+  ok('corrected job leaves the overpaid list', M.overpaidJobs().filter(r=>r.no===j.no).length===0);
+  const c=M.paymentCorrections().filter(r=>r.no===j.no);
+  ok('correction listed with before/after/who/why', c.length===1 && c[0].from.amount===due+2560 && c[0].to.amount===due && c[0].byName==='Sup' && c[0].reason==='encoded cash tendered');
+  ok('printout renders both sections', /Paid more than due/.test(M.docPaymentChecks()) && /encoded cash tendered/.test(M.docPaymentChecks()));
+  ok('Reports page shows the card', /Payment checks/.test(M.VIEWS().reports()));
+})();
+
 /* -------------------------------------------------- Series-number uniqueness */
 section('Series numbers never duplicate (stale/behind counter)');
 await (async function(){
