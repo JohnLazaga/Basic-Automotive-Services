@@ -380,6 +380,30 @@ await (async function(){
   ok('cancelled job does not count', M.openJobsForPlate('USL214').length===0);
 })();
 
+section('Correcting a mistyped payment (admin / Supervisor)');
+await (async function(){
+  const s=fresh();
+  const j=await M.createJob({plate:'PAY 0001'});
+  j.payments=[{amount:5000,method:'Cash',date:'2026-10-01T02:00:00.000Z'}];
+  M.setCurrentUser({uid:'m1',role:'Mechanic',isAdmin:false});
+  ok('mechanic cannot correct', !M.correctPayment(j,0,500,'Cash','typo').ok && j.payments[0].amount===5000);
+  M.setCurrentUser({uid:'s1',role:'SV',isAdmin:false,name:'Sup'});
+  ok('reason is required', !M.correctPayment(j,0,500,'Cash','').ok);
+  ok('no-op change refused', !M.correctPayment(j,0,5000,'Cash','same').ok);
+  const r=M.correctPayment(j,0,500,'GCash','encoded 5000 instead of 500');
+  const p=j.payments[0];
+  ok('supervisor corrects amount and method', r.ok && p.amount===500 && p.method==='GCash');
+  ok('stays on the original date', p.date==='2026-10-01T02:00:00.000Z');
+  ok('original kept with who and why', p.corrections.length===1 && p.corrections[0].from.amount===5000 && p.corrections[0].from.method==='Cash' && p.corrections[0].byName==='Sup');
+  // A refund line stays negative and can never exceed what was collected.
+  j.payments.push({amount:-200,method:'Cash',date:'2026-10-02T02:00:00.000Z',refund:true,reason:'x'});
+  ok('refund corrected stays negative', M.correctPayment(j,1,300,'Cash','typo').ok && j.payments[1].amount===-300);
+  ok('refund cannot exceed collected', !M.correctPayment(j,1,600,'Cash','typo').ok && j.payments[1].amount===-300);
+  M.setCurrentUser({uid:'a1',role:'Secretary',isAdmin:true});
+  ok('admin can correct', M.correctPayment(j,0,450,'GCash','second fix').ok && j.payments[0].corrections.length===2);
+  M.setCurrentUser(null);
+})();
+
 /* -------------------------------------------------- Series-number uniqueness */
 section('Series numbers never duplicate (stale/behind counter)');
 await (async function(){

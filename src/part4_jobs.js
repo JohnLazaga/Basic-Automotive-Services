@@ -1295,7 +1295,7 @@ function jobStagePanel(j,b){
     html+= afterServiceBlock(j) + billingEditBlock(j) + jobPaymentBlock(j,b);
   } else {
     html+='<div class="released">✓ Released'+(j.orNumber?' · OR '+esc(j.orNumber):'')+'<div class="muted small">'+esc(fmtDateTime(j.billedAt))+'</div></div>'+
-      afterServiceBlock(j) + billingEditBlock(j);
+      releasedPaymentsBlock(j) + afterServiceBlock(j) + billingEditBlock(j);
   }
   html+='</div>';
   return html;
@@ -1510,12 +1510,7 @@ function advanceBilling(id){
 
 function jobPaymentBlock(j,b){
   var showPrice = canSeeJobPrices();
-  var pays=showPrice?(j.payments||[]).map(function(p){
-    var isR=Number(p.amount)<0;
-    return '<div class="l2"><span>'+esc(fmtDate(p.date))+' · '+esc(p.method)+
-      (isR?' · <b>REFUND</b>'+(p.reason?' <span class="muted small">'+esc(p.reason)+'</span>':''):'')+
-      '</span><span>'+peso(p.amount)+'</span></div>';
-  }).join(''):'';
+  var pays=showPrice?paymentLinesHTML(j):'';
   var paid = b.balance<=0;
   /* Refunding is possible whether or not the balance is settled — in fact it is
      usually needed exactly when it IS settled and the receipt was then voided. */
@@ -1533,6 +1528,29 @@ function jobPaymentBlock(j,b){
     field('Last service odometer','<input id="relOdo" type="number" value="'+attr(j.lastServiceOdo||j.odometer||'')+'" placeholder="reading at release">','Recorded on release; updates the vehicle’s last service odometer.')+
     '<button class="btn primary full mt8" '+(paid?'':'disabled title="Balance must be fully paid"')+' onclick="releaseJob(\''+j.id+'\')">Release vehicle →</button>'+
     (paid?'':'<div class="muted small center">Balance must be fully paid to release.</div>');
+}
+/* One line per payment (refunds are negative payments). Admins and Supervisors
+   get a Correct button; a corrected line shows what it was, who changed it and why. */
+function paymentLinesHTML(j){
+  var canFix = canCorrectPayment();
+  return (j.payments||[]).map(function(p, i){
+    var isR=Number(p.amount)<0, last=(p.corrections||[]).slice(-1)[0];
+    return '<div class="l2"><span>'+esc(fmtDate(p.date))+' · '+esc(p.method)+
+      (isR?' · <b>REFUND</b>'+(p.reason?' <span class="muted small">'+esc(p.reason)+'</span>':''):'')+
+      (last?'<div class="muted small">Corrected from '+peso(p.corrections[0].from.amount)+' '+esc(p.corrections[0].from.method)+
+        ' by '+esc(last.byName||'—')+' · '+esc(fmtDateTime(last.at))+' — '+esc(last.reason)+'</div>':'')+
+      '</span><span>'+peso(p.amount)+
+      (canFix?' <button class="btn sm ghost" onclick="correctPaymentDialog(\''+j.id+'\','+i+')">Correct</button>':'')+
+      '</span></div>';
+  }).join('');
+}
+/* Released jobs had no payment section at all — show the payments (and the
+   Correct button) there too, since a wrong amount is usually found after release. */
+function releasedPaymentsBlock(j){
+  if(!canSeeJobPrices() || !(j.payments||[]).length) return '';
+  var b=runningBill(j);
+  return '<div class="bill-mini mt8">'+line2('Total due', peso(b.gross),'tot')+line2('Paid', peso(b.paid))+
+    line2('<b>Balance</b>','<b>'+peso(b.balance)+'</b>','tot')+'</div>'+paymentLinesHTML(j);
 }
 function recordPayment(id){
   var j=jobById(id); var amt=Number(val('pyAmt'))||0; if(amt<=0){toast('Enter amount','err');return;}
@@ -1595,6 +1613,57 @@ function confirmRefund(){
   if(!r.ok){ toast(r.err,'err'); return; }
   _refundCtx=null; persist(); closeModal();
   toast('Refund of '+peso(r.amount)+' recorded'); render();
+}
+/* ---- Correcting a payment -------------------------------------------------
+   A mistyped amount or method is fixed ON the original payment, so it stays on
+   the day it was taken and that day's Daily Close / collections come out right
+   (a refund or extra payment would land on today instead). Admins and
+   Supervisors only, a reason is required, and every change is kept in
+   p.corrections with the before/after, who and when. Testable without a DOM:
+   returns {ok:true} or {ok:false, err}. */
+function canCorrectPayment(){ return isAdminOrSV(); }
+function correctPayment(j, idx, amount, method, reason){
+  if(!canCorrectPayment()) return { ok:false, err:'Only an admin or Supervisor can correct a payment' };
+  var p=j && (j.payments||[])[idx]; if(!p) return { ok:false, err:'Payment not found' };
+  var isR=Number(p.amount)<0;
+  amount=round2(Math.abs(Number(amount)||0));
+  if(amount<=0) return { ok:false, err:'Enter the correct amount' };
+  reason=String(reason||'').trim();
+  if(reason.length<3) return { ok:false, err:'Give a reason — it is what explains the change later' };
+  var newAmt=isR?-amount:amount; method=method||p.method;
+  if(newAmt===round2(Number(p.amount)) && method===p.method) return { ok:false, err:'Nothing changed' };
+  /* A refund can never exceed what was collected — same rule as addRefund. */
+  var paidAfter=round2(jobPaid(j)-Number(p.amount)+newAmt);
+  if(paidAfter < -0.001) return { ok:false, err:'That would leave more refunded than collected on this job order' };
+  var me=(typeof CURRENT_USER!=='undefined' && CURRENT_USER) ? CURRENT_USER : null;
+  p.corrections=p.corrections||[];
+  p.corrections.push({ at:new Date().toISOString(), by:(me&&me.uid)||'', byName:(me&&(me.name||me.username||me.email))||'',
+    from:{ amount:round2(Number(p.amount)), method:p.method }, to:{ amount:newAmt, method:method }, reason:reason });
+  p.amount=newAmt; p.method=method;
+  return { ok:true };
+}
+var _corrCtx=null;
+function correctPaymentDialog(id, idx){
+  if(!canCorrectPayment()){ toast('Only an admin or Supervisor can correct a payment','err'); return; }
+  var j=jobById(id), p=j&&(j.payments||[])[idx]; if(!p) return;
+  _corrCtx={ id:id, idx:idx };
+  var isR=Number(p.amount)<0, methods=['Cash','GCash','Card','Bank transfer','Charge account'];
+  if(methods.indexOf(p.method)<0) methods.push(p.method);
+  openModal('Correct '+(isR?'refund':'payment')+' · '+esc(j.no),
+    '<p class="muted small">Recorded '+esc(fmtDate(p.date))+': <b>'+peso(Math.abs(p.amount))+'</b> by '+esc(p.method)+'. '+
+      'The correction stays on that date, so that day’s Daily Close is fixed. The original amount and your reason are kept on the payment.</p>'+
+    '<div class="grid2">'+
+      field('Correct amount (₱)','<input id="cpAmt" type="number" step="0.01" min="0" value="'+attr(Math.abs(p.amount))+'">')+
+      field('Method','<select id="cpMethod">'+methods.map(function(m){ return '<option'+(m===p.method?' selected':'')+'>'+esc(m)+'</option>'; }).join('')+'</select>')+
+    '</div>'+
+    field('Reason','<input id="cpReason" placeholder="e.g. encoded ₱5,000 instead of ₱500" autocomplete="off">'),
+    { onOk:'confirmCorrectPayment', okText:'Save correction' });
+}
+function confirmCorrectPayment(){
+  var c=_corrCtx, j=c&&jobById(c.id); if(!j){ closeModal(); return; }
+  var r=correctPayment(j, c.idx, val('cpAmt'), val('cpMethod'), val('cpReason'));
+  if(!r.ok){ toast(r.err,'err'); return; }
+  _corrCtx=null; persist(); closeModal(); toast('Payment corrected'); render();
 }
 function releaseJob(id){
   var j=jobById(id);
