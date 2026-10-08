@@ -658,7 +658,7 @@ var BRANCH = {"id":"sandbox","slug":"sandbox","name":"Basic by JMSI — Sandbox 
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-10-08 · 8278d4c';
+var APP_VERSION = 'v1.3.0 · 2026-10-08 · 46e499d';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -948,6 +948,7 @@ var S = null;                 // the single state object
 var SAVE_TIMER = null;
 
 function persist(){
+  if (typeof trackBillChanges==='function') trackBillChanges();   // log a bill changed after payment (part18)
   // debounced save with indicator. In cloud mode, sync changed records to
   // Firestore; otherwise fall back to the local storage adapter.
   setSaveState('saving');
@@ -1192,6 +1193,7 @@ function seedState(){
     appointments:[appt1,appt2],
     purchaseOrders:[po1],
     expenses:[],
+    cashcounts:[],
     counters:{ est:0, jo:1, or:1000, po:1 }
   };
 }
@@ -1204,11 +1206,12 @@ async function loadState(){
   }
   if (!S || S.version!==2){ S = seedState(); persist(); }
   // migration safety: ensure arrays exist
-  ['staff','bays','parts','labor','vehicles','estimates','jobs','appointments','purchaseOrders','expenses'].forEach(function(k){
+  ['staff','bays','parts','labor','vehicles','estimates','jobs','appointments','purchaseOrders','expenses','cashcounts'].forEach(function(k){
     if (!Array.isArray(S[k])) S[k]=[];
   });
   if (!S.counters) S.counters = { est:0, jo:0, or:1000, po:0 };
   if (S.shop && !S.shop.theme) S.shop.theme = 'light';
+  if (typeof billBaseline==='function') billBaseline();   // bill totals as loaded (part18)
   if (ensurePmsLabor()) persist();   // guarantee the standard PMS LABOR item
   return S;
 }
@@ -3580,7 +3583,10 @@ function billingEditBlock(j){
 function saveBillingEdits(id){
   if(!can('billing_edit')){ toast('Not permitted','err'); return; }
   var j=jobById(id);
-  j.discount=readDiscount('bd');
+  var dd=readDiscount('bd'), dm=discountReasonMissing(dd);
+  if(dm){ toast(dm,'err'); return; }
+  if(JSON.stringify(dd)!==JSON.stringify(j.discount||{})) stampDiscount(j);
+  j.discount=dd;
   j.siRef=val('bdSI');
   persist(); toast('Billing updated'); render();
 }
@@ -3593,7 +3599,7 @@ function discountEditor(j, pre){
     field('Discount on Labor (₱)','<input id="'+pre+'Labor" type="number" step="0.01" value="'+attr(Number(d.labor)||0)+'">')+'</div>'+
     '<div class="grid2">'+
     field('Other discounts (₱)','<input id="'+pre+'Other" type="number" step="0.01" value="'+attr(Number(d.other)||0)+'">')+
-    field('Other — reference','<input id="'+pre+'Note" value="'+attr(d.otherNote||'')+'" placeholder="e.g. senior citizen, promo">')+'</div>';
+    field('Discount reason','<input id="'+pre+'Note" value="'+attr(d.otherNote||'')+'" placeholder="e.g. senior citizen, promo, suki">','Required for any discount.')+'</div>';
 }
 function readDiscount(pre){
   return { parts:Number(val(pre+'Parts'))||0, labor:Number(val(pre+'Labor'))||0,
@@ -3625,7 +3631,10 @@ function deductInventory(j){
   (j.lines||[]).forEach(function(l){ if(l.type==='part'&&l.ref){ var p=partById(l.ref); if(p){ p.stock=round2((p.stock||0)-(Number(l.qty)||0)); } } });
   j.inventoryDeducted=true;
 }
-function applyDiscount(id){ var j=jobById(id); j.discount=readDiscount('dsc'); persist(); toast('Discount applied'); render(); }
+function applyDiscount(id){ var j=jobById(id); var dd=readDiscount('dsc'), dm=discountReasonMissing(dd);
+  if(dm){ toast(dm,'err'); return; }
+  if(JSON.stringify(dd)!==JSON.stringify(j.discount||{})) stampDiscount(j);
+  j.discount=dd; persist(); toast('Discount applied'); render(); }
 /* Lowest OR number that may still be issued — never below any already-issued OR,
    so a fresh allocator can never reuse a number. */
 function orSeed(){
@@ -3700,9 +3709,11 @@ function advanceBilling(id){
   if(!sup || sup.role!=='SV'){ toast('Select the approving Supervisor first','err'); return; }
   var sec=staffById(j.paymentReceivedBy);
   if(!sec || sec.role!=='Secretary'){ toast('Enter the Secretary who received payment first','err'); return; }
+  var dsc=document.getElementById('dscParts') ? readDiscount('dsc') : null;
+  if(dsc && discountReasonMissing(dsc)){ toast(discountReasonMissing(dsc),'err'); return; }
   if(_issuingOR[id]) return;                                     // in-flight guard (prevents double-click gaps)
   _issuingOR[id]=true;
-  if(document.getElementById('dscParts')) j.discount=readDiscount('dsc');
+  if(dsc){ if(JSON.stringify(dsc)!==JSON.stringify(j.discount||{})) stampDiscount(j); j.discount=dsc; }
   allocateOrNumber(id).then(function(orNo){
     j.orNumber=orNo; j.billedAt=new Date().toISOString(); j.stage='Final Billing';
     delete _issuingOR[id]; persist();
@@ -3737,6 +3748,7 @@ function jobPaymentBlock(j,b){
     pays+
     ((paid||!showPrice)? '' : '<div class="grid2 mt8">'+field('Amount','<input id="pyAmt" type="number" step="0.01" value="'+attr(b.balance)+'">')+
       field('Method','<select id="pyMethod"><option>Cash</option><option>GCash</option><option>Card</option><option>Bank transfer</option><option>Charge account</option></select>')+'</div>'+
+      field('Reference #','<input id="pyRef" placeholder="GCash / bank / card ref — required for GCash and bank transfer" autocomplete="off">')+
       '<button class="btn sm" onclick="recordPayment(\''+j.id+'\')">Record payment</button>')+
     (canRefund?'<button class="btn sm ghost mt8" onclick="refundDialog(\''+j.id+'\')">Record refund…</button>':'')+
     field('Last service odometer','<input id="relOdo" type="number" value="'+attr(j.lastServiceOdo||j.odometer||'')+'" placeholder="reading at release">','Recorded on release; updates the vehicle’s last service odometer.')+
@@ -3749,7 +3761,7 @@ function paymentLinesHTML(j){
   var canFix = canCorrectPayment();
   return (j.payments||[]).map(function(p, i){
     var isR=Number(p.amount)<0, last=(p.corrections||[]).slice(-1)[0];
-    return '<div class="l2"><span>'+esc(fmtDate(p.date))+' · '+esc(p.method)+
+    return '<div class="l2"><span>'+esc(fmtDate(p.date))+' · '+esc(p.method)+(p.ref?' <span class="muted small">#'+esc(p.ref)+'</span>':'')+
       (isR?' · <b>REFUND</b>'+(p.reason?' <span class="muted small">'+esc(p.reason)+'</span>':''):'')+
       (last?'<div class="muted small">Corrected from '+peso(p.corrections[0].from.amount)+' '+esc(p.corrections[0].from.method)+
         ' by '+esc(last.byName||'—')+' · '+esc(fmtDateTime(last.at))+' — '+esc(last.reason)+'</div>':'')+
@@ -3768,7 +3780,10 @@ function releasedPaymentsBlock(j){
 }
 function recordPayment(id){
   var j=jobById(id); var amt=Number(val('pyAmt'))||0; if(amt<=0){toast('Enter amount','err');return;}
-  j.payments.push({ amount:amt, method:val('pyMethod'), date:new Date().toISOString() });
+  var method=val('pyMethod'), ref=String(val('pyRef')||'').trim();
+  if(payRefRequired(method) && !ref){ toast('Enter the '+method+' reference #','err'); return; }
+  var pay={ amount:amt, method:method, date:new Date().toISOString() }; if(ref) pay.ref=ref;
+  j.payments.push(pay);
   persist(); toast('Payment recorded'); render();
 }
 
@@ -3836,16 +3851,23 @@ function confirmRefund(){
    p.corrections with the before/after, who and when. Testable without a DOM:
    returns {ok:true} or {ok:false, err}. */
 function canCorrectPayment(){ return isAdminOrSV(); }
-function correctPayment(j, idx, amount, method, reason){
+function correctPayment(j, idx, amount, method, reason, ref){
   if(!canCorrectPayment()) return { ok:false, err:'Only an admin or Supervisor can correct a payment' };
   var p=j && (j.payments||[])[idx]; if(!p) return { ok:false, err:'Payment not found' };
   var isR=Number(p.amount)<0;
   amount=round2(Math.abs(Number(amount)||0));
   if(amount<=0) return { ok:false, err:'Enter the correct amount' };
+  var newAmt=isR?-amount:amount; method=method||p.method;
+  /* The reference # is bookkeeping, not money: adding or fixing it alone needs
+     no reason and is not logged as a correction. */
+  var refChanged = ref!==undefined && String(ref||'').trim()!==String(p.ref||'');
+  var moneyChanged = !(newAmt===round2(Number(p.amount)) && method===p.method);
+  if(!moneyChanged){
+    if(!refChanged) return { ok:false, err:'Nothing changed' };
+    p.ref=String(ref||'').trim(); return { ok:true };
+  }
   reason=String(reason||'').trim();
   if(reason.length<3) return { ok:false, err:'Give a reason — it is what explains the change later' };
-  var newAmt=isR?-amount:amount; method=method||p.method;
-  if(newAmt===round2(Number(p.amount)) && method===p.method) return { ok:false, err:'Nothing changed' };
   /* A refund can never exceed what was collected — same rule as addRefund. */
   var paidAfter=round2(jobPaid(j)-Number(p.amount)+newAmt);
   if(paidAfter < -0.001) return { ok:false, err:'That would leave more refunded than collected on this job order' };
@@ -3854,6 +3876,7 @@ function correctPayment(j, idx, amount, method, reason){
   p.corrections.push({ at:new Date().toISOString(), by:(me&&me.uid)||'', byName:(me&&(me.name||me.username||me.email))||'',
     from:{ amount:round2(Number(p.amount)), method:p.method }, to:{ amount:newAmt, method:method }, reason:reason });
   p.amount=newAmt; p.method=method;
+  if(refChanged) p.ref=String(ref||'').trim();
   return { ok:true };
 }
 var _corrCtx=null;
@@ -3870,12 +3893,13 @@ function correctPaymentDialog(id, idx){
       field('Correct amount (₱)','<input id="cpAmt" type="number" step="0.01" min="0" value="'+attr(Math.abs(p.amount))+'">')+
       field('Method','<select id="cpMethod">'+methods.map(function(m){ return '<option'+(m===p.method?' selected':'')+'>'+esc(m)+'</option>'; }).join('')+'</select>')+
     '</div>'+
+    field('Reference #','<input id="cpRef" value="'+attr(p.ref||'')+'" placeholder="GCash / bank / card ref" autocomplete="off">','Adding only a reference # needs no reason.')+
     field('Reason','<input id="cpReason" placeholder="e.g. encoded ₱5,000 instead of ₱500" autocomplete="off">'),
     { onOk:'confirmCorrectPayment', okText:'Save correction' });
 }
 function confirmCorrectPayment(){
   var c=_corrCtx, j=c&&jobById(c.id); if(!j){ closeModal(); return; }
-  var r=correctPayment(j, c.idx, val('cpAmt'), val('cpMethod'), val('cpReason'));
+  var r=correctPayment(j, c.idx, val('cpAmt'), val('cpMethod'), val('cpReason'), val('cpRef'));
   if(!r.ok){ toast(r.err,'err'); return; }
   _corrCtx=null; persist(); closeModal(); toast('Payment corrected'); render();
 }
@@ -4614,13 +4638,14 @@ VIEWS.reports = function(){
         '</tbody></table>':emptyState('No commissions yet.'))+'</div>'+
     '</div></div>'+
     eodRangeCard()+
-    paymentChecksCard()+
+    moneyChecksCard()+
+    discountsCard()+
     orSeriesCard()+
     joSeriesCard()+
   '</div>';
 };
 
-/* ---- Payment checks -------------------------------------------------------
+/* ---- Payment checks (listed in the Money checks card, part18) --------------
    Two lists for spotting and auditing payment mistakes in one place:
    - Overpaid: billed jobs where more was recorded than was due — almost always
      cash tendered encoded instead of the amount due (Commonwealth JO-0485).
@@ -4639,41 +4664,6 @@ function paymentCorrections(){
   }); }); });
   return out.sort(function(a,b){ return String(b.at||'').localeCompare(String(a.at||'')); });
 }
-function paymentChecksCard(){
-  var over=overpaidJobs(), corr=paymentCorrections();
-  return '<div class="card"><div class="card-head"><h2>Payment checks</h2>'+
-      '<button class="btn sm ghost" onclick="printDoc(docPaymentChecks())">⎙ Print</button></div>'+
-    '<h3 class="mt8">Paid more than due <span class="muted small">· '+over.length+'</span></h3>'+
-    (over.length ? '<div class="card pad0"><table class="tbl click sm"><thead><tr><th>JO #</th><th>OR #</th><th>Plate</th><th>Billed</th><th class="r">Due</th><th class="r">Paid</th><th class="r">Over</th></tr></thead><tbody>'+
-        over.map(function(r){ return '<tr onclick="go(\'job\',\''+r.id+'\')"><td><b>'+esc(r.no)+'</b></td><td>'+esc(r.or)+'</td><td>'+esc(r.plate)+'</td>'+
-          '<td>'+esc(fmtDate(r.billedAt))+'</td><td class="r">'+peso(r.due)+'</td><td class="r">'+peso(r.paid)+'</td><td class="r st-bad-t"><b>'+peso(r.over)+'</b></td></tr>'; }).join('')+
-        '</tbody></table></div><p class="muted small">Usually the cash handed over was encoded instead of the amount due. Open the job and use <b>Correct</b> on the payment.</p>'
-      : '<div class="muted small">✓ No job has more paid than due.</div>')+
-    '<h3 class="mt8">Payment corrections <span class="muted small">· '+corr.length+'</span></h3>'+
-    (corr.length ? '<div class="card pad0"><table class="tbl click sm"><thead><tr><th>Corrected</th><th>JO # / OR #</th><th>Payment of</th><th class="r">Was</th><th class="r">Now</th><th>By</th><th>Reason</th></tr></thead><tbody>'+
-        corr.map(function(r){ return '<tr onclick="go(\'job\',\''+r.id+'\')"><td>'+esc(fmtDateTime(r.at))+'</td><td><b>'+esc(r.no)+'</b>'+(r.or?' <span class="muted small">'+esc(r.or)+'</span>':'')+'</td>'+
-          '<td>'+esc(fmtDate(r.payDate))+'</td><td class="r">'+peso(r.from.amount)+' <span class="muted small">'+esc(r.from.method||'')+'</span></td>'+
-          '<td class="r">'+peso(r.to.amount)+' <span class="muted small">'+esc(r.to.method||'')+'</span></td><td>'+esc(r.byName||'—')+'</td><td>'+esc(r.reason)+'</td></tr>'; }).join('')+
-        '</tbody></table></div>'
-      : '<div class="muted small">No payments have been corrected.</div>')+
-  '</div>';
-}
-function docPaymentChecks(){
-  var over=overpaidJobs(), corr=paymentCorrections();
-  var body=docHeader('Payment Checks')+
-    '<div class="eod-stamp">Printed <b>'+esc(fmtDateTime(new Date().toISOString()))+'</b></div>'+
-    '<div class="dtitle" style="font-size:12.5px">Paid more than due ('+over.length+')</div>'+
-    (over.length?'<table><thead><tr><th>JO #</th><th>OR #</th><th>Plate</th><th>Billed</th><th class="r">Due</th><th class="r">Paid</th><th class="r">Over</th></tr></thead><tbody>'+
-      over.map(function(r){ return '<tr><td>'+esc(r.no)+'</td><td>'+esc(r.or)+'</td><td>'+esc(r.plate)+'</td><td>'+esc(fmtDate(r.billedAt))+'</td>'+
-        '<td class="r">'+peso(r.due)+'</td><td class="r">'+peso(r.paid)+'</td><td class="r"><b>'+peso(r.over)+'</b></td></tr>'; }).join('')+'</tbody></table>':'<p>None.</p>')+
-    '<div class="dtitle" style="font-size:12.5px;margin-top:14px">Payment corrections ('+corr.length+')</div>'+
-    (corr.length?'<table><thead><tr><th>Corrected</th><th>JO # / OR #</th><th>Payment of</th><th class="r">Was</th><th class="r">Now</th><th>By</th><th>Reason</th></tr></thead><tbody>'+
-      corr.map(function(r){ return '<tr><td>'+esc(fmtDateTime(r.at))+'</td><td>'+esc(r.no)+(r.or?' / '+esc(r.or):'')+'</td><td>'+esc(fmtDate(r.payDate))+'</td>'+
-        '<td class="r">'+peso(r.from.amount)+' '+esc(r.from.method||'')+'</td><td class="r">'+peso(r.to.amount)+' '+esc(r.to.method||'')+'</td>'+
-        '<td>'+esc(r.byName||'—')+'</td><td>'+esc(r.reason)+'</td></tr>'; }).join('')+'</tbody></table>':'<p>None.</p>');
-  return docShell('Payment Checks', body);
-}
-
 /* ---- Sales & collections for a date range --------------------------------
    The Daily Close figures over any period, from the same eodData() aggregator,
    so a month here always reconciles against the days that make it up. */
@@ -5033,12 +5023,13 @@ VIEWS.dailyclose = function(){
         return '<tr'+(isR?' class="void-row"':'')+'><td>'+esc(t.job.no)+
           (isR?' <span class="chip">REFUND</span>':'')+'</td><td>'+esc(t.job.owner)+
           (isR&&t.p.reason?' <span class="muted small">'+esc(t.p.reason)+'</span>':'')+
-          '</td><td>'+esc(t.p.method)+'</td><td class="r">'+peso(t.p.amount)+'</td></tr>';
+          '</td><td>'+esc(t.p.method)+(t.p.ref?' <span class="muted small">#'+esc(t.p.ref)+'</span>':'')+'</td><td class="r">'+peso(t.p.amount)+'</td></tr>';
       }).join('')+
       '<tr class="tot"><td colspan="3" class="r"><b>Total collected</b></td><td class="r"><b>'+peso(d.collections)+'</b></td></tr>'+
       '</tbody></table>':emptyState('No collections on this date.'))+'</div>'+
       eodReceiptsCard(d, false)+'</div>'+
     '<div class="colside">'+
+      cashCountCard(date)+
       '<div class="card"><h2>Collections by method</h2>'+(Object.keys(d.byMethod).length?Object.keys(d.byMethod).map(function(m){return line2(m,peso(d.byMethod[m]));}).join(''):emptyState('—'))+
         (d.refunds?'<div class="muted small mt8">Net of '+peso(d.refunds)+' refunded — each line is the real movement of that tender.</div>':'')+'</div>'+
       '<div class="card"><h2>Sales mix</h2>'+line2('Parts',peso(d.partsRev))+line2('Labor',peso(d.laborRev))+
@@ -5274,12 +5265,16 @@ function collectAR(id){
   var j=jobById(id); var bal=jobBalance(j);
   openModal('Collect payment — '+j.no,
     '<div class="grid2">'+field('Amount','<input id="arAmt" type="number" step="0.01" value="'+attr(bal)+'">')+
-    field('Method','<select id="arMethod"><option>Cash</option><option>GCash</option><option>Card</option><option>Bank transfer</option></select>')+'</div>',
+    field('Method','<select id="arMethod"><option>Cash</option><option>GCash</option><option>Card</option><option>Bank transfer</option></select>')+'</div>'+
+    field('Reference #','<input id="arRef" placeholder="required for GCash and bank transfer" autocomplete="off">'),
     { onOk:'saveAR', okText:'Record' }); setTimeout(function(){arCtx=id;},10);
 }
 var arCtx=null;
 function saveAR(){ var j=jobById(arCtx); var amt=Number(val('arAmt'))||0; if(amt<=0){toast('Enter amount','err');return;}
-  j.payments.push({ amount:amt, method:val('arMethod'), date:new Date().toISOString() });
+  var method=val('arMethod'), ref=String(val('arRef')||'').trim();
+  if(payRefRequired(method) && !ref){ toast('Enter the '+method+' reference #','err'); return; }
+  var pay={ amount:amt, method:method, date:new Date().toISOString() }; if(ref) pay.ref=ref;
+  j.payments.push(pay);
   persist(); closeModal(); toast('Payment recorded'); render(); }
 
 
@@ -6483,7 +6478,7 @@ if (typeof module!=='undefined' && module.exports){
     scheduleNextService:scheduleNextService, clearNextService:clearNextService, alertStrip:alertStrip,
     jobVehicleLabel:jobVehicleLabel, replyRecipients:replyRecipients, unreadMessages:unreadMessages, messageStrip:messageStrip, myStaffIds:myStaffIds, messageAcked:messageAcked,
     buildLogEntry:buildLogEntry, logEntryFor:logEntryFor, jobStatusPanel:jobStatusPanel, lastLogForLabel:lastLogForLabel,
-    jobDescriptionPanel:jobDescriptionPanel, jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fillVehicleBlanks:fillVehicleBlanks, openJobsForPlate:openJobsForPlate, correctPayment:correctPayment, overpaidJobs:overpaidJobs, paymentCorrections:paymentCorrections, docPaymentChecks:docPaymentChecks, warnIfPlateOnBoard:warnIfPlateOnBoard, plFor:plFor, opexFor:opexFor, payFor:payFor, monthlyPay:monthlyPay, addMonths:addMonths, syncCollections:syncCollections, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
+    jobDescriptionPanel:jobDescriptionPanel, jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fillVehicleBlanks:fillVehicleBlanks, openJobsForPlate:openJobsForPlate, correctPayment:correctPayment, overpaidJobs:overpaidJobs, paymentCorrections:paymentCorrections, billBaseline:billBaseline, trackBillChanges:trackBillChanges, billChanges:billChanges, discountRows:discountRows, discountReasonMissing:discountReasonMissing, cashExpected:cashExpected, cashCountRows:cashCountRows, paymentsMissingRef:paymentsMissingRef, releasedOwing:releasedOwing, docMoneyChecks:docMoneyChecks, docDiscounts:docDiscounts, warnIfPlateOnBoard:warnIfPlateOnBoard, plFor:plFor, opexFor:opexFor, payFor:payFor, monthlyPay:monthlyPay, addMonths:addMonths, syncCollections:syncCollections, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
     afterServiceMissing:afterServiceMissing, afterServiceDone:afterServiceDone, afterServiceStaff:afterServiceStaff,
     canWriteAfterService:canWriteAfterService, afterServiceSignerName:afterServiceSignerName, afterServiceBlock:afterServiceBlock,
     allocateSeriesNumber:allocateSeriesNumber, maxSeriesNo:maxSeriesNo, nextNo:nextNo,
@@ -6791,7 +6786,7 @@ function renderCloudLoading(){
    - Writes go through cloudPersist(): diff S vs last snapshot, upsert/delete.
    - Job photos are uploaded to Firebase Storage so docs stay under 1 MB.
    ========================================================================== */
-var COLLECTIONS = ['staff','bays','parts','labor','vehicles','estimates','jobs','appointments','purchaseOrders'];
+var COLLECTIONS = ['staff','bays','parts','labor','vehicles','estimates','jobs','appointments','purchaseOrders','cashcounts'];
 /* Finance data (expenses, base pay) is readable only by admins and the Secretary
    (firestore.rules). It is synced only for those users: for anyone else the
    listener would be denied and the load would fail. */
@@ -6825,6 +6820,7 @@ async function cloudLoadAll(){
 
 function ensureStateShape(){
   COLLECTIONS.concat(FINANCE_COLLECTIONS).forEach(function(c){ if(!Array.isArray(S[c])) S[c]=[]; });
+  if (typeof billBaseline==='function') billBaseline();   // bill totals as loaded (part18)
   if(!S.counters) S.counters={ est:0, jo:0, or:1000, po:0 };
   if(!S.shop) S.shop=seedState().shop;
   if(!S.shop.theme) S.shop.theme='light';
@@ -7145,6 +7141,7 @@ function cloudSubscribe(){
       // Photos re-attach off the OLD S.jobs, so this must run before the merge.
       if (c==='jobs'){ attachJobPhotos(incoming, S.jobs); attachPmsPhotos(incoming, S.jobs); }
       var held = applyRemoteSnapshot(c, incoming);
+      if (c==='jobs' && typeof billBaseline==='function') billBaseline();   // another device's change is theirs to log
       _applyingRemote = false;
       // Anything held back is still owed to the server; make sure a write is queued
       // even if the edit that dirtied it already had its debounce consumed.
@@ -7278,7 +7275,7 @@ async function localLoadAll(){
   return S;
 }
 
-function _applyRemote(fn){ _applyingRemote = true; try{ fn(); }catch(e){ console.error('apply remote', e); } _applyingRemote = false; if(!modalOpen()) render(); }
+function _applyRemote(fn){ _applyingRemote = true; try{ fn(); }catch(e){ console.error('apply remote', e); } _applyingRemote = false; if(typeof billBaseline==='function') billBaseline(); if(!modalOpen()) render(); }
 
 function localSubscribe(){
   if (typeof EventSource==='undefined') return;
@@ -9900,6 +9897,259 @@ function deleteExpenseRec(id){
   if(!canFinance()){ toast('Admins and the Secretary only','err'); return; }
   S.expenses=(S.expenses||[]).filter(function(x){ return x.id!==id; });
   persist(); closeModal(); toast('Deleted'); render();
+}
+
+
+/* ===== */
+
+/* ============================================================================
+   PART 18 — Money checks: catching payment and billing inconsistencies
+
+   Built after the Payment checks report found overpaid jobs in Commonwealth
+   and Fairview. Two Fairview jobs were overpaid by EXACTLY their discount —
+   the bill was lowered after the customer had paid — and nothing recorded
+   that the bill changed. This part adds:
+
+     1. Bill-change log   any change to a job's total after money was collected
+                          is logged on the job (j.billLog) and warned about.
+     2. Discount report   every discount, who gave it and why; a reason is
+                          now required to apply one.
+     3. Cash count        the Secretary enters the cash in the drawer at Daily
+                          Close; expected vs counted, short / over per day.
+     4. Payment refs      a reference # for GCash / bank / card payments, and a
+                          list of non-cash payments that have none.
+     5. Released with balance owed.
+
+   All of them are listed in the "Money checks" card on Reports (admin-only,
+   like the rest of Reports), with a printout.
+   ========================================================================== */
+
+/* ---- 1. Bill changed after payment ---------------------------------------
+   Every path that can change a bill (line items, discounts, warranty, add'l
+   work, billing edits) ends in persist(), so the check runs there rather than
+   in each editor: _billSeen holds each paid job's total as last seen; when
+   persist() finds a different total, the change was made on this device and
+   is logged against the signed-in user. Remote updates re-baseline the map
+   (billBaseline) so another device's change is logged once, by that device. */
+var _billSeen = {};
+function billWatch(j){ return j && !jobVoided(j) && !jobCancelled(j) && jobPaid(j) > 0.009; }
+function billBaseline(){
+  _billSeen = {};
+  ((typeof S!=='undefined' && S && S.jobs) || []).forEach(function(j){ if(billWatch(j)) _billSeen[j.id]=jobGross(j); });
+}
+function trackBillChanges(){
+  if(typeof S==='undefined' || !S || !S.jobs) return;
+  var me=(typeof CURRENT_USER!=='undefined' && CURRENT_USER) ? CURRENT_USER : null;
+  S.jobs.forEach(function(j){
+    if(!billWatch(j)){ delete _billSeen[j.id]; return; }
+    var g=jobGross(j), was=_billSeen[j.id];
+    _billSeen[j.id]=g;
+    if(was===undefined || Math.abs(g-was) < 0.005) return;   // first sighting, or unchanged
+    var paid=jobPaid(j);
+    j.billLog=j.billLog||[];
+    j.billLog.push({ at:new Date().toISOString(), by:(me&&me.uid)||'', byName:(me&&(me.name||me.username||me.email))||'',
+      from:round2(was), to:round2(g), paid:round2(paid), discount:discountAmount(j) });
+    if(typeof document!=='undefined' && typeof toast==='function')
+      toast(j.no+': bill changed to '+peso(g)+' — '+peso(paid)+' was already collected', 'err');
+  });
+}
+function billChanges(){
+  var out=[];
+  (S.jobs||[]).forEach(function(j){ (j.billLog||[]).forEach(function(c){
+    out.push({ id:j.id, no:j.no, or:j.orNumber||'', plate:j.plate, at:c.at, byName:c.byName, from:c.from, to:c.to, paid:c.paid });
+  }); });
+  return out.sort(function(a,b){ return String(b.at||'').localeCompare(String(a.at||'')); });
+}
+
+/* ---- 2. Discounts -------------------------------------------------------- */
+/* Who applied the discount, kept on the job (j.discountBy) — older jobs show —. */
+function stampDiscount(j){
+  var me=(typeof CURRENT_USER!=='undefined' && CURRENT_USER) ? CURRENT_USER : null;
+  j.discountBy={ at:new Date().toISOString(), byName:(me&&(me.name||me.username||me.email))||'' };
+}
+/* A discount needs a reason from now on — an unexplained discount is the
+   easiest place for money to go missing. Returns an error message or ''. */
+function discountReasonMissing(d){
+  var total=(Number(d.parts)||0)+(Number(d.labor)||0)+(Number(d.other)||0);
+  return (total>0 && !String(d.otherNote||'').trim()) ? 'Give the reason for the discount (e.g. senior citizen, promo, suki)' : '';
+}
+var DISC_MONTH='';
+function discountRows(m){
+  return billedJobs().filter(function(j){
+    return !jobCancelled(j) && localDay(j.billedAt||'').slice(0,7)===m && (discountAmount(j)>0.009 || j.warranty);
+  }).map(function(j){
+    var d=j.discount||{}, disc=discountAmount(j), due=jobGross(j);
+    var reason=j.warranty ? 'Warranty — no charge' : String(d.otherNote||'').trim();
+    return { id:j.id, no:j.no, or:j.orNumber||'', plate:j.plate, owner:j.owner, billedAt:j.billedAt,
+      parts:Number(d.parts)||0, labor:Number(d.labor)||0, other:Number(d.other)||0, disc:disc,
+      pct: (due+disc)>0 ? Math.round(disc/(due+disc)*100) : 0, reason:reason, byName:(j.discountBy&&j.discountBy.byName)||'' };
+  }).sort(function(a,b){ return String(b.billedAt||'').localeCompare(String(a.billedAt||'')); });
+}
+function discountsCard(){
+  var m=DISC_MONTH || todayISO().slice(0,7), rows=discountRows(m);
+  var total=round2(rows.reduce(function(s,r){ return s+r.disc; },0)), noReason=rows.filter(function(r){ return !r.reason; }).length;
+  return '<div class="card"><div class="card-head"><h2>Discounts</h2><div class="row gap">'+
+      monthSelect('discMonthSel', m, 'DISC_MONTH=this.value;render()')+
+      '<button class="btn sm ghost" onclick="printDoc(docDiscounts())">⎙ Print</button></div></div>'+
+    '<div class="muted small mb8">'+rows.length+' discounted job'+(rows.length===1?'':'s')+' · '+peso(total)+' given'+
+      (noReason?' · <b class="st-bad-t">'+noReason+' with no reason</b>':'')+'</div>'+
+    (rows.length ? '<div class="card pad0"><table class="tbl click sm"><thead><tr><th>Billed</th><th>JO # / OR #</th><th>Customer</th>'+
+        '<th class="r">Parts</th><th class="r">Labor</th><th class="r">Other</th><th class="r">Total</th><th class="r">% of bill</th><th>Reason</th><th>By</th></tr></thead><tbody>'+
+      rows.map(function(r){ return '<tr onclick="go(\'job\',\''+r.id+'\')"><td>'+esc(fmtDate(r.billedAt))+'</td>'+
+        '<td><b>'+esc(r.no)+'</b>'+(r.or?' <span class="muted small">'+esc(r.or)+'</span>':'')+'</td>'+
+        '<td>'+esc(r.owner||'')+' <span class="muted small">'+esc(r.plate)+'</span></td>'+
+        '<td class="r">'+(r.parts?peso(r.parts):'—')+'</td><td class="r">'+(r.labor?peso(r.labor):'—')+'</td><td class="r">'+(r.other?peso(r.other):'—')+'</td>'+
+        '<td class="r"><b>'+peso(r.disc)+'</b></td><td class="r'+(r.pct>=20?' st-bad-t':'')+'">'+r.pct+'%</td>'+
+        '<td>'+(r.reason?esc(r.reason):'<span class="chip due">NO REASON</span>')+'</td><td>'+esc(r.byName||'—')+'</td></tr>'; }).join('')+
+      '</tbody></table></div>' : emptyState('No discounts in '+fmtMonth(m)+'.'))+
+    '<p class="muted small mt8">% of bill is the discount against the bill before discount; 20% or more is highlighted. A reason is required when applying a discount.</p></div>';
+}
+function docDiscounts(){
+  var m=DISC_MONTH || todayISO().slice(0,7), rows=discountRows(m);
+  var total=round2(rows.reduce(function(s,r){ return s+r.disc; },0));
+  return docShell('Discounts '+m, docHeader('Discounts · '+fmtMonth(m))+
+    '<div class="eod-stamp">Printed <b>'+esc(fmtDateTime(new Date().toISOString()))+'</b> · '+rows.length+' jobs · '+peso(total)+'</div>'+
+    (rows.length?'<table><thead><tr><th>Billed</th><th>JO # / OR #</th><th>Customer</th><th class="r">Total</th><th class="r">%</th><th>Reason</th><th>By</th></tr></thead><tbody>'+
+      rows.map(function(r){ return '<tr><td>'+esc(fmtDate(r.billedAt))+'</td><td>'+esc(r.no)+(r.or?' / '+esc(r.or):'')+'</td><td>'+esc(r.owner||'')+' '+esc(r.plate)+'</td>'+
+        '<td class="r">'+peso(r.disc)+'</td><td class="r">'+r.pct+'%</td><td>'+(r.reason?esc(r.reason):'<b>NO REASON</b>')+'</td><td>'+esc(r.byName||'—')+'</td></tr>'; }).join('')+
+      '</tbody></table>':'<p>None.</p>'));
+}
+
+/* ---- 3. Daily cash count -------------------------------------------------
+   One record per branch per day in `cashcounts` (id cc_<date>). Expected cash is
+   computed LIVE from that day's Cash collections (net of cash refunds) plus the
+   starting float, so a later payment correction also corrects the variance. */
+function cashCountFor(date){ return (S.cashcounts||[]).find(function(c){ return c.id==='cc_'+date; }) || null; }
+function cashExpected(date, float){ var d=eodData(date, date); return round2((Number(float)||0) + (Number(d.byMethod.Cash)||0)); }
+function cashCountCard(date){
+  var c=cashCountFor(date), lastFloat=0;
+  (S.cashcounts||[]).forEach(function(x){ if(x.date<date && (!lastFloat || x.date>lastFloat.date)) lastFloat=x; });
+  var float=c ? c.float : (lastFloat ? lastFloat.float : 0);
+  var exp=cashExpected(date, float), varc=c ? round2(c.counted-exp) : null;
+  return '<div class="card"><h2>Cash count</h2>'+
+    '<div class="grid2">'+
+      field('Starting float (₱)','<input id="ccFloat" type="number" step="0.01" min="0" value="'+attr(float||0)+'">','Cash left in the drawer at opening.')+
+      field('Cash counted in drawer (₱)','<input id="ccCounted" type="number" step="0.01" min="0" value="'+attr(c?c.counted:'')+'" placeholder="count at closing">')+
+    '</div>'+
+    field('Note','<input id="ccNote" value="'+attr((c&&c.note)||'')+'" placeholder="explain any short / over">')+
+    '<button class="btn primary sm" onclick="saveCashCount(\''+date+'\')">Save count</button>'+
+    '<div class="mt8">'+line2('Expected (float + cash collections)',peso(exp))+
+      (c ? line2('Counted',peso(c.counted))+
+        line2('<b>'+(varc<-0.009?'Short':varc>0.009?'Over':'Balanced')+'</b>','<b class="'+(Math.abs(varc)>0.009?'st-bad-t':'st-good-t')+'">'+peso(varc)+'</b>')+
+        '<div class="muted small">Counted by '+esc(c.byName||'—')+' · '+esc(fmtDateTime(c.at))+'</div>'
+        : '<div class="muted small">Not counted yet for this day.</div>')+'</div></div>';
+}
+function saveCashCount(date){
+  var counted=val('ccCounted');
+  if(counted===''||isNaN(Number(counted))){ toast('Enter the cash counted','err'); return; }
+  var me=(typeof CURRENT_USER!=='undefined' && CURRENT_USER) ? CURRENT_USER : null;
+  var rec={ id:'cc_'+date, date:date, float:round2(Number(val('ccFloat'))||0), counted:round2(Number(counted)),
+    note:val('ccNote'), at:new Date().toISOString(), byName:(me&&(me.name||me.username||me.email))||'' };
+  if(!Array.isArray(S.cashcounts)) S.cashcounts=[];
+  var i=S.cashcounts.findIndex(function(x){ return x.id===rec.id; });
+  if(i>=0) S.cashcounts[i]=rec; else S.cashcounts.push(rec);
+  persist(); toast('Cash count saved'); render();
+}
+/* The last N days: each counted day's variance, plus days with cash taken but no count. */
+function cashCountRows(days){
+  var out=[], today=todayISO();
+  for(var i=0;i<days;i++){
+    var dt=new Date(); dt.setDate(dt.getDate()-i); var date=todayISO(dt);
+    if(date>today) continue;
+    var c=cashCountFor(date), cash=Number(eodData(date,date).byMethod.Cash)||0;
+    if(!c && Math.abs(cash)<0.009) continue;
+    var exp=cashExpected(date, c?c.float:0);
+    out.push({ date:date, counted:c?c.counted:null, expected:exp, variance:c?round2(c.counted-exp):null, byName:c?c.byName:'', note:c?c.note:'' });
+  }
+  return out;
+}
+
+/* ---- 4. Payment reference numbers ---------------------------------------- */
+var PAYREF_METHODS = ['GCash','Bank transfer','Card'];
+var PAYREF_SINCE = '2026-10-08';   // the field exists from this deploy; older payments are not flagged
+function payRefRequired(method){ return method==='GCash' || method==='Bank transfer'; }
+function paymentsMissingRef(){
+  var out=[];
+  (S.jobs||[]).forEach(function(j){ (j.payments||[]).forEach(function(p, i){
+    if(Number(p.amount)<=0 || PAYREF_METHODS.indexOf(p.method)<0 || String(p.ref||'').trim()) return;
+    if(localDay(p.date)<PAYREF_SINCE) return;
+    out.push({ id:j.id, idx:i, no:j.no, or:j.orNumber||'', plate:j.plate, date:p.date, method:p.method, amount:p.amount });
+  }); });
+  return out.sort(function(a,b){ return String(b.date).localeCompare(String(a.date)); });
+}
+
+/* ---- 5. Released with balance owed --------------------------------------- */
+function releasedOwing(){
+  return releasedJobs().filter(function(j){ return !jobCancelled(j) && jobBalance(j) > 0.009; })
+    .map(function(j){ return { id:j.id, no:j.no, or:j.orNumber||'', plate:j.plate, billedAt:j.billedAt, due:jobGross(j), paid:jobPaid(j), owed:jobBalance(j) }; })
+    .sort(function(a,b){ return String(b.billedAt||'').localeCompare(String(a.billedAt||'')); });
+}
+
+/* ---- The Money checks card (Reports) and printout ------------------------- */
+function moneyCheckData(){
+  return { cash:cashCountRows(30), over:overpaidJobs(), owing:releasedOwing(), bill:billChanges(), refs:paymentsMissingRef(), corr:paymentCorrections() };
+}
+function mcSection(title, n, body, okMsg){
+  return '<h3 class="mt8">'+title+' <span class="muted small">· '+n+'</span></h3>'+(n? body : '<div class="muted small">✓ '+okMsg+'</div>');
+}
+function mcTable(head, rows){ return '<div class="card pad0"><table class="tbl click sm"><thead><tr>'+head+'</tr></thead><tbody>'+rows+'</tbody></table></div>'; }
+function mcRowOpen(id){ return ' onclick="go(\'job\',\''+id+'\')"'; }
+function moneyChecksCard(){
+  var d=moneyCheckData();
+  var cashOff=d.cash.filter(function(r){ return r.variance===null || Math.abs(r.variance)>0.009; });
+  return '<div class="card"><div class="card-head"><h2>Money checks</h2>'+
+      '<button class="btn sm ghost" onclick="printDoc(docMoneyChecks())">⎙ Print</button></div>'+
+    mcSection('Cash count — last 30 days', cashOff.length, mcTable('<th>Date</th><th class="r">Expected</th><th class="r">Counted</th><th class="r">Short / over</th><th>By</th><th>Note</th>',
+      cashOff.map(function(r){ return '<tr onclick="DC_DATE=\''+r.date+'\';go(\'dailyclose\')"><td>'+esc(fmtDate(r.date))+'</td><td class="r">'+peso(r.expected)+'</td>'+
+        '<td class="r">'+(r.counted===null?'<span class="chip due">NOT COUNTED</span>':peso(r.counted))+'</td>'+
+        '<td class="r'+(r.variance!==null?' st-bad-t':'')+'">'+(r.variance===null?'—':'<b>'+peso(r.variance)+'</b>')+'</td><td>'+esc(r.byName||'—')+'</td><td>'+esc(r.note||'')+'</td></tr>'; }).join('')),
+      'Every day with cash collections was counted and balanced.')+
+    mcSection('Paid more than due', d.over.length, mcTable('<th>JO #</th><th>OR #</th><th>Plate</th><th>Billed</th><th class="r">Due</th><th class="r">Paid</th><th class="r">Over</th>',
+      d.over.map(function(r){ return '<tr'+mcRowOpen(r.id)+'><td><b>'+esc(r.no)+'</b></td><td>'+esc(r.or)+'</td><td>'+esc(r.plate)+'</td><td>'+esc(fmtDate(r.billedAt))+'</td>'+
+        '<td class="r">'+peso(r.due)+'</td><td class="r">'+peso(r.paid)+'</td><td class="r st-bad-t"><b>'+peso(r.over)+'</b></td></tr>'; }).join(''))+
+      '<p class="muted small">Usually cash tendered encoded instead of the amount due, or a discount applied after payment. Open the job and use <b>Correct</b>, or record a refund.</p>',
+      'No job has more paid than due.')+
+    mcSection('Released with balance owed', d.owing.length, mcTable('<th>JO #</th><th>OR #</th><th>Plate</th><th>Billed</th><th class="r">Due</th><th class="r">Paid</th><th class="r">Owed</th>',
+      d.owing.map(function(r){ return '<tr'+mcRowOpen(r.id)+'><td><b>'+esc(r.no)+'</b></td><td>'+esc(r.or)+'</td><td>'+esc(r.plate)+'</td><td>'+esc(fmtDate(r.billedAt))+'</td>'+
+        '<td class="r">'+peso(r.due)+'</td><td class="r">'+peso(r.paid)+'</td><td class="r st-bad-t"><b>'+peso(r.owed)+'</b></td></tr>'; }).join('')),
+      'No released job has money still owed.')+
+    mcSection('Bill changed after payment', d.bill.length, mcTable('<th>Changed</th><th>JO # / OR #</th><th class="r">Bill was</th><th class="r">Bill now</th><th class="r">Already paid</th><th>By</th>',
+      d.bill.map(function(r){ return '<tr'+mcRowOpen(r.id)+'><td>'+esc(fmtDateTime(r.at))+'</td><td><b>'+esc(r.no)+'</b>'+(r.or?' <span class="muted small">'+esc(r.or)+'</span>':'')+'</td>'+
+        '<td class="r">'+peso(r.from)+'</td><td class="r"><b>'+peso(r.to)+'</b></td><td class="r">'+peso(r.paid)+'</td><td>'+esc(r.byName||'—')+'</td></tr>'; }).join('')),
+      'No bill has been changed after money was collected.')+
+    mcSection('GCash / bank / card payments with no reference #', d.refs.length, mcTable('<th>Paid</th><th>JO # / OR #</th><th>Method</th><th class="r">Amount</th>',
+      d.refs.map(function(r){ return '<tr'+mcRowOpen(r.id)+'><td>'+esc(fmtDateTime(r.date))+'</td><td><b>'+esc(r.no)+'</b>'+(r.or?' <span class="muted small">'+esc(r.or)+'</span>':'')+'</td>'+
+        '<td>'+esc(r.method)+'</td><td class="r">'+peso(r.amount)+'</td></tr>'; }).join(''))+
+      '<p class="muted small">Add the reference with <b>Correct</b> on the payment, so it can be matched against the GCash / bank statement.</p>',
+      'Every non-cash payment since '+fmtDate(PAYREF_SINCE)+' has a reference #.')+
+    mcSection('Payment corrections', d.corr.length, mcTable('<th>Corrected</th><th>JO # / OR #</th><th>Payment of</th><th class="r">Was</th><th class="r">Now</th><th>By</th><th>Reason</th>',
+      d.corr.map(function(r){ return '<tr'+mcRowOpen(r.id)+'><td>'+esc(fmtDateTime(r.at))+'</td><td><b>'+esc(r.no)+'</b>'+(r.or?' <span class="muted small">'+esc(r.or)+'</span>':'')+'</td>'+
+        '<td>'+esc(fmtDate(r.payDate))+'</td><td class="r">'+peso(r.from.amount)+' <span class="muted small">'+esc(r.from.method||'')+'</span></td>'+
+        '<td class="r">'+peso(r.to.amount)+' <span class="muted small">'+esc(r.to.method||'')+'</span></td><td>'+esc(r.byName||'—')+'</td><td>'+esc(r.reason)+'</td></tr>'; }).join('')),
+      'No payments have been corrected.')+
+  '</div>';
+}
+function docMoneyChecks(){
+  var d=moneyCheckData();
+  var cashOff=d.cash.filter(function(r){ return r.variance===null || Math.abs(r.variance)>0.009; });
+  function sec(title, n, head, rows){ return '<div class="dtitle" style="font-size:12.5px;margin-top:14px">'+title+' ('+n+')</div>'+
+    (n?'<table><thead><tr>'+head+'</tr></thead><tbody>'+rows+'</tbody></table>':'<p>None.</p>'); }
+  return docShell('Money Checks', docHeader('Money Checks')+
+    '<div class="eod-stamp">Printed <b>'+esc(fmtDateTime(new Date().toISOString()))+'</b></div>'+
+    sec('Cash count — last 30 days', cashOff.length, '<th>Date</th><th class="r">Expected</th><th class="r">Counted</th><th class="r">Short / over</th><th>Note</th>',
+      cashOff.map(function(r){ return '<tr><td>'+esc(fmtDate(r.date))+'</td><td class="r">'+peso(r.expected)+'</td><td class="r">'+(r.counted===null?'NOT COUNTED':peso(r.counted))+'</td>'+
+        '<td class="r">'+(r.variance===null?'—':peso(r.variance))+'</td><td>'+esc(r.note||'')+'</td></tr>'; }).join(''))+
+    sec('Paid more than due', d.over.length, '<th>JO #</th><th>OR #</th><th>Plate</th><th class="r">Due</th><th class="r">Paid</th><th class="r">Over</th>',
+      d.over.map(function(r){ return '<tr><td>'+esc(r.no)+'</td><td>'+esc(r.or)+'</td><td>'+esc(r.plate)+'</td><td class="r">'+peso(r.due)+'</td><td class="r">'+peso(r.paid)+'</td><td class="r">'+peso(r.over)+'</td></tr>'; }).join(''))+
+    sec('Released with balance owed', d.owing.length, '<th>JO #</th><th>OR #</th><th>Plate</th><th class="r">Due</th><th class="r">Paid</th><th class="r">Owed</th>',
+      d.owing.map(function(r){ return '<tr><td>'+esc(r.no)+'</td><td>'+esc(r.or)+'</td><td>'+esc(r.plate)+'</td><td class="r">'+peso(r.due)+'</td><td class="r">'+peso(r.paid)+'</td><td class="r">'+peso(r.owed)+'</td></tr>'; }).join(''))+
+    sec('Bill changed after payment', d.bill.length, '<th>Changed</th><th>JO # / OR #</th><th class="r">Was</th><th class="r">Now</th><th class="r">Paid</th><th>By</th>',
+      d.bill.map(function(r){ return '<tr><td>'+esc(fmtDateTime(r.at))+'</td><td>'+esc(r.no)+(r.or?' / '+esc(r.or):'')+'</td><td class="r">'+peso(r.from)+'</td><td class="r">'+peso(r.to)+'</td><td class="r">'+peso(r.paid)+'</td><td>'+esc(r.byName||'—')+'</td></tr>'; }).join(''))+
+    sec('Non-cash payments with no reference #', d.refs.length, '<th>Paid</th><th>JO # / OR #</th><th>Method</th><th class="r">Amount</th>',
+      d.refs.map(function(r){ return '<tr><td>'+esc(fmtDateTime(r.date))+'</td><td>'+esc(r.no)+(r.or?' / '+esc(r.or):'')+'</td><td>'+esc(r.method)+'</td><td class="r">'+peso(r.amount)+'</td></tr>'; }).join(''))+
+    sec('Payment corrections', d.corr.length, '<th>Corrected</th><th>JO # / OR #</th><th class="r">Was</th><th class="r">Now</th><th>By</th><th>Reason</th>',
+      d.corr.map(function(r){ return '<tr><td>'+esc(fmtDateTime(r.at))+'</td><td>'+esc(r.no)+(r.or?' / '+esc(r.or):'')+'</td><td class="r">'+peso(r.from.amount)+' '+esc(r.from.method||'')+'</td>'+
+        '<td class="r">'+peso(r.to.amount)+' '+esc(r.to.method||'')+'</td><td>'+esc(r.byName||'—')+'</td><td>'+esc(r.reason)+'</td></tr>'; }).join('')));
 }
 
 </script>
