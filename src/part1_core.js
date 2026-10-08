@@ -299,6 +299,7 @@ var S = null;                 // the single state object
 var SAVE_TIMER = null;
 
 function persist(){
+  if (typeof trackBillChanges==='function') trackBillChanges();   // log a bill changed after payment (part18)
   // debounced save with indicator. In cloud mode, sync changed records to
   // Firestore; otherwise fall back to the local storage adapter.
   setSaveState('saving');
@@ -543,6 +544,7 @@ function seedState(){
     appointments:[appt1,appt2],
     purchaseOrders:[po1],
     expenses:[],
+    cashcounts:[],
     counters:{ est:0, jo:1, or:1000, po:1 }
   };
 }
@@ -555,11 +557,12 @@ async function loadState(){
   }
   if (!S || S.version!==2){ S = seedState(); persist(); }
   // migration safety: ensure arrays exist
-  ['staff','bays','parts','labor','vehicles','estimates','jobs','appointments','purchaseOrders','expenses'].forEach(function(k){
+  ['staff','bays','parts','labor','vehicles','estimates','jobs','appointments','purchaseOrders','expenses','cashcounts'].forEach(function(k){
     if (!Array.isArray(S[k])) S[k]=[];
   });
   if (!S.counters) S.counters = { est:0, jo:0, or:1000, po:0 };
   if (S.shop && !S.shop.theme) S.shop.theme = 'light';
+  if (typeof billBaseline==='function') billBaseline();   // bill totals as loaded (part18)
   if (ensurePmsLabor()) persist();   // guarantee the standard PMS LABOR item
   return S;
 }

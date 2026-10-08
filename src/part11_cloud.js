@@ -281,7 +281,7 @@ function renderCloudLoading(){
    - Writes go through cloudPersist(): diff S vs last snapshot, upsert/delete.
    - Job photos are uploaded to Firebase Storage so docs stay under 1 MB.
    ========================================================================== */
-var COLLECTIONS = ['staff','bays','parts','labor','vehicles','estimates','jobs','appointments','purchaseOrders'];
+var COLLECTIONS = ['staff','bays','parts','labor','vehicles','estimates','jobs','appointments','purchaseOrders','cashcounts'];
 /* Finance data (expenses, base pay) is readable only by admins and the Secretary
    (firestore.rules). It is synced only for those users: for anyone else the
    listener would be denied and the load would fail. */
@@ -315,6 +315,7 @@ async function cloudLoadAll(){
 
 function ensureStateShape(){
   COLLECTIONS.concat(FINANCE_COLLECTIONS).forEach(function(c){ if(!Array.isArray(S[c])) S[c]=[]; });
+  if (typeof billBaseline==='function') billBaseline();   // bill totals as loaded (part18)
   if(!S.counters) S.counters={ est:0, jo:0, or:1000, po:0 };
   if(!S.shop) S.shop=seedState().shop;
   if(!S.shop.theme) S.shop.theme='light';
@@ -635,6 +636,7 @@ function cloudSubscribe(){
       // Photos re-attach off the OLD S.jobs, so this must run before the merge.
       if (c==='jobs'){ attachJobPhotos(incoming, S.jobs); attachPmsPhotos(incoming, S.jobs); }
       var held = applyRemoteSnapshot(c, incoming);
+      if (c==='jobs' && typeof billBaseline==='function') billBaseline();   // another device's change is theirs to log
       _applyingRemote = false;
       // Anything held back is still owed to the server; make sure a write is queued
       // even if the edit that dirtied it already had its debounce consumed.
@@ -768,7 +770,7 @@ async function localLoadAll(){
   return S;
 }
 
-function _applyRemote(fn){ _applyingRemote = true; try{ fn(); }catch(e){ console.error('apply remote', e); } _applyingRemote = false; if(!modalOpen()) render(); }
+function _applyRemote(fn){ _applyingRemote = true; try{ fn(); }catch(e){ console.error('apply remote', e); } _applyingRemote = false; if(typeof billBaseline==='function') billBaseline(); if(!modalOpen()) render(); }
 
 function localSubscribe(){
   if (typeof EventSource==='undefined') return;

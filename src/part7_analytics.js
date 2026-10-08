@@ -90,13 +90,14 @@ VIEWS.reports = function(){
         '</tbody></table>':emptyState('No commissions yet.'))+'</div>'+
     '</div></div>'+
     eodRangeCard()+
-    paymentChecksCard()+
+    moneyChecksCard()+
+    discountsCard()+
     orSeriesCard()+
     joSeriesCard()+
   '</div>';
 };
 
-/* ---- Payment checks -------------------------------------------------------
+/* ---- Payment checks (listed in the Money checks card, part18) --------------
    Two lists for spotting and auditing payment mistakes in one place:
    - Overpaid: billed jobs where more was recorded than was due — almost always
      cash tendered encoded instead of the amount due (Commonwealth JO-0485).
@@ -115,41 +116,6 @@ function paymentCorrections(){
   }); }); });
   return out.sort(function(a,b){ return String(b.at||'').localeCompare(String(a.at||'')); });
 }
-function paymentChecksCard(){
-  var over=overpaidJobs(), corr=paymentCorrections();
-  return '<div class="card"><div class="card-head"><h2>Payment checks</h2>'+
-      '<button class="btn sm ghost" onclick="printDoc(docPaymentChecks())">⎙ Print</button></div>'+
-    '<h3 class="mt8">Paid more than due <span class="muted small">· '+over.length+'</span></h3>'+
-    (over.length ? '<div class="card pad0"><table class="tbl click sm"><thead><tr><th>JO #</th><th>OR #</th><th>Plate</th><th>Billed</th><th class="r">Due</th><th class="r">Paid</th><th class="r">Over</th></tr></thead><tbody>'+
-        over.map(function(r){ return '<tr onclick="go(\'job\',\''+r.id+'\')"><td><b>'+esc(r.no)+'</b></td><td>'+esc(r.or)+'</td><td>'+esc(r.plate)+'</td>'+
-          '<td>'+esc(fmtDate(r.billedAt))+'</td><td class="r">'+peso(r.due)+'</td><td class="r">'+peso(r.paid)+'</td><td class="r st-bad-t"><b>'+peso(r.over)+'</b></td></tr>'; }).join('')+
-        '</tbody></table></div><p class="muted small">Usually the cash handed over was encoded instead of the amount due. Open the job and use <b>Correct</b> on the payment.</p>'
-      : '<div class="muted small">✓ No job has more paid than due.</div>')+
-    '<h3 class="mt8">Payment corrections <span class="muted small">· '+corr.length+'</span></h3>'+
-    (corr.length ? '<div class="card pad0"><table class="tbl click sm"><thead><tr><th>Corrected</th><th>JO # / OR #</th><th>Payment of</th><th class="r">Was</th><th class="r">Now</th><th>By</th><th>Reason</th></tr></thead><tbody>'+
-        corr.map(function(r){ return '<tr onclick="go(\'job\',\''+r.id+'\')"><td>'+esc(fmtDateTime(r.at))+'</td><td><b>'+esc(r.no)+'</b>'+(r.or?' <span class="muted small">'+esc(r.or)+'</span>':'')+'</td>'+
-          '<td>'+esc(fmtDate(r.payDate))+'</td><td class="r">'+peso(r.from.amount)+' <span class="muted small">'+esc(r.from.method||'')+'</span></td>'+
-          '<td class="r">'+peso(r.to.amount)+' <span class="muted small">'+esc(r.to.method||'')+'</span></td><td>'+esc(r.byName||'—')+'</td><td>'+esc(r.reason)+'</td></tr>'; }).join('')+
-        '</tbody></table></div>'
-      : '<div class="muted small">No payments have been corrected.</div>')+
-  '</div>';
-}
-function docPaymentChecks(){
-  var over=overpaidJobs(), corr=paymentCorrections();
-  var body=docHeader('Payment Checks')+
-    '<div class="eod-stamp">Printed <b>'+esc(fmtDateTime(new Date().toISOString()))+'</b></div>'+
-    '<div class="dtitle" style="font-size:12.5px">Paid more than due ('+over.length+')</div>'+
-    (over.length?'<table><thead><tr><th>JO #</th><th>OR #</th><th>Plate</th><th>Billed</th><th class="r">Due</th><th class="r">Paid</th><th class="r">Over</th></tr></thead><tbody>'+
-      over.map(function(r){ return '<tr><td>'+esc(r.no)+'</td><td>'+esc(r.or)+'</td><td>'+esc(r.plate)+'</td><td>'+esc(fmtDate(r.billedAt))+'</td>'+
-        '<td class="r">'+peso(r.due)+'</td><td class="r">'+peso(r.paid)+'</td><td class="r"><b>'+peso(r.over)+'</b></td></tr>'; }).join('')+'</tbody></table>':'<p>None.</p>')+
-    '<div class="dtitle" style="font-size:12.5px;margin-top:14px">Payment corrections ('+corr.length+')</div>'+
-    (corr.length?'<table><thead><tr><th>Corrected</th><th>JO # / OR #</th><th>Payment of</th><th class="r">Was</th><th class="r">Now</th><th>By</th><th>Reason</th></tr></thead><tbody>'+
-      corr.map(function(r){ return '<tr><td>'+esc(fmtDateTime(r.at))+'</td><td>'+esc(r.no)+(r.or?' / '+esc(r.or):'')+'</td><td>'+esc(fmtDate(r.payDate))+'</td>'+
-        '<td class="r">'+peso(r.from.amount)+' '+esc(r.from.method||'')+'</td><td class="r">'+peso(r.to.amount)+' '+esc(r.to.method||'')+'</td>'+
-        '<td>'+esc(r.byName||'—')+'</td><td>'+esc(r.reason)+'</td></tr>'; }).join('')+'</tbody></table>':'<p>None.</p>');
-  return docShell('Payment Checks', body);
-}
-
 /* ---- Sales & collections for a date range --------------------------------
    The Daily Close figures over any period, from the same eodData() aggregator,
    so a month here always reconciles against the days that make it up. */
@@ -509,12 +475,13 @@ VIEWS.dailyclose = function(){
         return '<tr'+(isR?' class="void-row"':'')+'><td>'+esc(t.job.no)+
           (isR?' <span class="chip">REFUND</span>':'')+'</td><td>'+esc(t.job.owner)+
           (isR&&t.p.reason?' <span class="muted small">'+esc(t.p.reason)+'</span>':'')+
-          '</td><td>'+esc(t.p.method)+'</td><td class="r">'+peso(t.p.amount)+'</td></tr>';
+          '</td><td>'+esc(t.p.method)+(t.p.ref?' <span class="muted small">#'+esc(t.p.ref)+'</span>':'')+'</td><td class="r">'+peso(t.p.amount)+'</td></tr>';
       }).join('')+
       '<tr class="tot"><td colspan="3" class="r"><b>Total collected</b></td><td class="r"><b>'+peso(d.collections)+'</b></td></tr>'+
       '</tbody></table>':emptyState('No collections on this date.'))+'</div>'+
       eodReceiptsCard(d, false)+'</div>'+
     '<div class="colside">'+
+      cashCountCard(date)+
       '<div class="card"><h2>Collections by method</h2>'+(Object.keys(d.byMethod).length?Object.keys(d.byMethod).map(function(m){return line2(m,peso(d.byMethod[m]));}).join(''):emptyState('—'))+
         (d.refunds?'<div class="muted small mt8">Net of '+peso(d.refunds)+' refunded — each line is the real movement of that tender.</div>':'')+'</div>'+
       '<div class="card"><h2>Sales mix</h2>'+line2('Parts',peso(d.partsRev))+line2('Labor',peso(d.laborRev))+
@@ -750,10 +717,14 @@ function collectAR(id){
   var j=jobById(id); var bal=jobBalance(j);
   openModal('Collect payment — '+j.no,
     '<div class="grid2">'+field('Amount','<input id="arAmt" type="number" step="0.01" value="'+attr(bal)+'">')+
-    field('Method','<select id="arMethod"><option>Cash</option><option>GCash</option><option>Card</option><option>Bank transfer</option></select>')+'</div>',
+    field('Method','<select id="arMethod"><option>Cash</option><option>GCash</option><option>Card</option><option>Bank transfer</option></select>')+'</div>'+
+    field('Reference #','<input id="arRef" placeholder="required for GCash and bank transfer" autocomplete="off">'),
     { onOk:'saveAR', okText:'Record' }); setTimeout(function(){arCtx=id;},10);
 }
 var arCtx=null;
 function saveAR(){ var j=jobById(arCtx); var amt=Number(val('arAmt'))||0; if(amt<=0){toast('Enter amount','err');return;}
-  j.payments.push({ amount:amt, method:val('arMethod'), date:new Date().toISOString() });
+  var method=val('arMethod'), ref=String(val('arRef')||'').trim();
+  if(payRefRequired(method) && !ref){ toast('Enter the '+method+' reference #','err'); return; }
+  var pay={ amount:amt, method:method, date:new Date().toISOString() }; if(ref) pay.ref=ref;
+  j.payments.push(pay);
   persist(); closeModal(); toast('Payment recorded'); render(); }

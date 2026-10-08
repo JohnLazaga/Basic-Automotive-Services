@@ -420,8 +420,56 @@ await (async function(){
   ok('corrected job leaves the overpaid list', M.overpaidJobs().filter(r=>r.no===j.no).length===0);
   const c=M.paymentCorrections().filter(r=>r.no===j.no);
   ok('correction listed with before/after/who/why', c.length===1 && c[0].from.amount===due+2560 && c[0].to.amount===due && c[0].byName==='Sup' && c[0].reason==='encoded cash tendered');
-  ok('printout renders both sections', /Paid more than due/.test(M.docPaymentChecks()) && /encoded cash tendered/.test(M.docPaymentChecks()));
-  ok('Reports page shows the card', /Payment checks/.test(M.VIEWS().reports()));
+  ok('printout renders both sections', /Paid more than due/.test(M.docMoneyChecks()) && /encoded cash tendered/.test(M.docMoneyChecks()));
+  ok('Reports page shows the card', /Money checks/.test(M.VIEWS().reports()) && /Discounts/.test(M.VIEWS().reports()));
+})();
+
+section('Money checks: bill changes, discounts, cash count, refs, owed');
+await (async function(){
+  const s=fresh();
+  const j=await M.createJob({plate:'BIL 0001'});
+  j.lines=[{id:'l1',type:'labor',desc:'Tune up',qty:1,price:1000}];
+  j.stage='Released'; j.orNumber='OR-7001'; j.billedAt='2026-10-08T03:00:00.000Z';
+  const due=M.jobGross(j);
+  j.payments=[{amount:due,method:'Cash',date:'2026-10-08T03:10:00.000Z'}];
+  M.billBaseline();
+  // 1. A discount applied after payment is logged with before/after.
+  M.setCurrentUser({uid:'u1',role:'SV',isAdmin:false,name:'Sup'});
+  j.discount={parts:0,labor:100,other:0,otherNote:'suki'};
+  M.trackBillChanges();
+  const bc=M.billChanges().filter(r=>r.no===j.no);
+  ok('bill change after payment logged', bc.length===1 && bc[0].from===due && bc[0].to===M.jobGross(j) && bc[0].paid===due && bc[0].byName==='Sup');
+  M.trackBillChanges();
+  ok('unchanged bill not logged twice', M.billChanges().filter(r=>r.no===j.no).length===1);
+  const unpaid=await M.createJob({plate:'BIL 0002'}); unpaid.lines=[{id:'l2',type:'labor',desc:'x',qty:1,price:500}];
+  M.trackBillChanges(); unpaid.lines[0].price=600; M.trackBillChanges();
+  ok('bill changes before any payment are not logged', M.billChanges().filter(r=>r.no===unpaid.no).length===0);
+  M.setCurrentUser(null);
+  // 2. Discounts need a reason; the report lists them.
+  ok('discount without a reason refused', !!M.discountReasonMissing({parts:50,labor:0,other:0,otherNote:''}));
+  ok('discount with a reason accepted', !M.discountReasonMissing({parts:50,labor:0,other:0,otherNote:'promo'}));
+  ok('no discount needs no reason', !M.discountReasonMissing({parts:0,labor:0,other:0,otherNote:''}));
+  const dr=M.discountRows('2026-10').filter(r=>r.no===j.no);
+  ok('discount report lists the job with its reason', dr.length===1 && dr[0].disc>0 && dr[0].reason==='suki');
+  // 5. Overpaid now (paid full, bill lowered) — and released-with-balance when raised instead.
+  ok('lowered bill shows as overpaid', M.overpaidJobs().some(r=>r.no===j.no));
+  j.discount={parts:0,labor:0,other:0,otherNote:''}; j.lines.push({id:'l3',type:'labor',desc:'extra',qty:1,price:200});
+  ok('raised bill on a released job shows as owed', M.releasedOwing().some(r=>r.no===j.no && r.owed>0));
+  // 3. Cash count: expected = float + that day's cash; variance follows corrections.
+  s.cashcounts=[{id:'cc_2026-10-08',date:'2026-10-08',float:1000,counted:1000+due,at:'',byName:'Sec'}];
+  ok('expected cash = float + cash collections', M.cashExpected('2026-10-08',1000)===M.round2(1000+due));
+  // 4. Non-cash payments without a reference are listed (from the feature date on).
+  j.payments.push({amount:50,method:'GCash',date:'2026-10-08T05:00:00.000Z'});
+  j.payments.push({amount:60,method:'GCash',date:'2026-10-01T05:00:00.000Z'});
+  j.payments.push({amount:70,method:'GCash',date:'2026-10-08T06:00:00.000Z',ref:'GC123'});
+  const refs=M.paymentsMissingRef().filter(r=>r.no===j.no);
+  ok('GCash without ref listed, older and referenced ones not', refs.length===1 && refs[0].amount===50);
+  M.setCurrentUser({uid:'u1',role:'SV',isAdmin:false,name:'Sup'});
+  const idx=j.payments.findIndex(p=>p.amount===50);
+  ok('adding only a reference needs no reason', M.correctPayment(j,idx,50,'GCash','', 'GC999').ok && j.payments[idx].ref==='GC999' && !j.payments[idx].corrections);
+  M.setCurrentUser(null);
+  ok('money checks printout renders', /Cash count/.test(M.docMoneyChecks()) && /Bill changed after payment/.test(M.docMoneyChecks()));
+  ok('discounts printout renders', /suki|Discounts/.test(M.docDiscounts()));
 })();
 
 /* -------------------------------------------------- Series-number uniqueness */

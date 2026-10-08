@@ -1366,7 +1366,10 @@ function billingEditBlock(j){
 function saveBillingEdits(id){
   if(!can('billing_edit')){ toast('Not permitted','err'); return; }
   var j=jobById(id);
-  j.discount=readDiscount('bd');
+  var dd=readDiscount('bd'), dm=discountReasonMissing(dd);
+  if(dm){ toast(dm,'err'); return; }
+  if(JSON.stringify(dd)!==JSON.stringify(j.discount||{})) stampDiscount(j);
+  j.discount=dd;
   j.siRef=val('bdSI');
   persist(); toast('Billing updated'); render();
 }
@@ -1379,7 +1382,7 @@ function discountEditor(j, pre){
     field('Discount on Labor (₱)','<input id="'+pre+'Labor" type="number" step="0.01" value="'+attr(Number(d.labor)||0)+'">')+'</div>'+
     '<div class="grid2">'+
     field('Other discounts (₱)','<input id="'+pre+'Other" type="number" step="0.01" value="'+attr(Number(d.other)||0)+'">')+
-    field('Other — reference','<input id="'+pre+'Note" value="'+attr(d.otherNote||'')+'" placeholder="e.g. senior citizen, promo">')+'</div>';
+    field('Discount reason','<input id="'+pre+'Note" value="'+attr(d.otherNote||'')+'" placeholder="e.g. senior citizen, promo, suki">','Required for any discount.')+'</div>';
 }
 function readDiscount(pre){
   return { parts:Number(val(pre+'Parts'))||0, labor:Number(val(pre+'Labor'))||0,
@@ -1411,7 +1414,10 @@ function deductInventory(j){
   (j.lines||[]).forEach(function(l){ if(l.type==='part'&&l.ref){ var p=partById(l.ref); if(p){ p.stock=round2((p.stock||0)-(Number(l.qty)||0)); } } });
   j.inventoryDeducted=true;
 }
-function applyDiscount(id){ var j=jobById(id); j.discount=readDiscount('dsc'); persist(); toast('Discount applied'); render(); }
+function applyDiscount(id){ var j=jobById(id); var dd=readDiscount('dsc'), dm=discountReasonMissing(dd);
+  if(dm){ toast(dm,'err'); return; }
+  if(JSON.stringify(dd)!==JSON.stringify(j.discount||{})) stampDiscount(j);
+  j.discount=dd; persist(); toast('Discount applied'); render(); }
 /* Lowest OR number that may still be issued — never below any already-issued OR,
    so a fresh allocator can never reuse a number. */
 function orSeed(){
@@ -1486,9 +1492,11 @@ function advanceBilling(id){
   if(!sup || sup.role!=='SV'){ toast('Select the approving Supervisor first','err'); return; }
   var sec=staffById(j.paymentReceivedBy);
   if(!sec || sec.role!=='Secretary'){ toast('Enter the Secretary who received payment first','err'); return; }
+  var dsc=document.getElementById('dscParts') ? readDiscount('dsc') : null;
+  if(dsc && discountReasonMissing(dsc)){ toast(discountReasonMissing(dsc),'err'); return; }
   if(_issuingOR[id]) return;                                     // in-flight guard (prevents double-click gaps)
   _issuingOR[id]=true;
-  if(document.getElementById('dscParts')) j.discount=readDiscount('dsc');
+  if(dsc){ if(JSON.stringify(dsc)!==JSON.stringify(j.discount||{})) stampDiscount(j); j.discount=dsc; }
   allocateOrNumber(id).then(function(orNo){
     j.orNumber=orNo; j.billedAt=new Date().toISOString(); j.stage='Final Billing';
     delete _issuingOR[id]; persist();
@@ -1523,6 +1531,7 @@ function jobPaymentBlock(j,b){
     pays+
     ((paid||!showPrice)? '' : '<div class="grid2 mt8">'+field('Amount','<input id="pyAmt" type="number" step="0.01" value="'+attr(b.balance)+'">')+
       field('Method','<select id="pyMethod"><option>Cash</option><option>GCash</option><option>Card</option><option>Bank transfer</option><option>Charge account</option></select>')+'</div>'+
+      field('Reference #','<input id="pyRef" placeholder="GCash / bank / card ref — required for GCash and bank transfer" autocomplete="off">')+
       '<button class="btn sm" onclick="recordPayment(\''+j.id+'\')">Record payment</button>')+
     (canRefund?'<button class="btn sm ghost mt8" onclick="refundDialog(\''+j.id+'\')">Record refund…</button>':'')+
     field('Last service odometer','<input id="relOdo" type="number" value="'+attr(j.lastServiceOdo||j.odometer||'')+'" placeholder="reading at release">','Recorded on release; updates the vehicle’s last service odometer.')+
@@ -1535,7 +1544,7 @@ function paymentLinesHTML(j){
   var canFix = canCorrectPayment();
   return (j.payments||[]).map(function(p, i){
     var isR=Number(p.amount)<0, last=(p.corrections||[]).slice(-1)[0];
-    return '<div class="l2"><span>'+esc(fmtDate(p.date))+' · '+esc(p.method)+
+    return '<div class="l2"><span>'+esc(fmtDate(p.date))+' · '+esc(p.method)+(p.ref?' <span class="muted small">#'+esc(p.ref)+'</span>':'')+
       (isR?' · <b>REFUND</b>'+(p.reason?' <span class="muted small">'+esc(p.reason)+'</span>':''):'')+
       (last?'<div class="muted small">Corrected from '+peso(p.corrections[0].from.amount)+' '+esc(p.corrections[0].from.method)+
         ' by '+esc(last.byName||'—')+' · '+esc(fmtDateTime(last.at))+' — '+esc(last.reason)+'</div>':'')+
@@ -1554,7 +1563,10 @@ function releasedPaymentsBlock(j){
 }
 function recordPayment(id){
   var j=jobById(id); var amt=Number(val('pyAmt'))||0; if(amt<=0){toast('Enter amount','err');return;}
-  j.payments.push({ amount:amt, method:val('pyMethod'), date:new Date().toISOString() });
+  var method=val('pyMethod'), ref=String(val('pyRef')||'').trim();
+  if(payRefRequired(method) && !ref){ toast('Enter the '+method+' reference #','err'); return; }
+  var pay={ amount:amt, method:method, date:new Date().toISOString() }; if(ref) pay.ref=ref;
+  j.payments.push(pay);
   persist(); toast('Payment recorded'); render();
 }
 
@@ -1622,16 +1634,23 @@ function confirmRefund(){
    p.corrections with the before/after, who and when. Testable without a DOM:
    returns {ok:true} or {ok:false, err}. */
 function canCorrectPayment(){ return isAdminOrSV(); }
-function correctPayment(j, idx, amount, method, reason){
+function correctPayment(j, idx, amount, method, reason, ref){
   if(!canCorrectPayment()) return { ok:false, err:'Only an admin or Supervisor can correct a payment' };
   var p=j && (j.payments||[])[idx]; if(!p) return { ok:false, err:'Payment not found' };
   var isR=Number(p.amount)<0;
   amount=round2(Math.abs(Number(amount)||0));
   if(amount<=0) return { ok:false, err:'Enter the correct amount' };
+  var newAmt=isR?-amount:amount; method=method||p.method;
+  /* The reference # is bookkeeping, not money: adding or fixing it alone needs
+     no reason and is not logged as a correction. */
+  var refChanged = ref!==undefined && String(ref||'').trim()!==String(p.ref||'');
+  var moneyChanged = !(newAmt===round2(Number(p.amount)) && method===p.method);
+  if(!moneyChanged){
+    if(!refChanged) return { ok:false, err:'Nothing changed' };
+    p.ref=String(ref||'').trim(); return { ok:true };
+  }
   reason=String(reason||'').trim();
   if(reason.length<3) return { ok:false, err:'Give a reason — it is what explains the change later' };
-  var newAmt=isR?-amount:amount; method=method||p.method;
-  if(newAmt===round2(Number(p.amount)) && method===p.method) return { ok:false, err:'Nothing changed' };
   /* A refund can never exceed what was collected — same rule as addRefund. */
   var paidAfter=round2(jobPaid(j)-Number(p.amount)+newAmt);
   if(paidAfter < -0.001) return { ok:false, err:'That would leave more refunded than collected on this job order' };
@@ -1640,6 +1659,7 @@ function correctPayment(j, idx, amount, method, reason){
   p.corrections.push({ at:new Date().toISOString(), by:(me&&me.uid)||'', byName:(me&&(me.name||me.username||me.email))||'',
     from:{ amount:round2(Number(p.amount)), method:p.method }, to:{ amount:newAmt, method:method }, reason:reason });
   p.amount=newAmt; p.method=method;
+  if(refChanged) p.ref=String(ref||'').trim();
   return { ok:true };
 }
 var _corrCtx=null;
@@ -1656,12 +1676,13 @@ function correctPaymentDialog(id, idx){
       field('Correct amount (₱)','<input id="cpAmt" type="number" step="0.01" min="0" value="'+attr(Math.abs(p.amount))+'">')+
       field('Method','<select id="cpMethod">'+methods.map(function(m){ return '<option'+(m===p.method?' selected':'')+'>'+esc(m)+'</option>'; }).join('')+'</select>')+
     '</div>'+
+    field('Reference #','<input id="cpRef" value="'+attr(p.ref||'')+'" placeholder="GCash / bank / card ref" autocomplete="off">','Adding only a reference # needs no reason.')+
     field('Reason','<input id="cpReason" placeholder="e.g. encoded ₱5,000 instead of ₱500" autocomplete="off">'),
     { onOk:'confirmCorrectPayment', okText:'Save correction' });
 }
 function confirmCorrectPayment(){
   var c=_corrCtx, j=c&&jobById(c.id); if(!j){ closeModal(); return; }
-  var r=correctPayment(j, c.idx, val('cpAmt'), val('cpMethod'), val('cpReason'));
+  var r=correctPayment(j, c.idx, val('cpAmt'), val('cpMethod'), val('cpReason'), val('cpRef'));
   if(!r.ok){ toast(r.err,'err'); return; }
   _corrCtx=null; persist(); closeModal(); toast('Payment corrected'); render();
 }
