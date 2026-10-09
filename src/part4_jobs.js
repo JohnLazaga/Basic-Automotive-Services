@@ -1382,7 +1382,18 @@ function discountEditor(j, pre){
     field('Discount on Labor (₱)','<input id="'+pre+'Labor" type="number" step="0.01" value="'+attr(Number(d.labor)||0)+'">')+'</div>'+
     '<div class="grid2">'+
     field('Other discounts (₱)','<input id="'+pre+'Other" type="number" step="0.01" value="'+attr(Number(d.other)||0)+'">')+
-    field('Discount reason','<input id="'+pre+'Note" value="'+attr(d.otherNote||'')+'" placeholder="e.g. senior citizen, promo, suki">','Required for any discount.')+'</div>';
+    field('Discount reason','<input id="'+pre+'Note" value="'+attr(d.otherNote||'')+'" placeholder="e.g. senior citizen, promo, suki">','Required for any discount.')+'</div>'+
+    (runningBill(j).vat>0 ? '<button type="button" class="btn sm ghost" onclick="fillLessVat(\''+pre+'\',\''+j.id+'\')">Less VAT ('+peso(runningBill(j).vat)+')</button> ' : '');
+}
+/* One tap for the shop's everyday case: put this bill's VAT in Other discounts
+   and "LESS VAT" in the reason. Fills the boxes only — Apply / Create still
+   saves. Any other reason already typed is kept after it. */
+var LESS_VAT = 'LESS VAT';
+function fillLessVat(pre, id){
+  var j=jobById(id); if(!j) return;
+  setVal(pre+'Other', runningBill(j).vat);
+  var note=String(val(pre+'Note')||'').trim();
+  if(note.toUpperCase().indexOf(LESS_VAT)<0) setVal(pre+'Note', note ? LESS_VAT+' · '+note : LESS_VAT);
 }
 function readDiscount(pre){
   return { parts:Number(val(pre+'Parts'))||0, labor:Number(val(pre+'Labor'))||0,

@@ -472,6 +472,22 @@ await (async function(){
   ok('discounts printout renders', /suki|Discounts/.test(M.docDiscounts()));
 })();
 
+section('Discounts: Less VAT is split out from real discounts');
+await (async function(){
+  const s=fresh();
+  const mk=async function(plate, disc){ const j=await M.createJob({plate:plate});
+    j.lines=[{id:'l1',type:'labor',desc:'Service',qty:1,price:1000}];
+    j.stage='Released'; j.orNumber='OR-'+plate.replace(/\D/g,''); j.billedAt='2026-10-09T03:00:00.000Z'; j.discount=disc; return j; };
+  const vatOnly=await mk('LVT 0001', {parts:0,labor:0,other:120,otherNote:''});          // VAT on ₱1,000 = ₱120
+  const vatPlus=await mk('LVT 0002', {parts:0,labor:0,other:320,otherNote:'LESS VAT · suki'});
+  const rows=M.discountRows('2026-10');
+  const a=rows.find(r=>r.no===vatOnly.no), b=rows.find(r=>r.no===vatPlus.no);
+  ok('discount equal to VAT counts as Less VAT, even unlabelled', a && a.lessVat && a.beyond===0 && a.reason==='LESS VAT');
+  ok('discount beyond VAT is a real discount with the extra shown', b && !b.lessVat && b.beyond===200);
+  const rep=M.VIEWS().reports(), di=rep.indexOf('<h2>Discounts</h2>'), card=rep.slice(di, rep.indexOf('OR numbers by series', di));
+  ok('Discounts card hides Less VAT-only jobs by default', card.length>0 && !/LVT 0001/.test(card) && /LVT 0002/.test(card));
+})();
+
 /* -------------------------------------------------- Series-number uniqueness */
 section('Series numbers never duplicate (stale/behind counter)');
 await (async function(){
