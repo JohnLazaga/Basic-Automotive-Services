@@ -27,7 +27,7 @@
    replace the date box under the cursor (the bug fixed on the Sales &
    collections card). The preset buttons re-render the page. */
 var RPT_RANGE = {};
-var RPT_DEFAULT = { or:'all', mc:'all', disc:'month' };
+var RPT_DEFAULT = { or:'all', mc:'all', disc:'month', vc:'all' };
 function rptPresetRange(p){
   var today=todayISO(), dt=new Date();
   if(p==='today') return { from:today, to:today };
@@ -56,7 +56,7 @@ function rangeControls(key){
 function setRptRange(key, which, v){
   var r=Object.assign({}, rptRange(key)); r[which]=v||''; RPT_RANGE[key]=r;
   var el=(typeof document!=='undefined')?document.getElementById(key+'Body'):null;
-  var body={ or:orSeriesBodyHTML, mc:moneyChecksBodyHTML, disc:discountsBodyHTML }[key];   // looked up at call time — part7 loads first
+  var body={ or:orSeriesBodyHTML, mc:moneyChecksBodyHTML, disc:discountsBodyHTML, vc:voidsBodyHTML }[key];   // looked up at call time — part7 loads first
   if(el && body) el.innerHTML=body(r); else render();
 }
 function rptPreset(key, p){ RPT_RANGE[key]=rptPresetRange(p); render(); }
@@ -252,7 +252,7 @@ function moneyCheckData(r){
   r=r||rptRange('mc');
   var by=function(f){ return function(x){ return inRptRange(x[f], r); }; };
   return { cash:cashCountRows(r), over:overpaidJobs().filter(by('billedAt')), owing:releasedOwing().filter(by('billedAt')),
-    bill:billChanges().filter(by('at')), refs:paymentsMissingRef().filter(by('date')), corr:paymentCorrections().filter(by('at')) };
+    bill:billChanges().filter(by('at')), refs:paymentsMissingRef().filter(by('date')), corr:paymentCorrections().filter(by('at')), held:voidsHoldingMoney(r) };
 }
 function mcSection(title, n, body, okMsg){
   return '<h3 class="mt8">'+title+' <span class="muted small">· '+n+'</span></h3>'+(n? body : '<div class="muted small">✓ '+okMsg+'</div>');
@@ -274,6 +274,12 @@ function moneyChecksBodyHTML(rg){
         '<td class="r">'+(r.counted===null?'<span class="chip due">NOT COUNTED</span>':peso(r.counted))+'</td>'+
         '<td class="r'+(r.variance!==null?' st-bad-t':'')+'">'+(r.variance===null?'—':'<b>'+peso(r.variance)+'</b>')+'</td><td>'+esc(r.byName||'—')+'</td><td>'+esc(r.note||'')+'</td></tr>'; }).join('')),
       'Every day with cash collections was counted and balanced.')+
+    mcSection('Voided or cancelled, money still held', d.held.length, mcTable('<th>What</th><th>JO # / OR #</th><th>Customer</th><th>When</th><th class="r">Collected</th><th class="r">Still held</th><th>Reason</th>',
+      d.held.map(function(x){ return '<tr'+mcRowOpen(x.id)+'><td>'+esc(x.kind)+'</td><td><b>'+esc(x.no)+'</b>'+(x.or?' <span class="muted small">'+esc(x.or)+'</span>':'')+'</td>'+
+        '<td>'+esc(x.owner)+' <span class="muted small">'+esc(x.plate)+'</span></td><td>'+esc(fmtDate(x.at))+'</td><td class="r">'+peso(x.collected)+'</td>'+
+        '<td class="r st-bad-t"><b>'+peso(x.held)+'</b></td><td>'+esc(x.reason)+'</td></tr>'; }).join(''))+
+      '<p class="muted small">Refund it on the job, or if the job was re-billed, the payment belongs on the new job order.</p>',
+      'No voided receipt or cancelled job order is holding money.')+
     mcSection('Paid more than due', d.over.length, mcTable('<th>JO #</th><th>OR #</th><th>Plate</th><th>Billed</th><th class="r">Due</th><th class="r">Paid</th><th class="r">Over</th>',
       d.over.map(function(r){ return '<tr'+mcRowOpen(r.id)+'><td><b>'+esc(r.no)+'</b></td><td>'+esc(r.or)+'</td><td>'+esc(r.plate)+'</td><td>'+esc(fmtDate(r.billedAt))+'</td>'+
         '<td class="r">'+peso(r.due)+'</td><td class="r">'+peso(r.paid)+'</td><td class="r st-bad-t"><b>'+peso(r.over)+'</b></td></tr>'; }).join(''))+
@@ -308,6 +314,8 @@ function docMoneyChecks(){
     sec('Cash count', cashOff.length, '<th>Date</th><th class="r">Expected</th><th class="r">Counted</th><th class="r">Short / over</th><th>Note</th>',
       cashOff.map(function(r){ return '<tr><td>'+esc(fmtDate(r.date))+'</td><td class="r">'+peso(r.expected)+'</td><td class="r">'+(r.counted===null?'NOT COUNTED':peso(r.counted))+'</td>'+
         '<td class="r">'+(r.variance===null?'—':peso(r.variance))+'</td><td>'+esc(r.note||'')+'</td></tr>'; }).join(''))+
+    sec('Voided or cancelled, money still held', d.held.length, '<th>What</th><th>JO # / OR #</th><th>Customer</th><th class="r">Still held</th><th>Reason</th>',
+      d.held.map(function(x){ return '<tr><td>'+esc(x.kind)+'</td><td>'+esc(x.no)+(x.or?' / '+esc(x.or):'')+'</td><td>'+esc(x.owner)+' '+esc(x.plate)+'</td><td class="r">'+peso(x.held)+'</td><td>'+esc(x.reason)+'</td></tr>'; }).join(''))+
     sec('Paid more than due', d.over.length, '<th>JO #</th><th>OR #</th><th>Plate</th><th class="r">Due</th><th class="r">Paid</th><th class="r">Over</th>',
       d.over.map(function(r){ return '<tr><td>'+esc(r.no)+'</td><td>'+esc(r.or)+'</td><td>'+esc(r.plate)+'</td><td class="r">'+peso(r.due)+'</td><td class="r">'+peso(r.paid)+'</td><td class="r">'+peso(r.over)+'</td></tr>'; }).join(''))+
     sec('Released with balance owed', d.owing.length, '<th>JO #</th><th>OR #</th><th>Plate</th><th class="r">Due</th><th class="r">Paid</th><th class="r">Owed</th>',

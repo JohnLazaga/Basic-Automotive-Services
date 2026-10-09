@@ -91,6 +91,7 @@ VIEWS.reports = function(){
     '</div></div>'+
     eodRangeCard()+
     moneyChecksCard()+
+    voidsCard()+
     discountsCard()+
     orSeriesCard()+
     joSeriesCard()+

@@ -511,6 +511,26 @@ await (async function(){
   M.setRptRangeRaw('or',null);
 })();
 
+section('Voids & cancellations report');
+await (async function(){
+  const s=fresh();
+  const j=await M.createJob({plate:'VOD 0001', owner:'A'});
+  j.lines=[{id:'l1',type:'labor',desc:'S',qty:1,price:1000}]; j.stage='Final Billing'; j.orNumber='OR-8001'; j.billedAt='2026-08-07T03:00:00.000Z';
+  j.payments=[{amount:40000,method:'Cash',date:'2026-08-07T03:10:00.000Z'}];
+  j.orVoid={at:'2026-08-07T05:00:00.000Z',by:'u',byName:'Jordan',reason:'WRONG ITEMS'};
+  const c=await M.createJob({plate:'VOD 0002', owner:'B'});
+  c.payments=[{amount:500,method:'Cash',date:'2026-08-25T03:00:00.000Z'},{amount:-500,method:'Cash',date:'2026-08-25T04:00:00.000Z',refund:true,reason:'x'}];
+  c.joCancel={at:'2026-08-25T05:00:00.000Z',by:'u',byName:'Jordan',reason:'PULLED OUT'};
+  const all={from:'',to:''};
+  const v=M.voidedReceipts(all).filter(x=>x.no===j.no), k=M.cancelledJobs(all).filter(x=>x.no===c.no);
+  ok('voided receipt listed with who, why and money held', v.length===1 && v[0].byName==='Jordan' && v[0].reason==='WRONG ITEMS' && v[0].held===40000);
+  ok('cancelled job listed; refunded deposit not held', k.length===1 && k[0].collected===500 && k[0].held===0);
+  ok('only the void still holding money is flagged', M.voidsHoldingMoney(all).map(x=>x.no).join()===j.no);
+  ok('range filters by void date', M.voidedReceipts({from:'2026-09-01',to:''}).filter(x=>x.no===j.no).length===0);
+  ok('Money checks lists the held void', M.moneyCheckData(all).held.some(x=>x.no===j.no));
+  ok('Reports shows the card and printout renders', /Voids &amp; cancellations/.test(M.VIEWS().reports()) && /WRONG ITEMS/.test(M.docVoids()));
+})();
+
 /* -------------------------------------------------- Series-number uniqueness */
 section('Series numbers never duplicate (stale/behind counter)');
 await (async function(){
