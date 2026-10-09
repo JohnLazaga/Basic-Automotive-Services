@@ -658,7 +658,7 @@ var BRANCH = {"id":"sudipen","slug":"sudipen","name":"Basic by JMSI — Sudipen"
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-10-09 · 64c89e5';
+var APP_VERSION = 'v1.3.0 · 2026-10-09 · b536460';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -2331,6 +2331,8 @@ function postJobMissingFields(j){
   if(!String(insp.condition||'').trim()) missing.push('Condition');
   if(!j.saId||j.saId==='TBA') missing.push('Service Adviser');
   if(!(j.mechanicIds||[]).filter(function(id){return id&&id!=='TBA';}).length) missing.push('Mechanic(s)');
+  var pmsMiss=(typeof pmsGateMissing==='function') ? pmsGateMissing(j) : '';   // PMS checklist must be submitted (part14)
+  if(pmsMiss) missing.push(pmsMiss);
   return missing;
 }
 
@@ -3627,7 +3629,9 @@ function advancePostJob(id){
     openModal('Complete job details first',
       '<p class="muted small">The Post Job Report can’t be created until these fields are complete. Still missing:</p>'+
       missingChecklist(missing)+
-      '<p class="muted small">Fill these in <b>Job Details → Edit</b> (or Check-in / Assignment), then try again.</p>',
+      '<p class="muted small">Fill these in <b>Job Details → Edit</b> (or Check-in / Assignment), then try again.</p>'+
+      ((typeof pmsGateMissing==='function' && pmsGateMissing(j)) ? '<p class="muted small"><b>PMS:</b> finish the inspection on the tablet (<b>PMS Queue</b>) and submit it. '+
+        'If no PMS is being done on this job, remove the PMS labor line instead.</p>' : ''),
       { footer:'<button class="btn ghost" onclick="closeModal()">Close</button>'+
         '<button class="btn primary" onclick="closeModal();editJobDetails(\''+j.id+'\')">Edit Job Details</button>', width:'520px' });
     return;
@@ -6536,7 +6540,7 @@ if (typeof module!=='undefined' && module.exports){
     scheduleNextService:scheduleNextService, clearNextService:clearNextService, alertStrip:alertStrip,
     jobVehicleLabel:jobVehicleLabel, replyRecipients:replyRecipients, unreadMessages:unreadMessages, messageStrip:messageStrip, myStaffIds:myStaffIds, messageAcked:messageAcked,
     buildLogEntry:buildLogEntry, logEntryFor:logEntryFor, jobStatusPanel:jobStatusPanel, lastLogForLabel:lastLogForLabel,
-    jobDescriptionPanel:jobDescriptionPanel, jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fillVehicleBlanks:fillVehicleBlanks, openJobsForPlate:openJobsForPlate, correctPayment:correctPayment, overpaidJobs:overpaidJobs, paymentCorrections:paymentCorrections, billBaseline:billBaseline, trackBillChanges:trackBillChanges, billChanges:billChanges, discountRows:discountRows, discountReasonMissing:discountReasonMissing, cashExpected:cashExpected, cashCountRows:cashCountRows, paymentsMissingRef:paymentsMissingRef, releasedOwing:releasedOwing, docMoneyChecks:docMoneyChecks, moneyCheckData:moneyCheckData, voidedReceipts:voidedReceipts, cancelledJobs:cancelledJobs, voidsHoldingMoney:voidsHoldingMoney, docVoids:docVoids, paymentsDoc:paymentsDoc, orSeriesInRange:orSeriesInRange, orRangeGaps:orRangeGaps, inRptRange:inRptRange, setRptRangeRaw:function(k,r){ RPT_RANGE[k]=r; }, docDiscounts:docDiscounts, warnIfPlateOnBoard:warnIfPlateOnBoard, plFor:plFor, opexFor:opexFor, payFor:payFor, monthlyPay:monthlyPay, addMonths:addMonths, syncCollections:syncCollections, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
+    jobDescriptionPanel:jobDescriptionPanel, jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fillVehicleBlanks:fillVehicleBlanks, openJobsForPlate:openJobsForPlate, correctPayment:correctPayment, overpaidJobs:overpaidJobs, paymentCorrections:paymentCorrections, billBaseline:billBaseline, trackBillChanges:trackBillChanges, billChanges:billChanges, discountRows:discountRows, discountReasonMissing:discountReasonMissing, cashExpected:cashExpected, cashCountRows:cashCountRows, paymentsMissingRef:paymentsMissingRef, releasedOwing:releasedOwing, docMoneyChecks:docMoneyChecks, moneyCheckData:moneyCheckData, voidedReceipts:voidedReceipts, cancelledJobs:cancelledJobs, voidsHoldingMoney:voidsHoldingMoney, docVoids:docVoids, paymentsDoc:paymentsDoc, pmsGateMissing:pmsGateMissing, orSeriesInRange:orSeriesInRange, orRangeGaps:orRangeGaps, inRptRange:inRptRange, setRptRangeRaw:function(k,r){ RPT_RANGE[k]=r; }, docDiscounts:docDiscounts, warnIfPlateOnBoard:warnIfPlateOnBoard, plFor:plFor, opexFor:opexFor, payFor:payFor, monthlyPay:monthlyPay, addMonths:addMonths, syncCollections:syncCollections, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
     afterServiceMissing:afterServiceMissing, afterServiceDone:afterServiceDone, afterServiceStaff:afterServiceStaff,
     canWriteAfterService:canWriteAfterService, afterServiceSignerName:afterServiceSignerName, afterServiceBlock:afterServiceBlock,
     allocateSeriesNumber:allocateSeriesNumber, maxSeriesNo:maxSeriesNo, nextNo:nextNo,
@@ -8325,6 +8329,17 @@ PMS_TEMPLATE.forEach(function(sec){
 /* ---- Ticket lifecycle (embedded on the job) ------------------------------- */
 function jobHasOpenPMS(j){ return !!(j && j.pms && j.pms.status && j.pms.status!=='done'); }
 function pmsReport(j){ return (j && j.pms && j.pms.report) || null; }
+/* Post Job Report gate (part4 postJobMissingFields): a job that carries the PMS
+   LABOR line, or has a PMS ticket, cannot get its Post Job Report until the PMS
+   checklist has been submitted on the tablet. '' = fine, else what is missing. */
+function pmsGateMissing(j){
+  if(!j) return '';
+  var st=j.pms && j.pms.status;
+  if(st==='done') return '';
+  if(st==='open' || st==='in_progress') return 'PMS inspection — still '+(st==='in_progress'?'in progress':'waiting')+' on the PMS Queue';
+  var hasLine=(j.lines||[]).some(function(l){ return !!l && l.type==='labor' && l.ref===PMS_LABOR_ID; });
+  return hasLine ? 'PMS inspection — PMS labor is on this job but the PMS was never performed' : '';
+}
 
 /* "Perform PMS" — open a ticket for this job (from the add-labor dialog). An
    optional scheduledAt (datetime-local string) is shown on the queue card. */
