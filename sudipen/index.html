@@ -579,6 +579,10 @@ a.lnk{color:var(--brand);cursor:pointer;font-weight:600}
 [data-theme="dark"] .p-due{border-color:rgba(242,23,23,.4)!important;background:rgba(242,23,23,.08)!important}
 [data-theme="dark"] .misslist li{background:rgba(242,23,23,.18);color:#ff9a9a;border-left-color:#ff6b6b}
 [data-theme="dark"] .fld.needfill input,[data-theme="dark"] .fld.needfill select,[data-theme="dark"] .fld.needfill textarea{background:rgba(242,23,23,.16)}
+
+/* PMS sign-off: the "not saved until you tap Complete PMS" banner — must be impossible to miss */
+.pms-laststep{margin:0 0 12px;padding:12px 14px;border-radius:12px;font-size:15px;line-height:1.4;background:#fdecec;color:#7a0d0d;border:1.5px solid #f2a7a7}
+[data-theme="dark"] .pms-laststep{background:rgba(242,23,23,.16);color:#ffb4b4;border-color:rgba(242,23,23,.45)}
 </style>
 </head>
 <body>
@@ -658,7 +662,7 @@ var BRANCH = {"id":"sudipen","slug":"sudipen","name":"Basic by JMSI — Sudipen"
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-10-09 · b536460';
+var APP_VERSION = 'v1.3.0 · 2026-10-09 · c2d7ffb';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -6540,7 +6544,7 @@ if (typeof module!=='undefined' && module.exports){
     scheduleNextService:scheduleNextService, clearNextService:clearNextService, alertStrip:alertStrip,
     jobVehicleLabel:jobVehicleLabel, replyRecipients:replyRecipients, unreadMessages:unreadMessages, messageStrip:messageStrip, myStaffIds:myStaffIds, messageAcked:messageAcked,
     buildLogEntry:buildLogEntry, logEntryFor:logEntryFor, jobStatusPanel:jobStatusPanel, lastLogForLabel:lastLogForLabel,
-    jobDescriptionPanel:jobDescriptionPanel, jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fillVehicleBlanks:fillVehicleBlanks, openJobsForPlate:openJobsForPlate, correctPayment:correctPayment, overpaidJobs:overpaidJobs, paymentCorrections:paymentCorrections, billBaseline:billBaseline, trackBillChanges:trackBillChanges, billChanges:billChanges, discountRows:discountRows, discountReasonMissing:discountReasonMissing, cashExpected:cashExpected, cashCountRows:cashCountRows, paymentsMissingRef:paymentsMissingRef, releasedOwing:releasedOwing, docMoneyChecks:docMoneyChecks, moneyCheckData:moneyCheckData, voidedReceipts:voidedReceipts, cancelledJobs:cancelledJobs, voidsHoldingMoney:voidsHoldingMoney, docVoids:docVoids, paymentsDoc:paymentsDoc, pmsGateMissing:pmsGateMissing, orSeriesInRange:orSeriesInRange, orRangeGaps:orRangeGaps, inRptRange:inRptRange, setRptRangeRaw:function(k,r){ RPT_RANGE[k]=r; }, docDiscounts:docDiscounts, warnIfPlateOnBoard:warnIfPlateOnBoard, plFor:plFor, opexFor:opexFor, payFor:payFor, monthlyPay:monthlyPay, addMonths:addMonths, syncCollections:syncCollections, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
+    jobDescriptionPanel:jobDescriptionPanel, jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fillVehicleBlanks:fillVehicleBlanks, openJobsForPlate:openJobsForPlate, correctPayment:correctPayment, overpaidJobs:overpaidJobs, paymentCorrections:paymentCorrections, billBaseline:billBaseline, trackBillChanges:trackBillChanges, billChanges:billChanges, discountRows:discountRows, discountReasonMissing:discountReasonMissing, cashExpected:cashExpected, cashCountRows:cashCountRows, paymentsMissingRef:paymentsMissingRef, releasedOwing:releasedOwing, docMoneyChecks:docMoneyChecks, moneyCheckData:moneyCheckData, voidedReceipts:voidedReceipts, cancelledJobs:cancelledJobs, voidsHoldingMoney:voidsHoldingMoney, docVoids:docVoids, paymentsDoc:paymentsDoc, pmsGateMissing:pmsGateMissing, pmsDefaultMechs:pmsDefaultMechs, pmsReadyToSubmit:pmsReadyToSubmit, PMS_TEMPLATE:function(){ return PMS_TEMPLATE; }, pmsSectionMissing:pmsSectionMissing, orSeriesInRange:orSeriesInRange, orRangeGaps:orRangeGaps, inRptRange:inRptRange, setRptRangeRaw:function(k,r){ RPT_RANGE[k]=r; }, docDiscounts:docDiscounts, warnIfPlateOnBoard:warnIfPlateOnBoard, plFor:plFor, opexFor:opexFor, payFor:payFor, monthlyPay:monthlyPay, addMonths:addMonths, syncCollections:syncCollections, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
     afterServiceMissing:afterServiceMissing, afterServiceDone:afterServiceDone, afterServiceStaff:afterServiceStaff,
     canWriteAfterService:canWriteAfterService, afterServiceSignerName:afterServiceSignerName, afterServiceBlock:afterServiceBlock,
     allocateSeriesNumber:allocateSeriesNumber, maxSeriesNo:maxSeriesNo, nextNo:nextNo,
@@ -8364,6 +8368,27 @@ function deletePMSQueueItem(id){
     'Remove', true);
 }
 
+/* Who is doing this PMS: what was picked on the tablet, else the job's assigned
+   mechanics. Defaulting to the assignment is what stops "Complete PMS" failing on
+   an empty "Performed by" — 22 finished Fairview checklists were never submitted
+   because of that (Oct 2026). */
+function pmsDefaultMechs(j){
+  var picked=pmsMechIds(j && j.pms && j.pms.report);
+  if(picked.length) return picked;
+  return ((j && j.mechanicIds)||[]).filter(function(x){ return x && x!=='TBA'; });
+}
+/* Every section filled in, but not submitted yet. */
+function pmsReadyToSubmit(j){
+  if(!j || !j.pms || j.pms.status==='done') return false;
+  var vals=(j.pms.report && j.pms.report.values)||{};
+  return PMS_TEMPLATE.every(function(sec){ return pmsSectionDone(sec, vals); });
+}
+function pmsMechChecksHTML(picked, cls){
+  return mechanicStaff().map(function(m){
+    return '<label class="chk small"><input type="checkbox" class="'+cls+'" value="'+m.id+'"'+(picked.indexOf(m.id)>=0?' checked':'')+'> '+esc(m.name)+'</label>';
+  }).join('') || '<span class="muted small">No mechanics on staff</span>';
+}
+
 /* Jobs with a live PMS ticket, newest first (the kiosk queue). */
 function pmsQueue(){
   return (S.jobs||[]).filter(jobHasOpenPMS)
@@ -8375,7 +8400,8 @@ VIEWS.pms = function(){
   var q=pmsQueue();
   var cards=q.length? q.map(function(j){
     var veh=(j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:'');
-    var st=j.pms.status==='in_progress'?'<span class="chip gold">In progress</span>':'<span class="chip due">Waiting</span>';
+    var ready=pmsReadyToSubmit(j);
+    var st=ready?'<span class="chip ok">Ready to submit</span>':j.pms.status==='in_progress'?'<span class="chip gold">In progress</span>':'<span class="chip due">Waiting</span>';
     var del=canDeletePMS()?'<button class="pms-q-del" title="Remove from queue" onclick="event.stopPropagation();deletePMSQueueItem(\''+j.id+'\')">✕</button>':'';
     var sched=j.pms.scheduledAt?'<div class="pms-q-sched">🕑 Scheduled '+esc(fmtDateTime(j.pms.scheduledAt))+'</div>':'';
     return '<div class="pms-q" onclick="startPMS(\''+j.id+'\')">'+
@@ -8383,9 +8409,12 @@ VIEWS.pms = function(){
       '<div class="muted small">'+esc(veh||'—')+' · JO '+esc(j.no)+'</div>'+
       sched+
       '<div class="muted small">Requested '+esc(fmtDateTime(j.pms.requestedAt))+'</div>'+
-      '<button class="btn primary full mt8">Perform inspection →</button></div>';
+      (ready?'<div class="small st-bad-t mt8"><b>Checklist finished but NOT submitted</b> — it is not on the job yet.</div>':'')+
+      '<button class="btn primary full mt8">'+(ready?'Finish &amp; submit →':'Perform inspection →')+'</button></div>';
   }).join('') : emptyState('No PMS in the queue. Tickets appear here when a Job Order sends a "Perform PMS".');
-  return '<div class="page"><div class="page-head"><h1>PMS Queue</h1><div class="muted small">'+q.length+' waiting</div></div>'+
+  var nReady=q.filter(pmsReadyToSubmit).length;
+  return '<div class="page"><div class="page-head"><h1>PMS Queue</h1><div class="muted small">'+q.length+' waiting'+
+      (nReady?' · <b class="st-bad-t">'+nReady+' finished but not submitted</b>':'')+'</div></div>'+
     '<div class="pms-qgrid">'+cards+'</div></div>';
 };
 
@@ -8398,7 +8427,7 @@ function startPMS(id){
   var j=jobById(id); if(!j) return;
   if(!j.pms) j.pms={status:'open'};
   if(j.pms.status==='open'){ j.pms.status='in_progress'; persist(); }
-  _pmsCtx={ jobId:id, step:0 };
+  _pmsCtx={ jobId:id, step: pmsReadyToSubmit(j) ? PMS_TEMPLATE.length : 0 };   // finished -> straight to sign-off
   go('pmsform', id);
 }
 /* Append a Job Order clipboard-log entry from the PMS flow (start / complete).
@@ -8413,7 +8442,11 @@ function pmsLog(j, note){
 function pmsStartJob(id){
   var j=jobById(id); if(!j) return;
   if(j.pms&&j.pms.startedAt){ toast('Job already started'); return; }
+  var mechs=Array.prototype.map.call(document.querySelectorAll('.pmsStartMech:checked'), function(c){ return c.value; });
+  if(!mechs.length){ toast('Tick who is doing this PMS first','err'); return; }
   j.pms=j.pms||{status:'in_progress'};
+  j.pms.report=j.pms.report||{values:{}};
+  j.pms.report.mechanicIds=mechs; j.pms.report.mechanicId=mechs[0];
   j.pms.startedAt=new Date().toISOString();
   pmsLog(j, 'PMS inspection started.');
   persist(); toast('Job started — logged on the Job Order'); render();
@@ -8490,31 +8523,33 @@ VIEWS.pmsform = function(id){
     var marker='<div class="pms-stepmark"><b>'+(step+1)+' / '+N+'</b> · '+esc(sec.title)+'</div>';
     var startBar = step!==0 ? '' : ((j.pms&&j.pms.startedAt)
       ? '<div class="pms-startbar started">✓ Job started · '+esc(fmtDateTime(j.pms.startedAt))+' · logged on the Job Order</div>'
-      : '<div class="pms-startbar"><button class="btn primary" onclick="pmsStartJob(\''+j.id+'\')">▶ Start Job</button>'+
-        '<span class="muted small">Records the PMS start time on the Job Order.</span></div>');
+      : '<div class="pms-startbar" style="flex-wrap:wrap"><div style="width:100%"><span class="fld-l">Who is doing this PMS?</span>'+
+          '<div class="mechbox">'+pmsMechChecksHTML(pmsDefaultMechs(j),'pmsStartMech')+'</div></div>'+
+        '<button class="btn primary" onclick="pmsStartJob(\''+j.id+'\')">▶ Start Job</button>'+
+        '<span class="muted small">Records the start time on the Job Order.</span></div>');
     var nav='<div class="pms-nav">'+
       (step>0?'<button class="btn ghost" onclick="pmsPrev()">‹ Back</button>':'<span></span>')+
       '<button class="btn primary" onclick="pmsNext()">'+(step===N-1?'Done — Review & sign-off →':'Done — next section →')+'</button></div>';
-    return '<div class="page pms-form">'+head+marker+pmsLegend(sec, vals)+startBar+
+    return '<div class="page pms-form" data-pmsjob="'+j.id+'">'+head+marker+pmsLegend(sec, vals)+startBar+
       '<div class="card">'+pmsSectionHTML(sec, vals)+'</div>'+nav+'</div>';
   }
 
   // sign-off page (step === N)
-  var picked=pmsMechIds(r);
-  var mechBoxes=mechanicStaff().map(function(m){
-    return '<label class="chk small"><input type="checkbox" class="pmsMechChk" value="'+m.id+'"'+(picked.indexOf(m.id)>=0?' checked':'')+'> '+esc(m.name)+'</label>';
-  }).join('')||'<span class="muted small">No mechanics on staff</span>';
+  var picked=pmsDefaultMechs(j);
+  var mechBoxes=pmsMechChecksHTML(picked,'pmsMechChk');
   var saOpts=optionList(S.staff, r.saId||j.saId||'', false);
   var doneCount=PMS_TEMPLATE.filter(function(sec){ return pmsSectionDone(sec, vals); }).length;
-  return '<div class="page pms-form">'+head+
+  return '<div class="page pms-form" data-pmsjob="'+j.id+'">'+head+
     '<div class="pms-stepmark"><b>Sign-off</b> · Review & complete</div>'+
     '<div class="muted small" style="margin:-4px 0 10px">'+doneCount+' / '+N+' sections complete</div>'+
+    '<div class="pms-laststep"><b>Last step — tap ✓ Complete PMS below.</b> '+
+      'The inspection is <b>not saved to the job</b> and the Post Job Report stays locked until you do.</div>'+
     pmsSummaryHTML(j)+
     '<div class="card"><h2>Sign-off</h2><div class="grid2">'+
       '<div class="fld"><span class="fld-l">Performed by (Mechanic/s)</span><div class="mechbox" id="pmsMechBox">'+mechBoxes+'</div></div>'+
       field('Service Adviser','<select id="pmsSA">'+saOpts+'</select>')+'</div></div>'+
-    '<div class="pms-nav"><button class="btn ghost" onclick="pmsPrev()">‹ Back</button>'+
-      '<button class="btn primary" onclick="submitPMS(\''+j.id+'\')">✓ Complete PMS</button></div>'+
+    '<button class="btn primary full" style="min-height:58px;font-size:18px;margin-top:6px" onclick="submitPMS(\''+j.id+'\')">✓ Complete PMS</button>'+
+    '<div class="pms-nav"><button class="btn ghost" onclick="pmsPrev()">‹ Back</button><span></span></div>'+
   '</div>';
 };
 /* Save whatever fields are in the DOM right now (current section OR sign-off page)
@@ -8524,8 +8559,13 @@ VIEWS.pmsform = function(id){
    re-render (e.g. a cloud snapshot) can't wipe unsaved on-screen selections. */
 function pmsCaptureCurrent(){
   var j=_pmsCtx&&jobById(_pmsCtx.jobId); if(!j) return null;
+  /* Only read the form if the one on screen belongs to THIS job. Going straight
+     from one job's form to another's would otherwise copy the first form's
+     (possibly empty) boxes into the second job and wipe its answers. */
+  var root=(typeof document!=='undefined' && document.querySelector) ? document.querySelector('.pms-form[data-pmsjob]') : null;
   j.pms=j.pms||{status:'in_progress'};
   j.pms.report=j.pms.report||{values:{}};
+  if(!root || root.getAttribute('data-pmsjob')!==j.id) return j;
   j.pms.report.values=readPmsValues(j.pms.report.values||{});
   if(document.getElementById('pmsSA')){
     var picked=pmsReadMechChecks();
@@ -8548,7 +8588,18 @@ function pmsNext(){
   }
   _pmsCtx.step=Math.min(step+1, N); render(); if(typeof window!=='undefined') window.scrollTo(0,0);
 }
-function pmsSaveExit(){ pmsCurrentSave(); go('pms'); }
+function pmsSaveExit(){
+  var j=pmsCurrentSave();
+  if(j && pmsReadyToSubmit(j)){
+    openModal('Submit this PMS?',
+      '<p>Every section of <b>'+esc(j.plate)+'</b>\'s checklist is filled in, but it has <b>not been submitted</b>.</p>'+
+      '<p class="muted small">Until it is, the inspection is not on the job, the customer cannot see it, and the Post Job Report stays locked.</p>',
+      { footer:'<button class="btn ghost" onclick="closeModal();go(\'pms\')">Leave without submitting</button><span style="flex:1"></span>'+
+        '<button class="btn primary" onclick="closeModal();_pmsCtx.step=PMS_TEMPLATE.length;go(\'pmsform\',\''+j.id+'\')">Go to sign-off &amp; submit</button>', width:'520px' });
+    return;
+  }
+  go('pms');
+}
 function pmsHighlightMissing(keys){
   Array.prototype.forEach.call(document.querySelectorAll('.pms-row.needpick,.fld.needpick'), function(el){ el.classList.remove('needpick'); });
   var first=null;
