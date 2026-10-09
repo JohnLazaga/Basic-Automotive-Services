@@ -488,6 +488,29 @@ await (async function(){
   ok('Discounts card hides Less VAT-only jobs by default', card.length>0 && !/LVT 0001/.test(card) && /LVT 0002/.test(card));
 })();
 
+section('Reports date ranges: OR series, Money checks, Discounts');
+await (async function(){
+  const s=fresh();
+  const mk=async function(plate, or, day, disc){ const j=await M.createJob({plate:plate});
+    j.lines=[{id:'l1',type:'labor',desc:'Service',qty:1,price:1000}]; j.stage='Released'; j.orNumber=or; j.billedAt=day+'T03:00:00.000Z';
+    j.discount=disc||{parts:0,labor:0,other:0,otherNote:''}; j.payments=[{amount:M.jobGross(j)+50,method:'Cash',date:day+'T03:10:00.000Z'}]; return j; };
+  await mk('RNG 0001','OR-9001','2026-08-10',{parts:0,labor:300,other:0,otherNote:'promo'});
+  await mk('RNG 0002','OR-9003','2026-09-15',{parts:0,labor:300,other:0,otherNote:'promo'});
+  await mk('RNG 0003','OR-9004','2026-09-20');
+  ok('open range covers everything', M.inRptRange('2020-01-01',{from:'',to:''}) && M.inRptRange('2026-09-15',{from:'2026-09-01',to:''}) && !M.inRptRange('2026-08-31',{from:'2026-09-01',to:''}));
+  M.setRptRangeRaw('or',{from:'2026-09-01',to:'2026-09-30'});
+  const ors=M.orSeriesInRange().map(r=>r.or).filter(x=>/^OR-900/.test(x));
+  ok('OR series limited to the range', ors.join()==='OR-9003,OR-9004');
+  M.setRptRangeRaw('or',{from:'2026-08-01',to:'2026-09-30'});
+  const gaps=M.orRangeGaps(M.orSeriesInRange().filter(r=>/^OR-900/.test(r.or)));
+  ok('missing OR number inside the range is reported', gaps.length===1 && gaps[0].from===9002 && gaps[0].count===1);
+  const sep=M.moneyCheckData({from:'2026-09-01',to:'2026-09-30'}), aug=M.moneyCheckData({from:'2026-08-01',to:'2026-08-31'});
+  ok('Money checks: overpaid filtered by billing date', sep.over.filter(r=>/^RNG/.test(r.plate)).length===2 && aug.over.filter(r=>/^RNG/.test(r.plate)).length===1);
+  const ds=M.discountRows({from:'2026-09-01',to:'2026-09-30'}).filter(r=>/^RNG/.test(r.plate)), da=M.discountRows({from:'2026-08-01',to:'2026-09-30'}).filter(r=>/^RNG/.test(r.plate));
+  ok('Discounts filtered by range', ds.length===1 && da.length===2);
+  M.setRptRangeRaw('or',null);
+})();
+
 /* -------------------------------------------------- Series-number uniqueness */
 section('Series numbers never duplicate (stale/behind counter)');
 await (async function(){

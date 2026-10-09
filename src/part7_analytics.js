@@ -206,7 +206,22 @@ function orSeriesMatch(r){
   if(!OR_Q) return true; var q=OR_Q.toLowerCase();
   return [r.or,r.jo,r.owner,r.plate].some(function(x){ return String(x||'').toLowerCase().indexOf(q)>=0; });
 }
-function orSeriesFiltered(){ return orSeriesRows().filter(orSeriesMatch); }
+function orSeriesInRange(){ var r=rptRange('or'); return orSeriesRows().filter(function(x){ return inRptRange(localDay(x.date), r); }); }
+function orSeriesFiltered(){ return orSeriesInRange().filter(orSeriesMatch); }
+/* Numbers missing between the first and last receipt of the range — checked
+   against every OR in the shop, so one issued on a day outside the range is
+   not reported missing. Collapsed into from–to runs like seriesGaps(). */
+function orRangeGaps(rows){
+  if(rows.length<2) return [];
+  var every={}; (S.jobs||[]).forEach(function(j){ var m=j&&j.orNumber&&/(\d+)/.exec(String(j.orNumber)); if(m) every[Number(m[1])]=true; });
+  var gaps=[], run=null;
+  for(var n=rows[0].n; n<=rows[rows.length-1].n; n++){
+    if(every[n]){ if(run){ gaps.push(run); run=null; } continue; }
+    if(run) { run.to=n; run.count++; } else run={ from:n, to:n, count:1 };
+  }
+  if(run) gaps.push(run);
+  return gaps;
+}
 function orSeriesRowsHTML(){
   var rows=orSeriesFiltered();
   if(!rows.length) return '<tr><td colspan="5" class="muted center">No OR numbers match “'+esc(OR_Q)+'”.</td></tr>';
@@ -223,29 +238,34 @@ function orSeriesRowsHTML(){
 }
 function orSeriesSearch(v){ OR_Q=v; var el=document.getElementById('orSeriesBody'); if(el) el.innerHTML=orSeriesRowsHTML(); }
 function orSeriesCard(){
-  var rows=orSeriesRows();
-  if (!rows.length) return '<div class="card"><h2>OR numbers by series</h2>'+emptyState('No OR numbers issued yet.')+'</div>';
-  var gaps=seriesGaps(rows);
+  if (!orSeriesRows().length) return '<div class="card"><h2>OR numbers by series</h2>'+emptyState('No OR numbers issued yet.')+'</div>';
+  return '<div class="card"><div class="card-head"><h2>OR numbers by series</h2>'+
+    '<button class="btn sm ghost" onclick="printOrSeries()">⎙ Print</button></div>'+
+    rangeControls('or')+
+    '<input class="searchbox" id="orSeriesSearch" value="'+attr(OR_Q)+'" oninput="orSeriesSearch(this.value)" placeholder="Search OR # / JO # / customer / plate…" autocomplete="off">'+
+    '<div id="orBody">'+orSeriesBodyHTML()+'</div></div>';
+}
+function orSeriesBodyHTML(){
+  var rows=orSeriesInRange();
+  if (!rows.length) return '<div class="mt8">'+emptyState('No OR numbers issued — '+rptRangeLabel(rptRange('or'))+'.')+'</div>';
+  var gaps=orRangeGaps(rows);
   var gapNote = gaps.length
     ? '<div class="muted small" style="color:var(--brand)">⚠ '+gaps.reduce(function(s,g){return s+g.count;},0)+
       ' missing OR number(s): '+gaps.map(function(g){ return g.count===1?('OR-'+g.from):('OR-'+g.from+'–OR-'+g.to); }).join(', ')+'</div>'
     : '<div class="muted small">✓ No gaps — series is continuous.</div>';
-  return '<div class="card"><div class="card-head"><h2>OR numbers by series</h2>'+
-    '<button class="btn sm ghost" onclick="printOrSeries()">⎙ Print</button></div>'+
-    '<div class="muted small mb8">'+rows.length+' receipts'+
+  return '<div class="muted small mt8 mb8">'+esc(rptRangeLabel(rptRange('or')))+' · '+rows.length+' receipts'+
       (rows.filter(function(r){return r.voided;}).length?' ('+rows.filter(function(r){return r.voided;}).length+' void)':'')+
       ' · '+esc(rows[0].or)+' → '+esc(rows[rows.length-1].or)+'</div>'+
     gapNote+
-    '<input class="searchbox mt8" id="orSeriesSearch" value="'+attr(OR_Q)+'" oninput="orSeriesSearch(this.value)" placeholder="Search OR # / JO # / customer / plate…" autocomplete="off">'+
     '<div class="card pad0 mt8"><table class="tbl click"><thead><tr><th>OR #</th><th>JO #</th><th>Date</th><th>Sold to</th><th class="r">Amount</th></tr></thead>'+
-    '<tbody id="orSeriesBody">'+orSeriesRowsHTML()+'</tbody></table></div></div>';
+    '<tbody id="orSeriesBody">'+orSeriesRowsHTML()+'</tbody></table></div>';
 }
 function docOrSeries(){
   var rows=orSeriesFiltered();
   var voided=rows.filter(function(r){ return r.voided; }).length;
   /* Voided receipts are listed (so the series reads as complete) but add nothing. */
   var tot=round2(rows.reduce(function(s,r){return s+(r.voided?0:r.amount);},0));
-  var body=docHeader('OR Numbers by Series')+
+  var body=docHeader('OR Numbers by Series · '+rptRangeLabel(rptRange('or')))+
     '<div class="meta"><div><b>Receipts</b>'+rows.length+(voided?' ('+voided+' void)':'')+'</div>'+
       '<div><b>Range</b>'+(rows.length?esc(rows[0].or)+' → '+esc(rows[rows.length-1].or):'—')+'</div></div>'+
     '<table><thead><tr><th>OR #</th><th>JO #</th><th>Date</th><th>Sold to</th><th class="r">Amount</th></tr></thead><tbody>'+
