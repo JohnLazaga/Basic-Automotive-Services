@@ -548,6 +548,16 @@ await (async function(){
   ok('check without its number is flagged', M.paymentsMissingRef().some(r=>r.no===j.no && r.method==='Check'));
 })();
 
+section('Intake deposit carries its reference #');
+await (async function(){
+  const s=fresh();
+  const j=await M.createJob({plate:'DEP 0002', owner:'A', depositAmount:1000, depositMethod:'Check', depositRef:'BPI 778812'});
+  const p=j.payments[0];
+  ok('deposit payment keeps method and reference', p && p.method==='Check' && p.ref==='BPI 778812' && p.amount===1000);
+  ok('reference is not left on the job itself', j.depositRef===undefined && j.depositMethod===undefined);
+  ok('deposit with its reference is not flagged', !M.paymentsMissingRef().some(r=>r.no===j.no));
+})();
+
 /* -------------------------------------------------- Series-number uniqueness */
 section('Series numbers never duplicate (stale/behind counter)');
 await (async function(){

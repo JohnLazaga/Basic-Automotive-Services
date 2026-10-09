@@ -58,8 +58,8 @@ function blankJob(){
 
 async function createJob(base){
   base = base || {};
-  var depAmt = Number(base.depositAmount)||0, depM = base.depositMethod||'Cash';
-  delete base.depositAmount; delete base.depositMethod;   // not job fields — recorded as a payment below
+  var depAmt = Number(base.depositAmount)||0, depM = base.depositMethod||'Cash', depRef = String(base.depositRef||'').trim();
+  delete base.depositAmount; delete base.depositMethod; delete base.depositRef;   // not job fields — recorded as a payment below
   var j = Object.assign(blankJob(), base);
   j.no = await allocateSeriesNumber('jo','JO-',4, j.id);    // atomic, unique, idempotent per job
   if (!j.statusLog.length) j.statusLog=[{ time:new Date().toISOString(), code:j.status||'A1', by:j.saId||'', note:'Job Order created.' }];
@@ -68,7 +68,7 @@ async function createJob(base){
   VEHICLE_SYNC_FIELDS.forEach(function(k){
     if(!j[k]) j[k]=v[k];
   });
-  if (depAmt>0) j.payments.push({ amount:round2(depAmt), method:depM, date:new Date().toISOString(), note:'Deposit (intake)' });
+  if (depAmt>0){ var dep={ amount:round2(depAmt), method:depM, date:new Date().toISOString(), note:'Deposit (intake)' }; if(depRef) dep.ref=depRef; j.payments.push(dep); }
   S.jobs.unshift(j); persist();
   return j;
 }
@@ -211,8 +211,9 @@ function intakeForm(d){
     field('Concerns / reported issues','<textarea id="inNotes" rows="3">'+esc(d.notes||'')+'</textarea>')+
     '<div class="grid2">'+
       field('Deposit collected (optional)','<input id="inDeposit" type="number" step="0.01" min="0" value="'+attr(d.depositAmount||'')+'" placeholder="0.00">','Recorded as a payment on the job — reduces the balance from the start.')+
-      field('Deposit method','<select id="inDepositM"><option>Cash</option><option>GCash</option><option>Card</option><option>Bank transfer</option><option>Check</option></select>')+
-    '</div>';
+      field('Deposit method','<select id="inDepositM">'+['Cash','GCash','Card','Bank transfer','Check'].map(function(m){ return '<option'+(m===(d.depositMethod||'Cash')?' selected':'')+'>'+m+'</option>'; }).join('')+'</select>')+
+    '</div>'+
+    field('Deposit reference #','<input id="inDepositRef" value="'+attr(d.depositRef||'')+'" placeholder="GCash / bank / card ref, or check # and bank — required for GCash, bank transfer and check" autocomplete="off">');
 }
 function intakeLookup(){ var v=vehicleByPlate(val('inPlate')); if(v){ setVal('inCP',v.contactPerson); setVal('inContact',v.contactNumber);
   setVal('inOwner',v.owner); setVal('inAddr',v.address); setVal('inChassis',v.chassis); setVal('inYear',v.year); setVal('inMake',v.make); setVal('inModel',v.model); setVal('inVariant',v.variant); setVal('inOdo',v.odometer);
@@ -223,9 +224,10 @@ function intakeSubmit(kind){
   var base={ plate:val('inPlate'), contactPerson:val('inCP'), contactNumber:val('inContact'), owner:val('inOwner'),
     address:val('inAddr'), chassis:val('inChassis'), year:val('inYear'), make:val('inMake'), model:val('inModel'), variant:val('inVariant'),
     odometer:Number(val('inOdo'))||0, notes:val('inNotes'),
-    depositAmount:Number(val('inDeposit'))||0, depositMethod:val('inDepositM')||'Cash' };
+    depositAmount:Number(val('inDeposit'))||0, depositMethod:val('inDepositM')||'Cash', depositRef:String(val('inDepositRef')||'').trim() };
   if (!base.plate){ toast('Plate is required','err'); return; }
   if (kind==='estimate'){ closeModal(); createEstimateFrom(base).then(function(e){ go('estimate', e.id); }); return; }
+  if (base.depositAmount>0 && payRefRequired(base.depositMethod) && !base.depositRef){ toast('Enter the '+base.depositMethod+' reference # for the deposit','err'); return; }
   warnIfPlateOnBoard(base.plate, function(){
     // Job Order: if ingress is incomplete, prompt to finish now or proceed and complete later.
     var missing = jobMissingFields(base);
