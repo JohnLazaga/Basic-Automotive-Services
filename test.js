@@ -459,9 +459,9 @@ await (async function(){
   s.cashcounts=[{id:'cc_2026-10-08',date:'2026-10-08',float:1000,counted:1000+due,at:'',byName:'Sec'}];
   ok('expected cash = float + cash collections', M.cashExpected('2026-10-08',1000)===M.round2(1000+due));
   // 4. Non-cash payments without a reference are listed (from the feature date on).
-  j.payments.push({amount:50,method:'GCash',date:'2026-10-08T05:00:00.000Z'});
-  j.payments.push({amount:60,method:'GCash',date:'2026-10-01T05:00:00.000Z'});
-  j.payments.push({amount:70,method:'GCash',date:'2026-10-08T06:00:00.000Z',ref:'GC123'});
+  j.payments.push({amount:50,method:'GCash',date:'2026-10-09T05:00:00.000Z'});
+  j.payments.push({amount:60,method:'GCash',date:'2026-10-08T05:00:00.000Z'});
+  j.payments.push({amount:70,method:'GCash',date:'2026-10-09T06:00:00.000Z',ref:'GC123'});
   const refs=M.paymentsMissingRef().filter(r=>r.no===j.no);
   ok('GCash without ref listed, older and referenced ones not', refs.length===1 && refs[0].amount===50);
   M.setCurrentUser({uid:'u1',role:'SV',isAdmin:false,name:'Sup'});

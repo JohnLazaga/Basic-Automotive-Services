@@ -115,6 +115,7 @@ function docDiscounts(){
    One record per branch per day in `cashcounts` (id cc_<date>). Expected cash is
    computed LIVE from that day's Cash collections (net of cash refunds) plus the
    starting float, so a later payment correction also corrects the variance. */
+var CASHCOUNT_SINCE = '2026-10-09';   // first full day the cash count existed
 function cashCountFor(date){ return (S.cashcounts||[]).find(function(c){ return c.id==='cc_'+date; }) || null; }
 function cashExpected(date, float){ var d=eodData(date, date); return round2((Number(float)||0) + (Number(d.byMethod.Cash)||0)); }
 function cashCountCard(date){
@@ -153,7 +154,7 @@ function cashCountRows(days){
     var dt=new Date(); dt.setDate(dt.getDate()-i); var date=todayISO(dt);
     if(date>today) continue;
     var c=cashCountFor(date), cash=Number(eodData(date,date).byMethod.Cash)||0;
-    if(!c && Math.abs(cash)<0.009) continue;
+    if(!c && (Math.abs(cash)<0.009 || date<CASHCOUNT_SINCE)) continue;   // uncounted days only flagged once counting existed
     var exp=cashExpected(date, c?c.float:0);
     out.push({ date:date, counted:c?c.counted:null, expected:exp, variance:c?round2(c.counted-exp):null, byName:c?c.byName:'', note:c?c.note:'' });
   }
@@ -162,7 +163,7 @@ function cashCountRows(days){
 
 /* ---- 4. Payment reference numbers ---------------------------------------- */
 var PAYREF_METHODS = ['GCash','Bank transfer','Card'];
-var PAYREF_SINCE = '2026-10-08';   // the field exists from this deploy; older payments are not flagged
+var PAYREF_SINCE = '2026-10-09';   // first full day with the field (deployed the evening of Oct 8); older payments are not flagged
 function payRefRequired(method){ return method==='GCash' || method==='Bank transfer'; }
 function paymentsMissingRef(){
   var out=[];
