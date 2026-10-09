@@ -738,8 +738,8 @@ function collectAR(id){
   var j=jobById(id); var bal=jobBalance(j);
   openModal('Collect payment — '+j.no,
     '<div class="grid2">'+field('Amount','<input id="arAmt" type="number" step="0.01" value="'+attr(bal)+'">')+
-    field('Method','<select id="arMethod"><option>Cash</option><option>GCash</option><option>Card</option><option>Bank transfer</option></select>')+'</div>'+
-    field('Reference #','<input id="arRef" placeholder="required for GCash and bank transfer" autocomplete="off">'),
+    field('Method','<select id="arMethod"><option>Cash</option><option>GCash</option><option>Card</option><option>Bank transfer</option><option>Check</option></select>')+'</div>'+
+    field('Reference #','<input id="arRef" placeholder="required for GCash, bank transfer and check (check # and bank)" autocomplete="off">'),
     { onOk:'saveAR', okText:'Record' }); setTimeout(function(){arCtx=id;},10);
 }
 var arCtx=null;

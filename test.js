@@ -531,6 +531,23 @@ await (async function(){
   ok('Reports shows the card and printout renders', /Voids &amp; cancellations/.test(M.VIEWS().reports()) && /WRONG ITEMS/.test(M.docVoids()));
 })();
 
+section('Final Billing lists payments; Check is a payment method');
+await (async function(){
+  const s=fresh();
+  const j=await M.createJob({plate:'CHK 0001', owner:'A'});
+  j.lines=[{id:'l1',type:'labor',desc:'S',qty:1,price:1000}]; j.stage='Final Billing'; j.orNumber='OR-8501'; j.billedAt='2026-10-09T03:00:00.000Z';
+  const due=M.jobGross(j);
+  ok('no payment yet shows the amount due', /No payment recorded yet/.test(M.docBilling(j)));
+  j.payments=[{amount:500,method:'Cash',date:'2026-10-09T03:10:00.000Z'},{amount:due-500,method:'Check',ref:'BDO 004512',date:'2026-10-09T03:12:00.000Z'}];
+  const doc=M.docBilling(j);
+  ok('each method printed with its reference', /Payments/.test(doc) && /Cash/.test(doc) && /Check/.test(doc) && /BDO 004512/.test(doc));
+  ok('fully paid shown', /Fully paid/.test(doc));
+  j.payments.pop();
+  ok('balance due shown when part-paid', /Balance due/.test(M.docBilling(j)));
+  j.payments.push({amount:due,method:'Check',date:'2026-10-09T04:00:00.000Z'});
+  ok('check without its number is flagged', M.paymentsMissingRef().some(r=>r.no===j.no && r.method==='Check'));
+})();
+
 /* -------------------------------------------------- Series-number uniqueness */
 section('Series numbers never duplicate (stale/behind counter)');
 await (async function(){

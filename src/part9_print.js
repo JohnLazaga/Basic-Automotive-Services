@@ -236,6 +236,7 @@ function billingBody(j){
        ['Ingress Odo', num(j.odometer)+' km'],['Last Service Odo', j.lastServiceOdo?num(j.lastServiceOdo)+' km':'—']] )+
     comebackNote(j)+
     pricedLinesTable(j,{sku:true})+ totalsBox(j,{discount:true})+
+    paymentsDoc(j)+
     workAuthDoc(j)+
     '<div class="sig-grid"><div class="sigline">Approved for release by (Supervisor)<br>'+esc(staffNameIfRole(j.approvedReleaseBy,'SV'))+'</div>'+
       '<div class="sigline">Payment received by (Secretary)<br>'+esc(staffNameIfRole(j.paymentReceivedBy,'Secretary'))+'</div>'+
@@ -244,6 +245,24 @@ function billingBody(j){
       esc(sh.name)+' · TIN '+esc(sh.tin)+' · '+esc(sh.address)+'</div>';
 }
 function printBilling(id){ printDoc(docBilling(jobById(id))); }
+/* Payments on the Final Billing receipt — one line per payment, so an invoice
+   paid partly in cash and partly by GCash / check shows each tender and its
+   reference. Refunds print as negative lines. Then total paid and what is
+   still due (or the excess, if more was recorded than due). */
+function paymentsDoc(j){
+  var pays=(j.payments||[]), b=runningBill(j);
+  if(!pays.length) return '<div class="dtitle" style="font-size:12px;margin-top:14px">Payments</div><p style="font-size:12px">No payment recorded yet — '+peso(b.gross)+' due.</p>';
+  return '<div class="dtitle" style="font-size:12px;margin-top:14px">Payments</div>'+
+    '<table><thead><tr><th>Date</th><th>Method</th><th>Reference</th><th class="r">Amount</th></tr></thead><tbody>'+
+    pays.map(function(p){ var isR=Number(p.amount)<0;
+      return '<tr><td>'+esc(fmtDate(p.date))+'</td><td>'+esc(p.method||'')+(isR?' — Refund':'')+'</td>'+
+        '<td>'+esc(p.ref||'')+(isR&&p.reason?' '+esc(p.reason):'')+'</td><td class="r">'+peso(p.amount)+'</td></tr>'; }).join('')+
+    '</tbody></table>'+
+    '<div class="totbox"><div class="l2"><span>Total paid</span><span>'+peso(b.paid)+'</span></div>'+
+      (b.balance>0.009 ? '<div class="l2 grand"><span>Balance due</span><span>'+peso(b.balance)+'</span></div>'
+       : b.balance<-0.009 ? '<div class="l2"><span>Paid over amount due</span><span>'+peso(-b.balance)+'</span></div>'
+       : '<div class="l2"><span><b>Fully paid</b></span><span></span></div>')+'</div>';
+}
 
 /* ---- Estimate: 2 copies --------------------------------------------------- */
 function docEstimate(e){

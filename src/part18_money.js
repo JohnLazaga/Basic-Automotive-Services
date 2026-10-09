@@ -227,9 +227,9 @@ function cashCountRows(r){
 }
 
 /* ---- 4. Payment reference numbers ---------------------------------------- */
-var PAYREF_METHODS = ['GCash','Bank transfer','Card'];
+var PAYREF_METHODS = ['GCash','Bank transfer','Card','Check'];
 var PAYREF_SINCE = '2026-10-09';   // first full day with the field (deployed the evening of Oct 8); older payments are not flagged
-function payRefRequired(method){ return method==='GCash' || method==='Bank transfer'; }
+function payRefRequired(method){ return method==='GCash' || method==='Bank transfer' || method==='Check'; }   // a check needs its number (and bank)
 function paymentsMissingRef(){
   var out=[];
   (S.jobs||[]).forEach(function(j){ (j.payments||[]).forEach(function(p, i){
@@ -293,7 +293,7 @@ function moneyChecksBodyHTML(rg){
       d.bill.map(function(r){ return '<tr'+mcRowOpen(r.id)+'><td>'+esc(fmtDateTime(r.at))+'</td><td><b>'+esc(r.no)+'</b>'+(r.or?' <span class="muted small">'+esc(r.or)+'</span>':'')+'</td>'+
         '<td class="r">'+peso(r.from)+'</td><td class="r"><b>'+peso(r.to)+'</b></td><td class="r">'+peso(r.paid)+'</td><td>'+esc(r.byName||'—')+'</td></tr>'; }).join('')),
       'No bill has been changed after money was collected.')+
-    mcSection('GCash / bank / card payments with no reference #', d.refs.length, mcTable('<th>Paid</th><th>JO # / OR #</th><th>Method</th><th class="r">Amount</th>',
+    mcSection('GCash / bank / card / check payments with no reference #', d.refs.length, mcTable('<th>Paid</th><th>JO # / OR #</th><th>Method</th><th class="r">Amount</th>',
       d.refs.map(function(r){ return '<tr'+mcRowOpen(r.id)+'><td>'+esc(fmtDateTime(r.date))+'</td><td><b>'+esc(r.no)+'</b>'+(r.or?' <span class="muted small">'+esc(r.or)+'</span>':'')+'</td>'+
         '<td>'+esc(r.method)+'</td><td class="r">'+peso(r.amount)+'</td></tr>'; }).join(''))+
       '<p class="muted small">Add the reference with <b>Correct</b> on the payment, so it can be matched against the GCash / bank statement.</p>',

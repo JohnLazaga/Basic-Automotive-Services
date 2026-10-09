@@ -211,7 +211,7 @@ function intakeForm(d){
     field('Concerns / reported issues','<textarea id="inNotes" rows="3">'+esc(d.notes||'')+'</textarea>')+
     '<div class="grid2">'+
       field('Deposit collected (optional)','<input id="inDeposit" type="number" step="0.01" min="0" value="'+attr(d.depositAmount||'')+'" placeholder="0.00">','Recorded as a payment on the job — reduces the balance from the start.')+
-      field('Deposit method','<select id="inDepositM"><option>Cash</option><option>GCash</option><option>Card</option><option>Bank transfer</option></select>')+
+      field('Deposit method','<select id="inDepositM"><option>Cash</option><option>GCash</option><option>Card</option><option>Bank transfer</option><option>Check</option></select>')+
     '</div>';
 }
 function intakeLookup(){ var v=vehicleByPlate(val('inPlate')); if(v){ setVal('inCP',v.contactPerson); setVal('inContact',v.contactNumber);
@@ -1541,8 +1541,8 @@ function jobPaymentBlock(j,b){
     '</div>'+
     pays+
     ((paid||!showPrice)? '' : '<div class="grid2 mt8">'+field('Amount','<input id="pyAmt" type="number" step="0.01" value="'+attr(b.balance)+'">')+
-      field('Method','<select id="pyMethod"><option>Cash</option><option>GCash</option><option>Card</option><option>Bank transfer</option><option>Charge account</option></select>')+'</div>'+
-      field('Reference #','<input id="pyRef" placeholder="GCash / bank / card ref — required for GCash and bank transfer" autocomplete="off">')+
+      field('Method','<select id="pyMethod"><option>Cash</option><option>GCash</option><option>Card</option><option>Bank transfer</option><option>Check</option><option>Charge account</option></select>')+'</div>'+
+      field('Reference #','<input id="pyRef" placeholder="GCash / bank / card ref, or check # and bank — required for GCash, bank transfer and check" autocomplete="off">')+
       '<button class="btn sm" onclick="recordPayment(\''+j.id+'\')">Record payment</button>')+
     (canRefund?'<button class="btn sm ghost mt8" onclick="refundDialog(\''+j.id+'\')">Record refund…</button>':'')+
     field('Last service odometer','<input id="relOdo" type="number" value="'+attr(j.lastServiceOdo||j.odometer||'')+'" placeholder="reading at release">','Recorded on release; updates the vehicle’s last service odometer.')+
@@ -1622,7 +1622,7 @@ function refundDialog(id){
     (jobVoided(j)?'<p class="muted small">Receipt <b>'+esc(j.orNumber)+'</b> is voided, so the sale is already out of revenue. This returns the money.</p>':'')+
     '<div class="grid2">'+
       field('Amount refunded','<input id="rfAmt" type="number" step="0.01" min="0" max="'+attr(paid)+'" value="'+attr(paid)+'">','Collected so far: '+peso(paid))+
-      field('Method','<select id="rfMethod"><option>Cash</option><option>GCash</option><option>Card</option><option>Bank transfer</option></select>','How the money went back out.')+
+      field('Method','<select id="rfMethod"><option>Cash</option><option>GCash</option><option>Card</option><option>Bank transfer</option><option>Check</option></select>','How the money went back out.')+
     '</div>'+
     field('Reason','<input id="rfReason" placeholder="e.g. voided receipt, overpayment, cancelled work" autocomplete="off">',
       'Recorded against the refund so it can be explained later.'),
@@ -1678,7 +1678,7 @@ function correctPaymentDialog(id, idx){
   if(!canCorrectPayment()){ toast('Only an admin or Supervisor can correct a payment','err'); return; }
   var j=jobById(id), p=j&&(j.payments||[])[idx]; if(!p) return;
   _corrCtx={ id:id, idx:idx };
-  var isR=Number(p.amount)<0, methods=['Cash','GCash','Card','Bank transfer','Charge account'];
+  var isR=Number(p.amount)<0, methods=['Cash','GCash','Card','Bank transfer','Check','Charge account'];
   if(methods.indexOf(p.method)<0) methods.push(p.method);
   openModal('Correct '+(isR?'refund':'payment')+' · '+esc(j.no),
     '<p class="muted small">Recorded '+esc(fmtDate(p.date))+': <b>'+peso(Math.abs(p.amount))+'</b> by '+esc(p.method)+'. '+
@@ -1687,7 +1687,7 @@ function correctPaymentDialog(id, idx){
       field('Correct amount (₱)','<input id="cpAmt" type="number" step="0.01" min="0" value="'+attr(Math.abs(p.amount))+'">')+
       field('Method','<select id="cpMethod">'+methods.map(function(m){ return '<option'+(m===p.method?' selected':'')+'>'+esc(m)+'</option>'; }).join('')+'</select>')+
     '</div>'+
-    field('Reference #','<input id="cpRef" value="'+attr(p.ref||'')+'" placeholder="GCash / bank / card ref" autocomplete="off">','Adding only a reference # needs no reason.')+
+    field('Reference #','<input id="cpRef" value="'+attr(p.ref||'')+'" placeholder="GCash / bank / card ref, or check # and bank" autocomplete="off">','Adding only a reference # needs no reason.')+
     field('Reason','<input id="cpReason" placeholder="e.g. encoded ₱5,000 instead of ₱500" autocomplete="off">'),
     { onOk:'confirmCorrectPayment', okText:'Save correction' });
 }
