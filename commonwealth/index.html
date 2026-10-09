@@ -658,7 +658,7 @@ var BRANCH = {"id":"commonwealth","slug":"commonwealth","name":"Basic by JMSI �
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-10-09 · bb6612a';
+var APP_VERSION = 'v1.3.0 · 2026-10-09 · 48f7256';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -4765,7 +4765,22 @@ function orSeriesMatch(r){
   if(!OR_Q) return true; var q=OR_Q.toLowerCase();
   return [r.or,r.jo,r.owner,r.plate].some(function(x){ return String(x||'').toLowerCase().indexOf(q)>=0; });
 }
-function orSeriesFiltered(){ return orSeriesRows().filter(orSeriesMatch); }
+function orSeriesInRange(){ var r=rptRange('or'); return orSeriesRows().filter(function(x){ return inRptRange(localDay(x.date), r); }); }
+function orSeriesFiltered(){ return orSeriesInRange().filter(orSeriesMatch); }
+/* Numbers missing between the first and last receipt of the range — checked
+   against every OR in the shop, so one issued on a day outside the range is
+   not reported missing. Collapsed into from–to runs like seriesGaps(). */
+function orRangeGaps(rows){
+  if(rows.length<2) return [];
+  var every={}; (S.jobs||[]).forEach(function(j){ var m=j&&j.orNumber&&/(\d+)/.exec(String(j.orNumber)); if(m) every[Number(m[1])]=true; });
+  var gaps=[], run=null;
+  for(var n=rows[0].n; n<=rows[rows.length-1].n; n++){
+    if(every[n]){ if(run){ gaps.push(run); run=null; } continue; }
+    if(run) { run.to=n; run.count++; } else run={ from:n, to:n, count:1 };
+  }
+  if(run) gaps.push(run);
+  return gaps;
+}
 function orSeriesRowsHTML(){
   var rows=orSeriesFiltered();
   if(!rows.length) return '<tr><td colspan="5" class="muted center">No OR numbers match “'+esc(OR_Q)+'”.</td></tr>';
@@ -4782,29 +4797,34 @@ function orSeriesRowsHTML(){
 }
 function orSeriesSearch(v){ OR_Q=v; var el=document.getElementById('orSeriesBody'); if(el) el.innerHTML=orSeriesRowsHTML(); }
 function orSeriesCard(){
-  var rows=orSeriesRows();
-  if (!rows.length) return '<div class="card"><h2>OR numbers by series</h2>'+emptyState('No OR numbers issued yet.')+'</div>';
-  var gaps=seriesGaps(rows);
+  if (!orSeriesRows().length) return '<div class="card"><h2>OR numbers by series</h2>'+emptyState('No OR numbers issued yet.')+'</div>';
+  return '<div class="card"><div class="card-head"><h2>OR numbers by series</h2>'+
+    '<button class="btn sm ghost" onclick="printOrSeries()">⎙ Print</button></div>'+
+    rangeControls('or')+
+    '<input class="searchbox" id="orSeriesSearch" value="'+attr(OR_Q)+'" oninput="orSeriesSearch(this.value)" placeholder="Search OR # / JO # / customer / plate…" autocomplete="off">'+
+    '<div id="orBody">'+orSeriesBodyHTML()+'</div></div>';
+}
+function orSeriesBodyHTML(){
+  var rows=orSeriesInRange();
+  if (!rows.length) return '<div class="mt8">'+emptyState('No OR numbers issued — '+rptRangeLabel(rptRange('or'))+'.')+'</div>';
+  var gaps=orRangeGaps(rows);
   var gapNote = gaps.length
     ? '<div class="muted small" style="color:var(--brand)">⚠ '+gaps.reduce(function(s,g){return s+g.count;},0)+
       ' missing OR number(s): '+gaps.map(function(g){ return g.count===1?('OR-'+g.from):('OR-'+g.from+'–OR-'+g.to); }).join(', ')+'</div>'
     : '<div class="muted small">✓ No gaps — series is continuous.</div>';
-  return '<div class="card"><div class="card-head"><h2>OR numbers by series</h2>'+
-    '<button class="btn sm ghost" onclick="printOrSeries()">⎙ Print</button></div>'+
-    '<div class="muted small mb8">'+rows.length+' receipts'+
+  return '<div class="muted small mt8 mb8">'+esc(rptRangeLabel(rptRange('or')))+' · '+rows.length+' receipts'+
       (rows.filter(function(r){return r.voided;}).length?' ('+rows.filter(function(r){return r.voided;}).length+' void)':'')+
       ' · '+esc(rows[0].or)+' → '+esc(rows[rows.length-1].or)+'</div>'+
     gapNote+
-    '<input class="searchbox mt8" id="orSeriesSearch" value="'+attr(OR_Q)+'" oninput="orSeriesSearch(this.value)" placeholder="Search OR # / JO # / customer / plate…" autocomplete="off">'+
     '<div class="card pad0 mt8"><table class="tbl click"><thead><tr><th>OR #</th><th>JO #</th><th>Date</th><th>Sold to</th><th class="r">Amount</th></tr></thead>'+
-    '<tbody id="orSeriesBody">'+orSeriesRowsHTML()+'</tbody></table></div></div>';
+    '<tbody id="orSeriesBody">'+orSeriesRowsHTML()+'</tbody></table></div>';
 }
 function docOrSeries(){
   var rows=orSeriesFiltered();
   var voided=rows.filter(function(r){ return r.voided; }).length;
   /* Voided receipts are listed (so the series reads as complete) but add nothing. */
   var tot=round2(rows.reduce(function(s,r){return s+(r.voided?0:r.amount);},0));
-  var body=docHeader('OR Numbers by Series')+
+  var body=docHeader('OR Numbers by Series · '+rptRangeLabel(rptRange('or')))+
     '<div class="meta"><div><b>Receipts</b>'+rows.length+(voided?' ('+voided+' void)':'')+'</div>'+
       '<div><b>Range</b>'+(rows.length?esc(rows[0].or)+' → '+esc(rows[rows.length-1].or):'—')+'</div></div>'+
     '<table><thead><tr><th>OR #</th><th>JO #</th><th>Date</th><th>Sold to</th><th class="r">Amount</th></tr></thead><tbody>'+
@@ -6489,7 +6509,7 @@ if (typeof module!=='undefined' && module.exports){
     scheduleNextService:scheduleNextService, clearNextService:clearNextService, alertStrip:alertStrip,
     jobVehicleLabel:jobVehicleLabel, replyRecipients:replyRecipients, unreadMessages:unreadMessages, messageStrip:messageStrip, myStaffIds:myStaffIds, messageAcked:messageAcked,
     buildLogEntry:buildLogEntry, logEntryFor:logEntryFor, jobStatusPanel:jobStatusPanel, lastLogForLabel:lastLogForLabel,
-    jobDescriptionPanel:jobDescriptionPanel, jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fillVehicleBlanks:fillVehicleBlanks, openJobsForPlate:openJobsForPlate, correctPayment:correctPayment, overpaidJobs:overpaidJobs, paymentCorrections:paymentCorrections, billBaseline:billBaseline, trackBillChanges:trackBillChanges, billChanges:billChanges, discountRows:discountRows, discountReasonMissing:discountReasonMissing, cashExpected:cashExpected, cashCountRows:cashCountRows, paymentsMissingRef:paymentsMissingRef, releasedOwing:releasedOwing, docMoneyChecks:docMoneyChecks, docDiscounts:docDiscounts, warnIfPlateOnBoard:warnIfPlateOnBoard, plFor:plFor, opexFor:opexFor, payFor:payFor, monthlyPay:monthlyPay, addMonths:addMonths, syncCollections:syncCollections, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
+    jobDescriptionPanel:jobDescriptionPanel, jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fillVehicleBlanks:fillVehicleBlanks, openJobsForPlate:openJobsForPlate, correctPayment:correctPayment, overpaidJobs:overpaidJobs, paymentCorrections:paymentCorrections, billBaseline:billBaseline, trackBillChanges:trackBillChanges, billChanges:billChanges, discountRows:discountRows, discountReasonMissing:discountReasonMissing, cashExpected:cashExpected, cashCountRows:cashCountRows, paymentsMissingRef:paymentsMissingRef, releasedOwing:releasedOwing, docMoneyChecks:docMoneyChecks, moneyCheckData:moneyCheckData, orSeriesInRange:orSeriesInRange, orRangeGaps:orRangeGaps, inRptRange:inRptRange, setRptRangeRaw:function(k,r){ RPT_RANGE[k]=r; }, docDiscounts:docDiscounts, warnIfPlateOnBoard:warnIfPlateOnBoard, plFor:plFor, opexFor:opexFor, payFor:payFor, monthlyPay:monthlyPay, addMonths:addMonths, syncCollections:syncCollections, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
     afterServiceMissing:afterServiceMissing, afterServiceDone:afterServiceDone, afterServiceStaff:afterServiceStaff,
     canWriteAfterService:canWriteAfterService, afterServiceSignerName:afterServiceSignerName, afterServiceBlock:afterServiceBlock,
     allocateSeriesNumber:allocateSeriesNumber, maxSeriesNo:maxSeriesNo, nextNo:nextNo,
@@ -9935,6 +9955,47 @@ function deleteExpenseRec(id){
    like the rest of Reports), with a printout.
    ========================================================================== */
 
+/* ---- Date range picker shared by the Reports cards ------------------------
+   OR numbers by series, Money checks and Discounts each keep their own range in
+   RPT_RANGE[key] ({from,to}; '' = open-ended, so both '' = all time). Typing a
+   date refreshes only that card's body (#<key>Body) — a full render() would
+   replace the date box under the cursor (the bug fixed on the Sales &
+   collections card). The preset buttons re-render the page. */
+var RPT_RANGE = {};
+var RPT_DEFAULT = { or:'all', mc:'all', disc:'month' };
+function rptPresetRange(p){
+  var today=todayISO(), dt=new Date();
+  if(p==='today') return { from:today, to:today };
+  if(p==='week'){ var dow=(dt.getDay()+6)%7, mon=new Date(dt); mon.setDate(dt.getDate()-dow); return { from:todayISO(mon), to:today }; }
+  if(p==='month') return { from:today.slice(0,7)+'-01', to:today };
+  if(p==='lastmonth'){ var lm=addMonths(today.slice(0,7),-1), end=new Date(Number(lm.slice(0,4)), Number(lm.slice(5)), 0);
+    return { from:lm+'-01', to:todayISO(end) }; }
+  return { from:'', to:'' };   // all
+}
+function rptRange(key){ return RPT_RANGE[key] || rptPresetRange(RPT_DEFAULT[key]||'all'); }
+function inRptRange(day, r){ day=String(day||'').slice(0,10); return (!r.from || day>=r.from) && (!r.to || day<=r.to); }
+function rptRangeLabel(r){
+  if(!r.from && !r.to) return 'All time';
+  return (r.from?fmtDate(r.from):'start')+' – '+(r.to?fmtDate(r.to):'today');
+}
+function rangeControls(key){
+  var r=rptRange(key);
+  return '<div class="row gap wrap mb8" style="align-items:center">'+
+    '<input type="date" id="'+key+'From" style="width:auto" value="'+attr(r.from)+'" onchange="setRptRange(\''+key+'\',\'from\',this.value)">'+
+    '<span class="muted">to</span>'+
+    '<input type="date" id="'+key+'To" style="width:auto" value="'+attr(r.to)+'" onchange="setRptRange(\''+key+'\',\'to\',this.value)">'+
+    [['today','Today'],['week','This week'],['month','This month'],['lastmonth','Last month'],['all','All time']].map(function(p){
+      return '<button class="btn sm ghost" onclick="rptPreset(\''+key+'\',\''+p[0]+'\')">'+p[1]+'</button>'; }).join('')+
+  '</div>';
+}
+function setRptRange(key, which, v){
+  var r=Object.assign({}, rptRange(key)); r[which]=v||''; RPT_RANGE[key]=r;
+  var el=(typeof document!=='undefined')?document.getElementById(key+'Body'):null;
+  var body={ or:orSeriesBodyHTML, mc:moneyChecksBodyHTML, disc:discountsBodyHTML }[key];   // looked up at call time — part7 loads first
+  if(el && body) el.innerHTML=body(r); else render();
+}
+function rptPreset(key, p){ RPT_RANGE[key]=rptPresetRange(p); render(); }
+
 /* ---- 1. Bill changed after payment ---------------------------------------
    Every path that can change a bill (line items, discounts, warranty, add'l
    work, billing edits) ends in persist(), so the check runs there rather than
@@ -9984,10 +10045,12 @@ function discountReasonMissing(d){
   var total=(Number(d.parts)||0)+(Number(d.labor)||0)+(Number(d.other)||0);
   return (total>0 && !String(d.otherNote||'').trim()) ? 'Give the reason for the discount (e.g. senior citizen, promo, suki)' : '';
 }
-var DISC_MONTH='', DISC_SHOW_VAT=false;
-function discountRows(m){
+var DISC_SHOW_VAT=false;
+/* `r` is a {from,to} range; a 'YYYY-MM' month string is still accepted. */
+function discountRows(r){
+  if(typeof r==='string'){ var mm=r; r={ from:mm+'-01', to:mm+'-31' }; }
   return billedJobs().filter(function(j){
-    return !jobCancelled(j) && localDay(j.billedAt||'').slice(0,7)===m && (discountAmount(j)>0.009 || j.warranty);
+    return !jobCancelled(j) && inRptRange(localDay(j.billedAt||''), r) && (discountAmount(j)>0.009 || j.warranty);
   }).map(function(j){
     var d=j.discount||{}, disc=discountAmount(j), due=jobGross(j), vat=runningBill(j).vat;
     var reason=j.warranty ? 'Warranty — no charge' : String(d.otherNote||'').trim();
@@ -10003,15 +10066,18 @@ function discountRows(m){
   }).sort(function(a,b){ return String(b.billedAt||'').localeCompare(String(a.billedAt||'')); });
 }
 function discountsCard(){
-  var m=DISC_MONTH || todayISO().slice(0,7), all=discountRows(m);
+  return '<div class="card"><div class="card-head"><h2>Discounts</h2>'+
+      '<button class="btn sm ghost" onclick="printDoc(docDiscounts())">⎙ Print</button></div>'+
+    rangeControls('disc')+
+    '<div id="discBody">'+discountsBodyHTML(rptRange('disc'))+'</div></div>';
+}
+function discountsBodyHTML(r){
+  var all=discountRows(r), label=rptRangeLabel(r);
   var vatRows=all.filter(function(r){ return r.lessVat; }), real=all.filter(function(r){ return !r.lessVat; });
   var rows=DISC_SHOW_VAT ? all : real;
   var beyond=round2(real.reduce(function(s,r){ return s+r.beyond; },0)), vatTot=round2(all.reduce(function(s,r){ return s+Math.min(r.disc,r.vat); },0));
   var noReason=real.filter(function(r){ return !r.reason; }).length;
-  return '<div class="card"><div class="card-head"><h2>Discounts</h2><div class="row gap">'+
-      monthSelect('discMonthSel', m, 'DISC_MONTH=this.value;render()')+
-      '<button class="btn sm ghost" onclick="printDoc(docDiscounts())">⎙ Print</button></div></div>'+
-    '<div class="muted small mb8"><b>'+real.length+' real discount'+(real.length===1?'':'s')+' · '+peso(beyond)+' given beyond VAT</b>'+
+  return '<div class="muted small mb8"><b>'+real.length+' real discount'+(real.length===1?'':'s')+' · '+peso(beyond)+' given beyond VAT</b>'+
       (noReason?' · <b class="st-bad-t">'+noReason+' with no reason</b>':'')+
       ' · '+vatRows.length+' Less VAT only ('+peso(vatTot)+' VAT taken off in all)</div>'+
     '<label class="chk small mb8"><input type="checkbox"'+(DISC_SHOW_VAT?' checked':'')+' onchange="DISC_SHOW_VAT=this.checked;render()"> Show Less VAT-only jobs too</label>'+
@@ -10023,14 +10089,14 @@ function discountsCard(){
         '<td class="r">'+(r.parts?peso(r.parts):'—')+'</td><td class="r">'+(r.labor?peso(r.labor):'—')+'</td><td class="r">'+(r.other?peso(r.other):'—')+'</td>'+
         '<td class="r">'+peso(r.disc)+'</td><td class="r"><b>'+(r.beyond?peso(r.beyond):'—')+'</b></td><td class="r'+(r.pct>=20?' st-bad-t':'')+'">'+r.pct+'%</td>'+
         '<td>'+(r.reason?esc(r.reason):'<span class="chip due">NO REASON</span>')+'</td><td>'+esc(r.byName||'—')+'</td></tr>'; }).join('')+
-      '</tbody></table></div>' : emptyState(DISC_SHOW_VAT||!all.length ? 'No discounts in '+fmtMonth(m)+'.' : 'No discounts beyond Less VAT in '+fmtMonth(m)+'.'))+
+      '</tbody></table></div>' : emptyState(DISC_SHOW_VAT||!all.length ? 'No discounts — '+label+'.' : 'No discounts beyond Less VAT — '+label+'.'))+
     '<p class="muted small mt8">A discount equal to the bill’s VAT counts as Less VAT and is hidden unless ticked above. Beyond VAT is what was given on top of it. '+
-      '% of bill is the whole discount against the bill before discount; 20% or more is highlighted.</p></div>';
+      '% of bill is the whole discount against the bill before discount; 20% or more is highlighted.</p>';
 }
 function docDiscounts(){
-  var m=DISC_MONTH || todayISO().slice(0,7), all=discountRows(m), rows=DISC_SHOW_VAT ? all : all.filter(function(r){ return !r.lessVat; });
+  var rg=rptRange('disc'), all=discountRows(rg), rows=DISC_SHOW_VAT ? all : all.filter(function(r){ return !r.lessVat; });
   var beyond=round2(all.reduce(function(s,r){ return s+r.beyond; },0));
-  return docShell('Discounts '+m, docHeader('Discounts · '+fmtMonth(m))+
+  return docShell('Discounts', docHeader('Discounts · '+rptRangeLabel(rg))+
     '<div class="eod-stamp">Printed <b>'+esc(fmtDateTime(new Date().toISOString()))+'</b> · '+rows.length+' jobs · '+peso(beyond)+' beyond VAT'+
       (DISC_SHOW_VAT?'':' · Less VAT-only jobs not listed')+'</div>'+
     (rows.length?'<table><thead><tr><th>Billed</th><th>JO # / OR #</th><th>Customer</th><th class="r">Total</th><th class="r">Beyond VAT</th><th class="r">%</th><th>Reason</th><th>By</th></tr></thead><tbody>'+
@@ -10075,12 +10141,18 @@ function saveCashCount(date){
   if(i>=0) S.cashcounts[i]=rec; else S.cashcounts.push(rec);
   persist(); toast('Cash count saved'); render();
 }
-/* The last N days: each counted day's variance, plus days with cash taken but no count. */
-function cashCountRows(days){
-  var out=[], today=todayISO();
-  for(var i=0;i<days;i++){
-    var dt=new Date(); dt.setDate(dt.getDate()-i); var date=todayISO(dt);
-    if(date>today) continue;
+/* Each counted day's variance, plus days with cash taken but no count, newest
+   first, for a {from,to} range (open ends: from the first count / CASHCOUNT_SINCE,
+   to today). cashCountRows(n) still means "the last n days". */
+function cashCountRows(r){
+  if(typeof r==='number'){ var st=new Date(); st.setDate(st.getDate()-(r-1)); r={ from:todayISO(st), to:todayISO() }; }
+  var out=[], today=todayISO(), first=CASHCOUNT_SINCE;
+  (S.cashcounts||[]).forEach(function(c){ if(c.date<first) first=c.date; });
+  var start=(r.from && r.from>first) ? r.from : first, end=(r.to && r.to<today) ? r.to : today;
+  var dt=new Date(Number(end.slice(0,4)), Number(end.slice(5,7))-1, Number(end.slice(8,10)));
+  for(var guard=0; guard<1500; guard++){
+    var date=todayISO(dt); if(date<start) break;
+    dt.setDate(dt.getDate()-1);
     var c=cashCountFor(date), cash=Number(eodData(date,date).byMethod.Cash)||0;
     if(!c && (Math.abs(cash)<0.009 || date<CASHCOUNT_SINCE)) continue;   // uncounted days only flagged once counting existed
     var exp=cashExpected(date, c?c.float:0);
@@ -10111,8 +10183,11 @@ function releasedOwing(){
 }
 
 /* ---- The Money checks card (Reports) and printout ------------------------- */
-function moneyCheckData(){
-  return { cash:cashCountRows(30), over:overpaidJobs(), owing:releasedOwing(), bill:billChanges(), refs:paymentsMissingRef(), corr:paymentCorrections() };
+function moneyCheckData(r){
+  r=r||rptRange('mc');
+  var by=function(f){ return function(x){ return inRptRange(x[f], r); }; };
+  return { cash:cashCountRows(r), over:overpaidJobs().filter(by('billedAt')), owing:releasedOwing().filter(by('billedAt')),
+    bill:billChanges().filter(by('at')), refs:paymentsMissingRef().filter(by('date')), corr:paymentCorrections().filter(by('at')) };
 }
 function mcSection(title, n, body, okMsg){
   return '<h3 class="mt8">'+title+' <span class="muted small">· '+n+'</span></h3>'+(n? body : '<div class="muted small">✓ '+okMsg+'</div>');
@@ -10120,11 +10195,16 @@ function mcSection(title, n, body, okMsg){
 function mcTable(head, rows){ return '<div class="card pad0"><table class="tbl click sm"><thead><tr>'+head+'</tr></thead><tbody>'+rows+'</tbody></table></div>'; }
 function mcRowOpen(id){ return ' onclick="go(\'job\',\''+id+'\')"'; }
 function moneyChecksCard(){
-  var d=moneyCheckData();
-  var cashOff=d.cash.filter(function(r){ return r.variance===null || Math.abs(r.variance)>0.009; });
   return '<div class="card"><div class="card-head"><h2>Money checks</h2>'+
       '<button class="btn sm ghost" onclick="printDoc(docMoneyChecks())">⎙ Print</button></div>'+
-    mcSection('Cash count — last 30 days', cashOff.length, mcTable('<th>Date</th><th class="r">Expected</th><th class="r">Counted</th><th class="r">Short / over</th><th>By</th><th>Note</th>',
+    rangeControls('mc')+
+    '<div id="mcBody">'+moneyChecksBodyHTML(rptRange('mc'))+'</div></div>';
+}
+function moneyChecksBodyHTML(rg){
+  var d=moneyCheckData(rg);
+  var cashOff=d.cash.filter(function(r){ return r.variance===null || Math.abs(r.variance)>0.009; });
+  return '<div class="muted small mb8">'+esc(rptRangeLabel(rg))+' · overpaid and owed by billing date; the rest by the date they happened.</div>'+
+    mcSection('Cash count', cashOff.length, mcTable('<th>Date</th><th class="r">Expected</th><th class="r">Counted</th><th class="r">Short / over</th><th>By</th><th>Note</th>',
       cashOff.map(function(r){ return '<tr onclick="DC_DATE=\''+r.date+'\';go(\'dailyclose\')"><td>'+esc(fmtDate(r.date))+'</td><td class="r">'+peso(r.expected)+'</td>'+
         '<td class="r">'+(r.counted===null?'<span class="chip due">NOT COUNTED</span>':peso(r.counted))+'</td>'+
         '<td class="r'+(r.variance!==null?' st-bad-t':'')+'">'+(r.variance===null?'—':'<b>'+peso(r.variance)+'</b>')+'</td><td>'+esc(r.byName||'—')+'</td><td>'+esc(r.note||'')+'</td></tr>'; }).join('')),
@@ -10151,17 +10231,16 @@ function moneyChecksCard(){
       d.corr.map(function(r){ return '<tr'+mcRowOpen(r.id)+'><td>'+esc(fmtDateTime(r.at))+'</td><td><b>'+esc(r.no)+'</b>'+(r.or?' <span class="muted small">'+esc(r.or)+'</span>':'')+'</td>'+
         '<td>'+esc(fmtDate(r.payDate))+'</td><td class="r">'+peso(r.from.amount)+' <span class="muted small">'+esc(r.from.method||'')+'</span></td>'+
         '<td class="r">'+peso(r.to.amount)+' <span class="muted small">'+esc(r.to.method||'')+'</span></td><td>'+esc(r.byName||'—')+'</td><td>'+esc(r.reason)+'</td></tr>'; }).join('')),
-      'No payments have been corrected.')+
-  '</div>';
+      'No payments have been corrected.');
 }
 function docMoneyChecks(){
-  var d=moneyCheckData();
+  var rg=rptRange('mc'), d=moneyCheckData(rg);
   var cashOff=d.cash.filter(function(r){ return r.variance===null || Math.abs(r.variance)>0.009; });
   function sec(title, n, head, rows){ return '<div class="dtitle" style="font-size:12.5px;margin-top:14px">'+title+' ('+n+')</div>'+
     (n?'<table><thead><tr>'+head+'</tr></thead><tbody>'+rows+'</tbody></table>':'<p>None.</p>'); }
-  return docShell('Money Checks', docHeader('Money Checks')+
+  return docShell('Money Checks', docHeader('Money Checks · '+rptRangeLabel(rg))+
     '<div class="eod-stamp">Printed <b>'+esc(fmtDateTime(new Date().toISOString()))+'</b></div>'+
-    sec('Cash count — last 30 days', cashOff.length, '<th>Date</th><th class="r">Expected</th><th class="r">Counted</th><th class="r">Short / over</th><th>Note</th>',
+    sec('Cash count', cashOff.length, '<th>Date</th><th class="r">Expected</th><th class="r">Counted</th><th class="r">Short / over</th><th>Note</th>',
       cashOff.map(function(r){ return '<tr><td>'+esc(fmtDate(r.date))+'</td><td class="r">'+peso(r.expected)+'</td><td class="r">'+(r.counted===null?'NOT COUNTED':peso(r.counted))+'</td>'+
         '<td class="r">'+(r.variance===null?'—':peso(r.variance))+'</td><td>'+esc(r.note||'')+'</td></tr>'; }).join(''))+
     sec('Paid more than due', d.over.length, '<th>JO #</th><th>OR #</th><th>Plate</th><th class="r">Due</th><th class="r">Paid</th><th class="r">Over</th>',
