@@ -658,7 +658,7 @@ var BRANCH = {"id":"main","slug":"fairview","name":"Basic by JMSI — Fairview (
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-10-09 · cbf39f6';
+var APP_VERSION = 'v1.3.0 · 2026-10-09 · bb6612a';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -3599,7 +3599,18 @@ function discountEditor(j, pre){
     field('Discount on Labor (₱)','<input id="'+pre+'Labor" type="number" step="0.01" value="'+attr(Number(d.labor)||0)+'">')+'</div>'+
     '<div class="grid2">'+
     field('Other discounts (₱)','<input id="'+pre+'Other" type="number" step="0.01" value="'+attr(Number(d.other)||0)+'">')+
-    field('Discount reason','<input id="'+pre+'Note" value="'+attr(d.otherNote||'')+'" placeholder="e.g. senior citizen, promo, suki">','Required for any discount.')+'</div>';
+    field('Discount reason','<input id="'+pre+'Note" value="'+attr(d.otherNote||'')+'" placeholder="e.g. senior citizen, promo, suki">','Required for any discount.')+'</div>'+
+    (runningBill(j).vat>0 ? '<button type="button" class="btn sm ghost" onclick="fillLessVat(\''+pre+'\',\''+j.id+'\')">Less VAT ('+peso(runningBill(j).vat)+')</button> ' : '');
+}
+/* One tap for the shop's everyday case: put this bill's VAT in Other discounts
+   and "LESS VAT" in the reason. Fills the boxes only — Apply / Create still
+   saves. Any other reason already typed is kept after it. */
+var LESS_VAT = 'LESS VAT';
+function fillLessVat(pre, id){
+  var j=jobById(id); if(!j) return;
+  setVal(pre+'Other', runningBill(j).vat);
+  var note=String(val(pre+'Note')||'').trim();
+  if(note.toUpperCase().indexOf(LESS_VAT)<0) setVal(pre+'Note', note ? LESS_VAT+' · '+note : LESS_VAT);
 }
 function readDiscount(pre){
   return { parts:Number(val(pre+'Parts'))||0, labor:Number(val(pre+'Labor'))||0,
@@ -9973,45 +9984,58 @@ function discountReasonMissing(d){
   var total=(Number(d.parts)||0)+(Number(d.labor)||0)+(Number(d.other)||0);
   return (total>0 && !String(d.otherNote||'').trim()) ? 'Give the reason for the discount (e.g. senior citizen, promo, suki)' : '';
 }
-var DISC_MONTH='';
+var DISC_MONTH='', DISC_SHOW_VAT=false;
 function discountRows(m){
   return billedJobs().filter(function(j){
     return !jobCancelled(j) && localDay(j.billedAt||'').slice(0,7)===m && (discountAmount(j)>0.009 || j.warranty);
   }).map(function(j){
-    var d=j.discount||{}, disc=discountAmount(j), due=jobGross(j);
+    var d=j.discount||{}, disc=discountAmount(j), due=jobGross(j), vat=runningBill(j).vat;
     var reason=j.warranty ? 'Warranty — no charge' : String(d.otherNote||'').trim();
+    /* Most jobs have the VAT discounted back out ("LESS VAT"). That is not a
+       real discount, so it is split out: `beyond` is what was given ON TOP of
+       the VAT, and a discount equal to the VAT is lessVat — whether or not it
+       was labelled, so the months before the button are grouped too. */
+    var beyond=j.warranty ? disc : round2(Math.max(0, disc-vat));
+    var lessVat=!j.warranty && vat>0 && Math.abs(disc-vat)<1;
     return { id:j.id, no:j.no, or:j.orNumber||'', plate:j.plate, owner:j.owner, billedAt:j.billedAt,
-      parts:Number(d.parts)||0, labor:Number(d.labor)||0, other:Number(d.other)||0, disc:disc,
-      pct: (due+disc)>0 ? Math.round(disc/(due+disc)*100) : 0, reason:reason, byName:(j.discountBy&&j.discountBy.byName)||'' };
+      parts:Number(d.parts)||0, labor:Number(d.labor)||0, other:Number(d.other)||0, disc:disc, vat:vat, beyond:beyond, lessVat:lessVat,
+      pct: (due+disc)>0 ? Math.round(disc/(due+disc)*100) : 0, reason:reason || (lessVat?'LESS VAT':''), byName:(j.discountBy&&j.discountBy.byName)||'' };
   }).sort(function(a,b){ return String(b.billedAt||'').localeCompare(String(a.billedAt||'')); });
 }
 function discountsCard(){
-  var m=DISC_MONTH || todayISO().slice(0,7), rows=discountRows(m);
-  var total=round2(rows.reduce(function(s,r){ return s+r.disc; },0)), noReason=rows.filter(function(r){ return !r.reason; }).length;
+  var m=DISC_MONTH || todayISO().slice(0,7), all=discountRows(m);
+  var vatRows=all.filter(function(r){ return r.lessVat; }), real=all.filter(function(r){ return !r.lessVat; });
+  var rows=DISC_SHOW_VAT ? all : real;
+  var beyond=round2(real.reduce(function(s,r){ return s+r.beyond; },0)), vatTot=round2(all.reduce(function(s,r){ return s+Math.min(r.disc,r.vat); },0));
+  var noReason=real.filter(function(r){ return !r.reason; }).length;
   return '<div class="card"><div class="card-head"><h2>Discounts</h2><div class="row gap">'+
       monthSelect('discMonthSel', m, 'DISC_MONTH=this.value;render()')+
       '<button class="btn sm ghost" onclick="printDoc(docDiscounts())">⎙ Print</button></div></div>'+
-    '<div class="muted small mb8">'+rows.length+' discounted job'+(rows.length===1?'':'s')+' · '+peso(total)+' given'+
-      (noReason?' · <b class="st-bad-t">'+noReason+' with no reason</b>':'')+'</div>'+
+    '<div class="muted small mb8"><b>'+real.length+' real discount'+(real.length===1?'':'s')+' · '+peso(beyond)+' given beyond VAT</b>'+
+      (noReason?' · <b class="st-bad-t">'+noReason+' with no reason</b>':'')+
+      ' · '+vatRows.length+' Less VAT only ('+peso(vatTot)+' VAT taken off in all)</div>'+
+    '<label class="chk small mb8"><input type="checkbox"'+(DISC_SHOW_VAT?' checked':'')+' onchange="DISC_SHOW_VAT=this.checked;render()"> Show Less VAT-only jobs too</label>'+
     (rows.length ? '<div class="card pad0"><table class="tbl click sm"><thead><tr><th>Billed</th><th>JO # / OR #</th><th>Customer</th>'+
-        '<th class="r">Parts</th><th class="r">Labor</th><th class="r">Other</th><th class="r">Total</th><th class="r">% of bill</th><th>Reason</th><th>By</th></tr></thead><tbody>'+
+        '<th class="r">Parts</th><th class="r">Labor</th><th class="r">Other</th><th class="r">Total</th><th class="r">Beyond VAT</th><th class="r">% of bill</th><th>Reason</th><th>By</th></tr></thead><tbody>'+
       rows.map(function(r){ return '<tr onclick="go(\'job\',\''+r.id+'\')"><td>'+esc(fmtDate(r.billedAt))+'</td>'+
         '<td><b>'+esc(r.no)+'</b>'+(r.or?' <span class="muted small">'+esc(r.or)+'</span>':'')+'</td>'+
         '<td>'+esc(r.owner||'')+' <span class="muted small">'+esc(r.plate)+'</span></td>'+
         '<td class="r">'+(r.parts?peso(r.parts):'—')+'</td><td class="r">'+(r.labor?peso(r.labor):'—')+'</td><td class="r">'+(r.other?peso(r.other):'—')+'</td>'+
-        '<td class="r"><b>'+peso(r.disc)+'</b></td><td class="r'+(r.pct>=20?' st-bad-t':'')+'">'+r.pct+'%</td>'+
+        '<td class="r">'+peso(r.disc)+'</td><td class="r"><b>'+(r.beyond?peso(r.beyond):'—')+'</b></td><td class="r'+(r.pct>=20?' st-bad-t':'')+'">'+r.pct+'%</td>'+
         '<td>'+(r.reason?esc(r.reason):'<span class="chip due">NO REASON</span>')+'</td><td>'+esc(r.byName||'—')+'</td></tr>'; }).join('')+
-      '</tbody></table></div>' : emptyState('No discounts in '+fmtMonth(m)+'.'))+
-    '<p class="muted small mt8">% of bill is the discount against the bill before discount; 20% or more is highlighted. A reason is required when applying a discount.</p></div>';
+      '</tbody></table></div>' : emptyState(DISC_SHOW_VAT||!all.length ? 'No discounts in '+fmtMonth(m)+'.' : 'No discounts beyond Less VAT in '+fmtMonth(m)+'.'))+
+    '<p class="muted small mt8">A discount equal to the bill’s VAT counts as Less VAT and is hidden unless ticked above. Beyond VAT is what was given on top of it. '+
+      '% of bill is the whole discount against the bill before discount; 20% or more is highlighted.</p></div>';
 }
 function docDiscounts(){
-  var m=DISC_MONTH || todayISO().slice(0,7), rows=discountRows(m);
-  var total=round2(rows.reduce(function(s,r){ return s+r.disc; },0));
+  var m=DISC_MONTH || todayISO().slice(0,7), all=discountRows(m), rows=DISC_SHOW_VAT ? all : all.filter(function(r){ return !r.lessVat; });
+  var beyond=round2(all.reduce(function(s,r){ return s+r.beyond; },0));
   return docShell('Discounts '+m, docHeader('Discounts · '+fmtMonth(m))+
-    '<div class="eod-stamp">Printed <b>'+esc(fmtDateTime(new Date().toISOString()))+'</b> · '+rows.length+' jobs · '+peso(total)+'</div>'+
-    (rows.length?'<table><thead><tr><th>Billed</th><th>JO # / OR #</th><th>Customer</th><th class="r">Total</th><th class="r">%</th><th>Reason</th><th>By</th></tr></thead><tbody>'+
+    '<div class="eod-stamp">Printed <b>'+esc(fmtDateTime(new Date().toISOString()))+'</b> · '+rows.length+' jobs · '+peso(beyond)+' beyond VAT'+
+      (DISC_SHOW_VAT?'':' · Less VAT-only jobs not listed')+'</div>'+
+    (rows.length?'<table><thead><tr><th>Billed</th><th>JO # / OR #</th><th>Customer</th><th class="r">Total</th><th class="r">Beyond VAT</th><th class="r">%</th><th>Reason</th><th>By</th></tr></thead><tbody>'+
       rows.map(function(r){ return '<tr><td>'+esc(fmtDate(r.billedAt))+'</td><td>'+esc(r.no)+(r.or?' / '+esc(r.or):'')+'</td><td>'+esc(r.owner||'')+' '+esc(r.plate)+'</td>'+
-        '<td class="r">'+peso(r.disc)+'</td><td class="r">'+r.pct+'%</td><td>'+(r.reason?esc(r.reason):'<b>NO REASON</b>')+'</td><td>'+esc(r.byName||'—')+'</td></tr>'; }).join('')+
+        '<td class="r">'+peso(r.disc)+'</td><td class="r">'+(r.beyond?peso(r.beyond):'—')+'</td><td class="r">'+r.pct+'%</td><td>'+(r.reason?esc(r.reason):'<b>NO REASON</b>')+'</td><td>'+esc(r.byName||'—')+'</td></tr>'; }).join('')+
       '</tbody></table>':'<p>None.</p>'));
 }
 
