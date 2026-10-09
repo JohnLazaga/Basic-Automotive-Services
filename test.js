@@ -558,6 +558,20 @@ await (async function(){
   ok('deposit with its reference is not flagged', !M.paymentsMissingRef().some(r=>r.no===j.no));
 })();
 
+section('Correct a payment to P0 (admin only)');
+await (async function(){
+  const s=fresh();
+  const j=await M.createJob({plate:'ZRO 0001'});
+  j.payments=[{amount:215,method:'Cash',date:'2026-07-06T08:02:00.000Z'}];
+  M.setCurrentUser({uid:'s1',role:'SV',isAdmin:false,name:'Sup'});
+  ok('supervisor cannot set a payment to 0', !M.correctPayment(j,0,0,'Cash','free').ok && j.payments[0].amount===215);
+  M.setCurrentUser({uid:'a1',role:'SV',isAdmin:true,name:'Admin'});
+  const r=M.correctPayment(j,0,0,'Cash','parts given free');
+  ok('admin sets it to 0 and the original is kept', r.ok && j.payments[0].amount===0 && j.payments[0].corrections[0].from.amount===215);
+  ok('negative amount still refused', !M.correctPayment(j,0,-5,'Cash','x').ok);
+  M.setCurrentUser(null);
+})();
+
 /* -------------------------------------------------- Series-number uniqueness */
 section('Series numbers never duplicate (stale/behind counter)');
 await (async function(){

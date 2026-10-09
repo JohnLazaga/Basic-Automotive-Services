@@ -1652,7 +1652,12 @@ function correctPayment(j, idx, amount, method, reason, ref){
   var p=j && (j.payments||[])[idx]; if(!p) return { ok:false, err:'Payment not found' };
   var isR=Number(p.amount)<0;
   amount=round2(Math.abs(Number(amount)||0));
-  if(amount<=0) return { ok:false, err:'Enter the correct amount' };
+  /* ₱0 = "this payment never happened" (e.g. free work recorded as paid). Admins
+     only — it removes money from a past day's collections — and, like any
+     correction, the original amount stays on the payment. */
+  var isAdmin = (typeof CURRENT_USER==='undefined' || !CURRENT_USER) || !!CURRENT_USER.isAdmin;
+  if(amount<0 || isNaN(amount)) return { ok:false, err:'Enter the correct amount' };
+  if(amount===0 && !isAdmin) return { ok:false, err:'Only an admin can set a payment to ₱0' };
   var newAmt=isR?-amount:amount; method=method||p.method;
   /* The reference # is bookkeeping, not money: adding or fixing it alone needs
      no reason and is not logged as a correction. */
