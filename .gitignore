@@ -48,3 +48,8 @@ tools/deploy-reset.cmd
 
 # stray Windows shortcuts
 *.lnk
+
+# Operator guides & internal runbooks — NOT published. GitHub Pages serves this
+# whole repo at basicautomotiveservices.com, so anything committed is public.
+# Kept on this PC only (and the NAS backup copy).
+private-docs/
