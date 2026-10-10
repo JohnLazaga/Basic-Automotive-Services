@@ -662,7 +662,7 @@ var BRANCH = {"id":"sandbox","slug":"sandbox","name":"Basic by JMSI — Sandbox 
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-10-09 · c2d7ffb';
+var APP_VERSION = 'v1.3.0 · 2026-10-10 · d493bc1';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -1762,6 +1762,54 @@ function isUpdateDue(job){
   return lastTime < cpDate;
 }
 
+/* ---- Clipboard checkpoint: prompt about unfinished job-order details --------
+   At every clipboard checkpoint (Settings → Clipboard checkpoints) the desk is
+   shown the open Job Orders still missing information — the same list that
+   would block the Post Job Report (postJobMissingFields). Once per checkpoint,
+   per branch, per device; never over an open dialog, the PMS tablet form or the
+   photo uploader, and not for mechanics (they cannot fill these in). */
+function jobsMissingInfo(){
+  return (S.jobs||[]).filter(function(j){ return j.stage==='Job Order' && !jobCancelled(j); })
+    .map(function(j){ return { j:j, missing:postJobMissingFields(j) }; })
+    .filter(function(x){ return x.missing.length; })
+    .sort(function(a,b){ return String(a.j.no).localeCompare(String(b.j.no)); });
+}
+function checkpointPromptDue(){
+  if(typeof document==='undefined' || !S || !S.jobs || !S.shop) return null;
+  if(typeof CURRENT_USER!=='undefined' && CURRENT_USER && !CURRENT_USER.isAdmin && CURRENT_USER.role==='Mechanic') return null;
+  if(ROUTE.view==='pmsform' || ROUTE.view==='photoup' || (typeof isPortalRoute==='function' && isPortalRoute())) return null;
+  if(typeof modalOpen==='function' && modalOpen()) return null;
+  var cp=lastCheckpointDue(); if(!cp) return null;
+  var tag=todayISO()+' '+cp, key='basic.cpPrompt.'+(typeof branchId==='function'?branchId():'');
+  var seen=null; try{ seen=localStorage.getItem(key); }catch(e){}
+  if(seen===tag) return null;
+  try{ localStorage.setItem(key, tag); }catch(e){}
+  return cp;
+}
+function checkCheckpointPrompt(){
+  var cp=checkpointPromptDue(); if(!cp) return;
+  var list=jobsMissingInfo(); if(!list.length) return;
+  openModal('Clipboard '+esc(cp)+' — job orders missing information',
+    '<p class="muted small">'+list.length+' open job order'+(list.length===1?' is':'s are')+' still missing details. '+
+      'The Post Job Report cannot be created until each one is complete.</p>'+
+    '<div style="max-height:60vh;overflow:auto">'+list.map(function(x){
+      return '<div style="padding:9px 0;border-bottom:1px solid var(--hair)">'+
+        '<div class="row gap" style="justify-content:space-between"><div><b>'+esc(x.j.no)+'</b> · '+esc(x.j.plate)+
+          (x.j.owner?' <span class="muted small">'+esc(x.j.owner)+'</span>':'')+'</div>'+
+          '<button class="btn sm" onclick="closeModal();go(\'job\',\''+x.j.id+'\')">Open</button></div>'+
+        '<div class="small st-bad-t">Missing: '+x.missing.map(esc).join(' · ')+'</div></div>';
+    }).join('')+'</div>',
+    { footer:'<button class="btn primary" onclick="closeModal()">OK</button>', width:'620px' });
+}
+var _cpTimer=null;
+var _cpPrevAR = (typeof afterRender==='function') ? afterRender : function(){};
+afterRender = function(){
+  _cpPrevAR();
+  if(typeof window==='undefined') return;
+  if(!_cpTimer){ _cpTimer=setInterval(function(){ try{ checkCheckpointPrompt(); }catch(e){} }, 60000); }
+  setTimeout(function(){ try{ checkCheckpointPrompt(); }catch(e){} }, 1500);   // after sign-in / page load
+};
+
 /* ---- PMS reminders ---------------------------------------------------------
    A reminder is only meaningful for a unit whose PMS was actually performed
    here. A job "performed PMS" when its tablet checklist was completed OR it
@@ -2594,8 +2642,8 @@ VIEWS.job = function(id){
     stageStep(j)+
     '<div class="cols">'+
       '<div class="colmain">'+
+        jobDescriptionPanel(j)+   // what the customer brought it in for, read first
         jobStatusPanel(j)+
-        jobDescriptionPanel(j)+
         jobTimerPanel(j)+
         jobLinesPanel(j)+
         jobWorkAuthPanel(j)+
@@ -2719,7 +2767,10 @@ function logUpdate(id, withTags){
   // No preselection — the person logging must deliberately pick who is updating,
   // so every entry carries a real, accountable name.
   var who = optionList(S.staff, '', false);
+  var missing=(j.stage==='Job Order') ? postJobMissingFields(j) : [];
   openModal('Log clipboard update',
+    (missing.length ? '<div class="pms-laststep" style="font-size:13.5px"><b>Still missing on this job order:</b> '+missing.map(esc).join(' · ')+
+      ' <a onclick="closeModal();editJobDetails(\''+j.id+'\')">Fill in now</a></div>' : '')+
     field('Status code','<select id="luCode">'+opts+'</select>')+
     field('Updated by','<select id="luBy">'+who+'</select>','Required — records who made this update')+
     field('Note','<textarea id="luNote" rows="2" placeholder="e.g. Brake pads installed, bleeding lines."></textarea>')+
@@ -6544,7 +6595,7 @@ if (typeof module!=='undefined' && module.exports){
     scheduleNextService:scheduleNextService, clearNextService:clearNextService, alertStrip:alertStrip,
     jobVehicleLabel:jobVehicleLabel, replyRecipients:replyRecipients, unreadMessages:unreadMessages, messageStrip:messageStrip, myStaffIds:myStaffIds, messageAcked:messageAcked,
     buildLogEntry:buildLogEntry, logEntryFor:logEntryFor, jobStatusPanel:jobStatusPanel, lastLogForLabel:lastLogForLabel,
-    jobDescriptionPanel:jobDescriptionPanel, jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fillVehicleBlanks:fillVehicleBlanks, openJobsForPlate:openJobsForPlate, correctPayment:correctPayment, overpaidJobs:overpaidJobs, paymentCorrections:paymentCorrections, billBaseline:billBaseline, trackBillChanges:trackBillChanges, billChanges:billChanges, discountRows:discountRows, discountReasonMissing:discountReasonMissing, cashExpected:cashExpected, cashCountRows:cashCountRows, paymentsMissingRef:paymentsMissingRef, releasedOwing:releasedOwing, docMoneyChecks:docMoneyChecks, moneyCheckData:moneyCheckData, voidedReceipts:voidedReceipts, cancelledJobs:cancelledJobs, voidsHoldingMoney:voidsHoldingMoney, docVoids:docVoids, paymentsDoc:paymentsDoc, pmsGateMissing:pmsGateMissing, pmsDefaultMechs:pmsDefaultMechs, pmsReadyToSubmit:pmsReadyToSubmit, PMS_TEMPLATE:function(){ return PMS_TEMPLATE; }, pmsSectionMissing:pmsSectionMissing, orSeriesInRange:orSeriesInRange, orRangeGaps:orRangeGaps, inRptRange:inRptRange, setRptRangeRaw:function(k,r){ RPT_RANGE[k]=r; }, docDiscounts:docDiscounts, warnIfPlateOnBoard:warnIfPlateOnBoard, plFor:plFor, opexFor:opexFor, payFor:payFor, monthlyPay:monthlyPay, addMonths:addMonths, syncCollections:syncCollections, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
+    jobDescriptionPanel:jobDescriptionPanel, jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fillVehicleBlanks:fillVehicleBlanks, openJobsForPlate:openJobsForPlate, correctPayment:correctPayment, overpaidJobs:overpaidJobs, paymentCorrections:paymentCorrections, billBaseline:billBaseline, trackBillChanges:trackBillChanges, billChanges:billChanges, discountRows:discountRows, discountReasonMissing:discountReasonMissing, cashExpected:cashExpected, cashCountRows:cashCountRows, paymentsMissingRef:paymentsMissingRef, releasedOwing:releasedOwing, docMoneyChecks:docMoneyChecks, moneyCheckData:moneyCheckData, voidedReceipts:voidedReceipts, cancelledJobs:cancelledJobs, voidsHoldingMoney:voidsHoldingMoney, docVoids:docVoids, paymentsDoc:paymentsDoc, pmsGateMissing:pmsGateMissing, jobsMissingInfo:jobsMissingInfo, pmsDefaultMechs:pmsDefaultMechs, pmsReadyToSubmit:pmsReadyToSubmit, PMS_TEMPLATE:function(){ return PMS_TEMPLATE; }, pmsSectionMissing:pmsSectionMissing, orSeriesInRange:orSeriesInRange, orRangeGaps:orRangeGaps, inRptRange:inRptRange, setRptRangeRaw:function(k,r){ RPT_RANGE[k]=r; }, docDiscounts:docDiscounts, warnIfPlateOnBoard:warnIfPlateOnBoard, plFor:plFor, opexFor:opexFor, payFor:payFor, monthlyPay:monthlyPay, addMonths:addMonths, syncCollections:syncCollections, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
     afterServiceMissing:afterServiceMissing, afterServiceDone:afterServiceDone, afterServiceStaff:afterServiceStaff,
     canWriteAfterService:canWriteAfterService, afterServiceSignerName:afterServiceSignerName, afterServiceBlock:afterServiceBlock,
     allocateSeriesNumber:allocateSeriesNumber, maxSeriesNo:maxSeriesNo, nextNo:nextNo,
