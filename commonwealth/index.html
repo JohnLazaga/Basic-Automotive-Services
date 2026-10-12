@@ -662,7 +662,7 @@ var BRANCH = {"id":"commonwealth","slug":"commonwealth","name":"Basic by JMSI �
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-10-12 · 6ce546c';
+var APP_VERSION = 'v1.3.0 · 2026-10-12 · 9b62a33';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -3696,7 +3696,20 @@ function discountEditor(j, pre){
     '<div class="grid2">'+
     field('Other discounts (₱)','<input id="'+pre+'Other" type="number" step="0.01" value="'+attr(Number(d.other)||0)+'">')+
     field('Discount reason','<input id="'+pre+'Note" value="'+attr(d.otherNote||'')+'" placeholder="e.g. senior citizen, promo, suki">','Required for any discount. Anything beyond the VAT needs its own reason too — e.g. LESS VAT · ROUND OFF.')+'</div>'+
-    (runningBill(j).vat>0 ? '<button type="button" class="btn sm ghost" onclick="fillLessVat(\''+pre+'\',\''+j.id+'\')">Less VAT ('+peso(runningBill(j).vat)+')</button> ' : '');
+    lessVatControl(j, pre);
+}
+/* Less VAT is applied once. If the saved discount already carries it, there is
+   no button at all; after a tap, the button turns into a label (see fillLessVat)
+   so it cannot be pressed again. Clearing the VAT out of Other discounts and
+   saving brings the button back. */
+function lessVatApplied(j){
+  var d=(j && j.discount)||{}, vat=runningBill(j).vat;
+  return vat>0 && /\bVAT\b/i.test(String(d.otherNote||'')) && (Number(d.other)||0) >= vat-0.5;
+}
+function lessVatControl(j, pre){
+  var vat=runningBill(j).vat; if(!(vat>0)) return '';
+  if(lessVatApplied(j)) return '<span class="chip ok" id="'+pre+'LessVat">✓ Less VAT applied ('+peso(vat)+')</span> ';
+  return '<button type="button" class="btn sm ghost" id="'+pre+'LessVat" onclick="fillLessVat(\''+pre+'\',\''+j.id+'\')">Less VAT ('+peso(vat)+')</button> ';
 }
 /* One tap for the shop's everyday case: put this bill's VAT in Other discounts
    and "LESS VAT" in the reason. Fills the boxes only — Apply / Create still
@@ -3704,9 +3717,15 @@ function discountEditor(j, pre){
 var LESS_VAT = 'LESS VAT';
 function fillLessVat(pre, id){
   var j=jobById(id); if(!j) return;
+  var btn=(typeof document!=='undefined') ? document.getElementById(pre+'LessVat') : null;
+  if(lessVatApplied(j) || (btn && btn.getAttribute('data-done'))){ toast('Less VAT is already applied to this bill','err'); return; }
   setVal(pre+'Other', runningBill(j).vat);
   var note=String(val(pre+'Note')||'').trim();
   if(note.toUpperCase().indexOf(LESS_VAT)<0) setVal(pre+'Note', note ? LESS_VAT+' · '+note : LESS_VAT);
+  if(btn){   // one tap only — the button becomes a label until the form is saved or reopened
+    btn.setAttribute('data-done','1'); btn.disabled=true;
+    btn.textContent='✓ Less VAT added — tap Apply to save';
+  }
 }
 function readDiscount(pre){
   return { parts:Number(val(pre+'Parts'))||0, labor:Number(val(pre+'Labor'))||0,
@@ -6632,7 +6651,7 @@ if (typeof module!=='undefined' && module.exports){
     scheduleNextService:scheduleNextService, clearNextService:clearNextService, alertStrip:alertStrip,
     jobVehicleLabel:jobVehicleLabel, replyRecipients:replyRecipients, unreadMessages:unreadMessages, messageStrip:messageStrip, myStaffIds:myStaffIds, messageAcked:messageAcked,
     buildLogEntry:buildLogEntry, logEntryFor:logEntryFor, jobStatusPanel:jobStatusPanel, lastLogForLabel:lastLogForLabel,
-    jobDescriptionPanel:jobDescriptionPanel, jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fillVehicleBlanks:fillVehicleBlanks, openJobsForPlate:openJobsForPlate, correctPayment:correctPayment, overpaidJobs:overpaidJobs, paymentCorrections:paymentCorrections, billBaseline:billBaseline, trackBillChanges:trackBillChanges, billChanges:billChanges, discountRows:discountRows, discountReasonMissing:discountReasonMissing, cashExpected:cashExpected, cashCountRows:cashCountRows, paymentsMissingRef:paymentsMissingRef, releasedOwing:releasedOwing, docMoneyChecks:docMoneyChecks, moneyCheckData:moneyCheckData, voidedReceipts:voidedReceipts, cancelledJobs:cancelledJobs, voidsHoldingMoney:voidsHoldingMoney, docVoids:docVoids, paymentsDoc:paymentsDoc, pmsGateMissing:pmsGateMissing, jobsMissingInfo:jobsMissingInfo, pmsDefaultMechs:pmsDefaultMechs, pmsReadyToSubmit:pmsReadyToSubmit, PMS_TEMPLATE:function(){ return PMS_TEMPLATE; }, pmsSectionMissing:pmsSectionMissing, orSeriesInRange:orSeriesInRange, orRangeGaps:orRangeGaps, inRptRange:inRptRange, setRptRangeRaw:function(k,r){ RPT_RANGE[k]=r; }, docDiscounts:docDiscounts, warnIfPlateOnBoard:warnIfPlateOnBoard, plFor:plFor, opexFor:opexFor, payFor:payFor, monthlyPay:monthlyPay, addMonths:addMonths, syncCollections:syncCollections, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
+    jobDescriptionPanel:jobDescriptionPanel, jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fillVehicleBlanks:fillVehicleBlanks, openJobsForPlate:openJobsForPlate, correctPayment:correctPayment, overpaidJobs:overpaidJobs, paymentCorrections:paymentCorrections, billBaseline:billBaseline, trackBillChanges:trackBillChanges, billChanges:billChanges, discountRows:discountRows, discountReasonMissing:discountReasonMissing, cashExpected:cashExpected, cashCountRows:cashCountRows, paymentsMissingRef:paymentsMissingRef, releasedOwing:releasedOwing, docMoneyChecks:docMoneyChecks, moneyCheckData:moneyCheckData, voidedReceipts:voidedReceipts, cancelledJobs:cancelledJobs, voidsHoldingMoney:voidsHoldingMoney, docVoids:docVoids, paymentsDoc:paymentsDoc, pmsGateMissing:pmsGateMissing, jobsMissingInfo:jobsMissingInfo, lessVatApplied:lessVatApplied, discountEditor:discountEditor, pmsDefaultMechs:pmsDefaultMechs, pmsReadyToSubmit:pmsReadyToSubmit, PMS_TEMPLATE:function(){ return PMS_TEMPLATE; }, pmsSectionMissing:pmsSectionMissing, orSeriesInRange:orSeriesInRange, orRangeGaps:orRangeGaps, inRptRange:inRptRange, setRptRangeRaw:function(k,r){ RPT_RANGE[k]=r; }, docDiscounts:docDiscounts, warnIfPlateOnBoard:warnIfPlateOnBoard, plFor:plFor, opexFor:opexFor, payFor:payFor, monthlyPay:monthlyPay, addMonths:addMonths, syncCollections:syncCollections, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
     afterServiceMissing:afterServiceMissing, afterServiceDone:afterServiceDone, afterServiceStaff:afterServiceStaff,
     canWriteAfterService:canWriteAfterService, afterServiceSignerName:afterServiceSignerName, afterServiceBlock:afterServiceBlock,
     allocateSeriesNumber:allocateSeriesNumber, maxSeriesNo:maxSeriesNo, nextNo:nextNo,
