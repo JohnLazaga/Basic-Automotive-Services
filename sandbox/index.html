@@ -662,7 +662,7 @@ var BRANCH = {"id":"sandbox","slug":"sandbox","name":"Basic by JMSI — Sandbox 
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-10-13 · 7d81398';
+var APP_VERSION = 'v1.3.0 · 2026-10-13 · ff4aeee';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -3728,9 +3728,28 @@ function discountEditor(j, pre){
     '<div class="grid2">'+
     field('Discount on Parts (₱)','<input id="'+pre+'Parts" type="number" step="0.01" value="'+attr(Number(d.parts)||0)+'">')+
     field('Discount on Labor (₱)','<input id="'+pre+'Labor" type="number" step="0.01" value="'+attr(Number(d.labor)||0)+'">')+'</div>'+
-    '<div class="grid2">'+
-    field('Other discounts (₱)','<input id="'+pre+'Other" type="number" step="0.01" value="'+attr(other)+'">')+
-    field('Discount reason','<input id="'+pre+'Note" value="'+attr(note)+'" placeholder="e.g. suki, senior citizen, round off">','Required when there is a Parts, Labor or Other discount. Less VAT needs none.')+'</div>';
+    /* Only Parts and Labor discounts are offered. An older job that already holds
+       an Other amount (besides the VAT) keeps it in a box of its own, so saving
+       never silently drops it; set it to 0 to clear it for good. */
+    (other>0.009 ? field('Other discount (older entry) (₱)','<input id="'+pre+'Other" type="number" step="0.01" value="'+attr(other)+'">','From before Other was removed. Set to 0 to clear it.') : '')+
+    field('Discount reason', discountReasonPicker(pre, note),'Required when there is a Parts or Labor discount. Less VAT needs none.');
+}
+/* Reason dropdown, in the shop's order. OTHER opens a text box for the reason.
+   A saved reason that is not one of the set opens as OTHER with its text. */
+var DISCOUNT_REASONS = ['ROUND OFF','SUKI','SENIOR CITIZEN'];
+function discountReasonPicker(pre, note){
+  note=String(note||'').trim();
+  var up=note.toUpperCase(), sel = !note ? '' : (DISCOUNT_REASONS.indexOf(up)>=0 ? up : 'OTHER');
+  return '<select id="'+pre+'NoteSel" onchange="var t=document.getElementById(\''+pre+'Note\'); t.style.display=this.value===\'OTHER\'?\'\':\'none\'; if(this.value===\'OTHER\'){ t.focus(); }">'+
+      '<option value="">— select —</option>'+
+      DISCOUNT_REASONS.concat(['OTHER']).map(function(r){ return '<option'+(r===sel?' selected':'')+'>'+r+'</option>'; }).join('')+
+    '</select>'+
+    '<input id="'+pre+'Note" value="'+attr(sel==='OTHER'?note:'')+'" placeholder="type the reason" style="margin-top:6px'+(sel==='OTHER'?'':';display:none')+'">';
+}
+function readDiscountReason(pre){
+  var sel=val(pre+'NoteSel');
+  if(sel===undefined || sel===null) return val(pre+'Note')||'';          // no dropdown on screen (older form)
+  return sel==='OTHER' ? String(val(pre+'Note')||'').trim() : sel;
 }
 /* Kept for the reports and the stale-VAT check on older saved discounts. */
 function lessVatNoted(j){ return /\bVAT\b/i.test(String(((j && j.discount)||{}).otherNote||'')); }
@@ -3754,7 +3773,8 @@ function syncLessVatAll(){ ((typeof S!=='undefined' && S && S.jobs)||[]).forEach
 function readDiscount(pre){
   var box=(typeof document!=='undefined') ? document.getElementById(pre+'LessVat') : null;
   return { parts:Number(val(pre+'Parts'))||0, labor:Number(val(pre+'Labor'))||0,
-    other:Number(val(pre+'Other'))||0, otherNote:val(pre+'Note')||'', lessVat:!!(box && box.checked) };
+    other:Number(val(pre+'Other'))||0,   // '' when the Other box is not shown → 0
+    otherNote:readDiscountReason(pre), lessVat:!!(box && box.checked) };
 }
 function quickC3(id){ var j=jobById(id); j.status='C3'; j.statusLog.push({time:new Date().toISOString(),code:'C3',by:j.saId,note:'Release cleared, forward to billing.'}); persist(); toast('Status → C3'); render(); }
 
@@ -6680,7 +6700,7 @@ if (typeof module!=='undefined' && module.exports){
     scheduleNextService:scheduleNextService, clearNextService:clearNextService, alertStrip:alertStrip,
     jobVehicleLabel:jobVehicleLabel, replyRecipients:replyRecipients, unreadMessages:unreadMessages, messageStrip:messageStrip, myStaffIds:myStaffIds, messageAcked:messageAcked,
     buildLogEntry:buildLogEntry, logEntryFor:logEntryFor, jobStatusPanel:jobStatusPanel, lastLogForLabel:lastLogForLabel,
-    jobDescriptionPanel:jobDescriptionPanel, jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fillVehicleBlanks:fillVehicleBlanks, openJobsForPlate:openJobsForPlate, correctPayment:correctPayment, overpaidJobs:overpaidJobs, paymentCorrections:paymentCorrections, billBaseline:billBaseline, trackBillChanges:trackBillChanges, billChanges:billChanges, discountRows:discountRows, discountReasonMissing:discountReasonMissing, cashExpected:cashExpected, cashCountRows:cashCountRows, paymentsMissingRef:paymentsMissingRef, releasedOwing:releasedOwing, docMoneyChecks:docMoneyChecks, moneyCheckData:moneyCheckData, voidedReceipts:voidedReceipts, cancelledJobs:cancelledJobs, voidsHoldingMoney:voidsHoldingMoney, docVoids:docVoids, paymentsDoc:paymentsDoc, pmsGateMissing:pmsGateMissing, jobsMissingInfo:jobsMissingInfo, partNetMissing:partNetMissing, lessVatApplied:lessVatApplied, lessVatStale:lessVatStale, markLessVat:markLessVat, syncLessVat:syncLessVat, discVat:discVat, discountAmount:discountAmount, discountedLabor:discountedLabor, readDiscountObj:function(d){ return d; }, discountEditor:discountEditor, pmsDefaultMechs:pmsDefaultMechs, pmsReadyToSubmit:pmsReadyToSubmit, PMS_TEMPLATE:function(){ return PMS_TEMPLATE; }, pmsSectionMissing:pmsSectionMissing, orSeriesInRange:orSeriesInRange, orRangeGaps:orRangeGaps, inRptRange:inRptRange, setRptRangeRaw:function(k,r){ RPT_RANGE[k]=r; }, docDiscounts:docDiscounts, warnIfPlateOnBoard:warnIfPlateOnBoard, plFor:plFor, opexFor:opexFor, payFor:payFor, monthlyPay:monthlyPay, addMonths:addMonths, syncCollections:syncCollections, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
+    jobDescriptionPanel:jobDescriptionPanel, jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fillVehicleBlanks:fillVehicleBlanks, openJobsForPlate:openJobsForPlate, correctPayment:correctPayment, overpaidJobs:overpaidJobs, paymentCorrections:paymentCorrections, billBaseline:billBaseline, trackBillChanges:trackBillChanges, billChanges:billChanges, discountRows:discountRows, discountReasonMissing:discountReasonMissing, cashExpected:cashExpected, cashCountRows:cashCountRows, paymentsMissingRef:paymentsMissingRef, releasedOwing:releasedOwing, docMoneyChecks:docMoneyChecks, moneyCheckData:moneyCheckData, voidedReceipts:voidedReceipts, cancelledJobs:cancelledJobs, voidsHoldingMoney:voidsHoldingMoney, docVoids:docVoids, paymentsDoc:paymentsDoc, pmsGateMissing:pmsGateMissing, jobsMissingInfo:jobsMissingInfo, partNetMissing:partNetMissing, lessVatApplied:lessVatApplied, lessVatStale:lessVatStale, markLessVat:markLessVat, syncLessVat:syncLessVat, discVat:discVat, discountReasonPicker:discountReasonPicker, discountAmount:discountAmount, discountedLabor:discountedLabor, readDiscountObj:function(d){ return d; }, discountEditor:discountEditor, pmsDefaultMechs:pmsDefaultMechs, pmsReadyToSubmit:pmsReadyToSubmit, PMS_TEMPLATE:function(){ return PMS_TEMPLATE; }, pmsSectionMissing:pmsSectionMissing, orSeriesInRange:orSeriesInRange, orRangeGaps:orRangeGaps, inRptRange:inRptRange, setRptRangeRaw:function(k,r){ RPT_RANGE[k]=r; }, docDiscounts:docDiscounts, warnIfPlateOnBoard:warnIfPlateOnBoard, plFor:plFor, opexFor:opexFor, payFor:payFor, monthlyPay:monthlyPay, addMonths:addMonths, syncCollections:syncCollections, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
     afterServiceMissing:afterServiceMissing, afterServiceDone:afterServiceDone, afterServiceStaff:afterServiceStaff,
     canWriteAfterService:canWriteAfterService, afterServiceSignerName:afterServiceSignerName, afterServiceBlock:afterServiceBlock,
     allocateSeriesNumber:allocateSeriesNumber, maxSeriesNo:maxSeriesNo, nextNo:nextNo,
@@ -10277,7 +10297,7 @@ function discountReasonMissing(d, j){
   var real=(Number(d.parts)||0)+(Number(d.labor)||0)+(Number(d.other)||0);
   if(!d.lessVat && j && typeof runningBill==='function' && /\bVAT\b/i.test(String(d.otherNote||''))) real=Math.max(0, real-runningBill(j).vat);
   if(real>0.5 && !discountExtraReason(d.otherNote))
-    return 'Give the reason for the '+peso(round2(real))+' Parts / Labor / Other discount (e.g. SUKI, ROUND OFF) — Less VAT needs no reason';
+    return 'Pick the reason for the '+peso(round2(real))+' Parts / Labor discount (ROUND OFF, SUKI, SENIOR CITIZEN or OTHER) — Less VAT needs no reason';
   return '';
 }
 /* The part of a discount reason that is not just "less VAT" / "VAT". */
