@@ -662,7 +662,7 @@ var BRANCH = {"id":"sandbox","slug":"sandbox","name":"Basic by JMSI — Sandbox 
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-10-12 · 9b62a33';
+var APP_VERSION = 'v1.3.0 · 2026-10-13 · b962da7';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -2420,6 +2420,8 @@ function postJobMissingFields(j){
   if(!String(insp.condition||'').trim()) missing.push('Condition');
   if(!j.saId||j.saId==='TBA') missing.push('Service Adviser');
   if(!(j.mechanicIds||[]).filter(function(id){return id&&id!=='TBA';}).length) missing.push('Mechanic(s)');
+  var noNet=(j.lines||[]).filter(partNetMissing).map(function(l){ return l.desc||'part'; });   // e.g. converted from an estimate
+  if(noNet.length) missing.push('Net price on part'+(noNet.length>1?'s':'')+': '+noNet.join(', '));
   var pmsMiss=(typeof pmsGateMissing==='function') ? pmsGateMissing(j) : '';   // PMS checklist must be submitted (part14)
   if(pmsMiss) missing.push(pmsMiss);
   return missing;
@@ -2921,7 +2923,7 @@ function partFields(l){
     '</div>'+
     field('Part name','<input id="lnDesc" value="'+attr(l.desc||'')+'" placeholder="auto-fills from SKU, or type">')+
     '<div class="grid2">'+
-    field('Net price','<input id="lnNet" type="text" inputmode="decimal" value="'+attr(l.netPrice||0)+'" onfocus="this.select()">')+
+    field('Net price (required)','<input id="lnNet" type="text" inputmode="decimal" value="'+attr(l.netPrice||0)+'" onfocus="this.select()">')+
     field('SRP','<input id="lnPrice" type="text" inputmode="decimal" value="'+attr(l.price||0)+'" onfocus="this.select()">')+
     '</div><div id="skuMsg" class="muted small">'+catalogHint()+'</div>';
 }
@@ -2992,10 +2994,26 @@ function addLine(id,type){
 }
 /* Save the line but KEEP the dialog open, reset for the next line — so you can
    add line after line without leaving the box. (Enter on the last field does this.) */
+/* Every part needs its net price (what the shop paid). Without it the part
+   costs ₱0, so profit, margins and the P&L are overstated. Flags the box and
+   returns true when the line must not be saved. */
+function partNetMissing(l){ return !!l && l.type==='part' && !(Number(l.netPrice)>0); }
+function blockMissingNet(data){
+  if(!partNetMissing(data)) return false;
+  toast('Enter the net price (what the shop paid) for this part — it cannot be ₱0','err');
+  var el=document.getElementById('lnNet'), box=(el && el.closest) ? el.closest('.fld') : null;
+  if(box){ box.classList.add('needfill');
+    var clr=function(){ if(Number(val('lnNet'))>0){ box.classList.remove('needfill'); el.removeEventListener('input',clr); } };
+    el.addEventListener('input',clr);
+  }
+  if(el){ try{ el.focus(); el.select(); }catch(e){} }
+  return true;
+}
 function saveLineMore(){
   var j=jobById(lineCtx.job); if(!j) return;
   var data=readLine();
   if(!data.desc){ toast(data.type==='part'?'Part name required':'Description required','err'); return; }
+  if(blockMissingNet(data)) return;
   data.id=uid('ln'); j.lines.push(data); persist();
   toast('Added · '+data.desc);
   render();                                   // refresh the lines table behind the dialog
@@ -3026,6 +3044,7 @@ function readLine(){
 function saveLine(){
   var j=jobById(lineCtx.job); var data=readLine();
   if(!data.desc){ toast(data.type==='part'?'Part name required':'Description required','err'); return; }
+  if(blockMissingNet(data)) return;
   if(lineCtx.line){ var l=j.lines.find(function(x){return x.id===lineCtx.line;}); Object.assign(l,data); }
   else { data.id=uid('ln'); j.lines.push(data); }
   persist(); closeModal(); render();
@@ -3742,7 +3761,8 @@ function advancePostJob(id){
       missingChecklist(missing)+
       '<p class="muted small">Fill these in <b>Job Details → Edit</b> (or Check-in / Assignment), then try again.</p>'+
       ((typeof pmsGateMissing==='function' && pmsGateMissing(j)) ? '<p class="muted small"><b>PMS:</b> finish the inspection on the tablet (<b>PMS Queue</b>) and submit it. '+
-        'If no PMS is being done on this job, remove the PMS labor line instead.</p>' : ''),
+        'If no PMS is being done on this job, remove the PMS labor line instead.</p>' : '')+
+      ((j.lines||[]).some(partNetMissing) ? '<p class="muted small"><b>Net price:</b> open each listed part with ✎ in the Parts panel and enter what the shop paid for it.</p>' : ''),
       { footer:'<button class="btn ghost" onclick="closeModal()">Close</button>'+
         '<button class="btn primary" onclick="closeModal();editJobDetails(\''+j.id+'\')">Edit Job Details</button>', width:'520px' });
     return;
@@ -4155,6 +4175,7 @@ function saveEstLineMore(){
   var e=estById(estLineCtx.est); if(!e) return;
   var data=readLine();
   if(!data.desc){ toast(data.type==='part'?'Part name required':'Description required','err'); return; }
+  if(blockMissingNet(data)) return;   // parts always carry a net price (part4)
   data.id=uid('ln'); e.lines.push(data); persist();
   toast('Added · '+data.desc);
   render();                                   // refresh the lines table behind the dialog
@@ -4166,6 +4187,7 @@ function saveEstLineMore(){
 function saveEstLine(){
   var e=estById(estLineCtx.est); var data=readLine();
   if(!data.desc){ toast(data.type==='part'?'Part name required':'Description required','err'); return; }
+  if(blockMissingNet(data)) return;   // parts always carry a net price (part4)
   if(estLineCtx.line){ var l=e.lines.find(function(x){return x.id===estLineCtx.line;}); Object.assign(l,data); }
   else { data.id=uid('ln'); e.lines.push(data); }
   persist(); closeModal(); render();
@@ -4176,7 +4198,7 @@ function convertEstimate(id){
   var e=estById(id);
   warnIfPlateOnBoard(e.plate, function(){ createJob({ plate:e.plate, owner:e.owner, contactPerson:e.contactPerson, contactNumber:e.contactNumber,
     year:e.year, make:e.make, model:e.model, odometer:e.odometer, assessedBy:e.assessedBy, saId:e.approvedSA, notes:e.notes,
-    lines: e.lines.map(function(l){ return { id:uid('ln'), type:l.type, ref:l.ref, desc:l.desc, qty:l.qty, price:l.price }; }) })
+    lines: e.lines.map(function(l){ return { id:uid('ln'), type:l.type, ref:l.ref, sku:l.sku||'', netPrice:l.netPrice||0, desc:l.desc, qty:l.qty, price:l.price }; }) })
   .then(function(job){
     e.status='Converted'; persist();
     toast('Converted to '+job.no); go('job', job.id);
@@ -6651,7 +6673,7 @@ if (typeof module!=='undefined' && module.exports){
     scheduleNextService:scheduleNextService, clearNextService:clearNextService, alertStrip:alertStrip,
     jobVehicleLabel:jobVehicleLabel, replyRecipients:replyRecipients, unreadMessages:unreadMessages, messageStrip:messageStrip, myStaffIds:myStaffIds, messageAcked:messageAcked,
     buildLogEntry:buildLogEntry, logEntryFor:logEntryFor, jobStatusPanel:jobStatusPanel, lastLogForLabel:lastLogForLabel,
-    jobDescriptionPanel:jobDescriptionPanel, jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fillVehicleBlanks:fillVehicleBlanks, openJobsForPlate:openJobsForPlate, correctPayment:correctPayment, overpaidJobs:overpaidJobs, paymentCorrections:paymentCorrections, billBaseline:billBaseline, trackBillChanges:trackBillChanges, billChanges:billChanges, discountRows:discountRows, discountReasonMissing:discountReasonMissing, cashExpected:cashExpected, cashCountRows:cashCountRows, paymentsMissingRef:paymentsMissingRef, releasedOwing:releasedOwing, docMoneyChecks:docMoneyChecks, moneyCheckData:moneyCheckData, voidedReceipts:voidedReceipts, cancelledJobs:cancelledJobs, voidsHoldingMoney:voidsHoldingMoney, docVoids:docVoids, paymentsDoc:paymentsDoc, pmsGateMissing:pmsGateMissing, jobsMissingInfo:jobsMissingInfo, lessVatApplied:lessVatApplied, discountEditor:discountEditor, pmsDefaultMechs:pmsDefaultMechs, pmsReadyToSubmit:pmsReadyToSubmit, PMS_TEMPLATE:function(){ return PMS_TEMPLATE; }, pmsSectionMissing:pmsSectionMissing, orSeriesInRange:orSeriesInRange, orRangeGaps:orRangeGaps, inRptRange:inRptRange, setRptRangeRaw:function(k,r){ RPT_RANGE[k]=r; }, docDiscounts:docDiscounts, warnIfPlateOnBoard:warnIfPlateOnBoard, plFor:plFor, opexFor:opexFor, payFor:payFor, monthlyPay:monthlyPay, addMonths:addMonths, syncCollections:syncCollections, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
+    jobDescriptionPanel:jobDescriptionPanel, jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fillVehicleBlanks:fillVehicleBlanks, openJobsForPlate:openJobsForPlate, correctPayment:correctPayment, overpaidJobs:overpaidJobs, paymentCorrections:paymentCorrections, billBaseline:billBaseline, trackBillChanges:trackBillChanges, billChanges:billChanges, discountRows:discountRows, discountReasonMissing:discountReasonMissing, cashExpected:cashExpected, cashCountRows:cashCountRows, paymentsMissingRef:paymentsMissingRef, releasedOwing:releasedOwing, docMoneyChecks:docMoneyChecks, moneyCheckData:moneyCheckData, voidedReceipts:voidedReceipts, cancelledJobs:cancelledJobs, voidsHoldingMoney:voidsHoldingMoney, docVoids:docVoids, paymentsDoc:paymentsDoc, pmsGateMissing:pmsGateMissing, jobsMissingInfo:jobsMissingInfo, partNetMissing:partNetMissing, lessVatApplied:lessVatApplied, discountEditor:discountEditor, pmsDefaultMechs:pmsDefaultMechs, pmsReadyToSubmit:pmsReadyToSubmit, PMS_TEMPLATE:function(){ return PMS_TEMPLATE; }, pmsSectionMissing:pmsSectionMissing, orSeriesInRange:orSeriesInRange, orRangeGaps:orRangeGaps, inRptRange:inRptRange, setRptRangeRaw:function(k,r){ RPT_RANGE[k]=r; }, docDiscounts:docDiscounts, warnIfPlateOnBoard:warnIfPlateOnBoard, plFor:plFor, opexFor:opexFor, payFor:payFor, monthlyPay:monthlyPay, addMonths:addMonths, syncCollections:syncCollections, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
     afterServiceMissing:afterServiceMissing, afterServiceDone:afterServiceDone, afterServiceStaff:afterServiceStaff,
     canWriteAfterService:canWriteAfterService, afterServiceSignerName:afterServiceSignerName, afterServiceBlock:afterServiceBlock,
     allocateSeriesNumber:allocateSeriesNumber, maxSeriesNo:maxSeriesNo, nextNo:nextNo,
