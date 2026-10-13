@@ -662,7 +662,7 @@ var BRANCH = {"id":"commonwealth","slug":"commonwealth","name":"Basic by JMSI �
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-10-13 · 97ec7af';
+var APP_VERSION = 'v1.3.0 · 2026-10-13 · 7d81398';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -798,14 +798,20 @@ function jobSubtotal(job){
 function discParts(job){ var d=(job&&job.discount)||{}; return round2(Number(d.parts)||0); }
 function discLabor(job){ var d=(job&&job.discount)||{}; return round2(Number(d.labor)||0); }
 function discOther(job){ var d=(job&&job.discount)||{}; return round2(Number(d.other)||0); }
+/* Less VAT is its own switch (discount.lessVat), not an amount typed into Other:
+   it always equals the bill's CURRENT VAT, so editing prices can never leave it
+   stale, and Other stays free for real discounts. Older discounts that put the
+   VAT inside Other still add up exactly as before. */
+function jobVat(job){ return round2(jobSubtotal(job) - jobNet(job)); }
+function discVat(job){ var d=(job&&job.discount)||{}; return d.lessVat ? jobVat(job) : 0; }
 /* Sum of the value-based buckets, with backward compatibility for the old
    {type, value} shape (treated as a single consolidated amount). */
 function discountRaw(job){
   // Warranty comeback: no charge — the whole Total Amount Due is written off.
   if (job && job.warranty) return jobSubtotal(job);
   var d = job && job.discount; if(!d) return 0;
-  if (d.parts!==undefined || d.labor!==undefined || d.other!==undefined){
-    return round2((Number(d.parts)||0)+(Number(d.labor)||0)+(Number(d.other)||0));
+  if (d.parts!==undefined || d.labor!==undefined || d.other!==undefined || d.lessVat){
+    return round2((Number(d.parts)||0)+(Number(d.labor)||0)+(Number(d.other)||0)+discVat(job));
   }
   var base = jobSubtotal(job);                    // legacy {type,value}
   if (d.type==='percent') return round2(base * (Number(d.value)||0)/100);
@@ -3699,7 +3705,7 @@ function billingEditBlock(j){
 function saveBillingEdits(id){
   if(!can('billing_edit')){ toast('Not permitted','err'); return; }
   var j=jobById(id);
-  var dd=markLessVat(readDiscount('bd'), j), dm=discountReasonMissing(dd, j);
+  var dd=markLessVat(readDiscount('bd')), dm=discountReasonMissing(dd, j);
   if(dm){ toast(dm,'err'); return; }
   if(JSON.stringify(dd)!==JSON.stringify(j.discount||{})) stampDiscount(j);
   j.discount=dd;
@@ -3709,76 +3715,46 @@ function saveBillingEdits(id){
 /* Value-based discount editor: consolidated Parts, Labor and Other buckets
    plus a free-text reference note. `pre` is the input-id prefix. */
 function discountEditor(j, pre){
-  var d=j.discount||{};
-  return '<div class="grid2">'+
+  var d=j.discount||{}, vat=runningBill(j).vat;
+  /* Older discounts carried the VAT inside Other. Show them the new way: the
+     Less VAT box ticked and Other without the VAT; saving stores the new form. */
+  var legacyVat = (!d.lessVat && lessVatNoted(j)) ? Math.min(lessVatPart(j), Number(d.other)||0) : 0;
+  var vatOn = !!d.lessVat || legacyVat>0;
+  var other = round2((Number(d.other)||0) - legacyVat);
+  var note = String(d.otherNote||'');
+  if(vatOn) note = note.replace(/less\s*vat|\bvat\b/ig,'').replace(/^[\s·,\-]+|[\s·,\-]+$/g,'');
+  return (vat>0 ? '<div style="margin:4px 0 10px"><label class="chk" style="font-weight:600"><input type="checkbox" id="'+pre+'LessVat"'+(vatOn?' checked':'')+'> '+
+      'Less VAT ('+peso(vat)+')</label><div class="muted small">Follows the bill if prices change. No reason needed.</div></div>' : '')+
+    '<div class="grid2">'+
     field('Discount on Parts (₱)','<input id="'+pre+'Parts" type="number" step="0.01" value="'+attr(Number(d.parts)||0)+'">')+
     field('Discount on Labor (₱)','<input id="'+pre+'Labor" type="number" step="0.01" value="'+attr(Number(d.labor)||0)+'">')+'</div>'+
     '<div class="grid2">'+
-    field('Other discounts (₱)','<input id="'+pre+'Other" type="number" step="0.01" value="'+attr(Number(d.other)||0)+'">')+
-    field('Discount reason','<input id="'+pre+'Note" value="'+attr(d.otherNote||'')+'" placeholder="e.g. senior citizen, promo, suki">','Required for any discount. Anything beyond the VAT needs its own reason too — e.g. LESS VAT · ROUND OFF.')+'</div>'+
-    lessVatControl(j, pre);
+    field('Other discounts (₱)','<input id="'+pre+'Other" type="number" step="0.01" value="'+attr(other)+'">')+
+    field('Discount reason','<input id="'+pre+'Note" value="'+attr(note)+'" placeholder="e.g. suki, senior citizen, round off">','Required when there is a Parts, Labor or Other discount. Less VAT needs none.')+'</div>';
 }
-/* Less VAT is applied once. "Applied" means the discount's VAT part matches the
-   bill's CURRENT VAT. When it no longer does (the bill changed after Less VAT —
-   Fairview JO-0905: parts repriced, discount stuck at the old VAT and could not
-   be fixed), the button comes back as "Update Less VAT". */
+/* Kept for the reports and the stale-VAT check on older saved discounts. */
 function lessVatNoted(j){ return /\bVAT\b/i.test(String(((j && j.discount)||{}).otherNote||'')); }
-/* The VAT amount the discount currently carries: the recorded vatPart, or — for
-   discounts saved before vatPart existed — the whole Other discount. */
 function lessVatPart(j){ var d=(j && j.discount)||{}; return d.vatPart>0 ? Number(d.vatPart) : (Number(d.other)||0); }
 function lessVatApplied(j){
+  var d=(j && j.discount)||{}; if(d.lessVat) return runningBill(j).vat>0;
   var vat=runningBill(j).vat;
   return vat>0 && lessVatNoted(j) && Math.abs(lessVatPart(j)-vat) <= 0.5;
 }
-function lessVatStale(j){ return runningBill(j).vat>0 && lessVatNoted(j) && lessVatPart(j)>0 && !lessVatApplied(j); }
-function lessVatControl(j, pre){
-  var vat=runningBill(j).vat; if(!(vat>0)) return '';
-  if(lessVatApplied(j)) return '<span class="chip ok" id="'+pre+'LessVat">✓ Less VAT applied ('+peso(vat)+')</span> ';
-  var label = lessVatStale(j) ? 'Update Less VAT to '+peso(vat)+' (was '+peso(lessVatPart(j))+')' : 'Less VAT ('+peso(vat)+')';
-  return '<button type="button" class="btn sm ghost" id="'+pre+'LessVat" onclick="fillLessVat(\''+pre+'\',\''+j.id+'\')">'+label+'</button> ';
-}
-/* On save: record how much of Other discounts is the VAT, so it can follow the
-   bill (syncLessVat). Only when the reason says VAT and Other covers the VAT. */
-function markLessVat(dd, j){
-  var vat=runningBill(j).vat, other=Number(dd.other)||0;
-  if(vat>0 && /\bVAT\b/i.test(String(dd.otherNote||'')) && other >= vat-0.5) dd.vatPart = round2(Math.min(other, vat));
-  else delete dd.vatPart;
-  return dd;
-}
-/* Keep the VAT part of a Less VAT discount equal to the bill's current VAT when
-   lines change. Anything given beyond the VAT stays as it was. Runs from
-   persist(); only jobs that carry vatPart are touched. */
+function lessVatStale(j){ var d=(j && j.discount)||{}; return !d.lessVat && runningBill(j).vat>0 && lessVatNoted(j) && lessVatPart(j)>0 && !lessVatApplied(j); }
+/* Older saves only: keep a recorded VAT part in step with the bill (new saves use lessVat). */
+function markLessVat(dd){ delete dd.vatPart; return dd; }
 function syncLessVat(j){
-  var d=j && j.discount; if(!d || !(d.vatPart>0)) return false;
+  var d=j && j.discount; if(!d || d.lessVat || !(d.vatPart>0)) return false;
   var vat=runningBill(j).vat;
   if(Math.abs(vat - d.vatPart) < 0.005) return false;
   d.other = round2(Math.max(0, (Number(d.other)||0) - d.vatPart + vat)); d.vatPart = vat;
   return true;
 }
 function syncLessVatAll(){ ((typeof S!=='undefined' && S && S.jobs)||[]).forEach(syncLessVat); }
-/* One tap for the shop's everyday case: put this bill's VAT in Other discounts
-   and "LESS VAT" in the reason. Fills the boxes only — Apply / Create still
-   saves. Any other reason already typed is kept after it. */
-var LESS_VAT = 'LESS VAT';
-function fillLessVat(pre, id){
-  var j=jobById(id); if(!j) return;
-  var btn=(typeof document!=='undefined') ? document.getElementById(pre+'LessVat') : null;
-  if(lessVatApplied(j) || (btn && btn.getAttribute('data-done'))){ toast('Less VAT is already applied to this bill','err'); return; }
-  var vat=runningBill(j).vat, d=j.discount||{};
-  /* Updating a stale Less VAT: swap the old VAT part for the current VAT and keep
-     any extra that was in Other on top of it. */
-  var extra = (lessVatStale(j) && d.vatPart>0) ? Math.max(0, (Number(d.other)||0) - d.vatPart) : 0;
-  setVal(pre+'Other', round2(vat + extra));
-  var note=String(val(pre+'Note')||'').trim();
-  if(note.toUpperCase().indexOf(LESS_VAT)<0) setVal(pre+'Note', note ? LESS_VAT+' · '+note : LESS_VAT);
-  if(btn){   // one tap only — the button becomes a label until the form is saved or reopened
-    btn.setAttribute('data-done','1'); btn.disabled=true;
-    btn.textContent='✓ Less VAT added — tap Apply to save';
-  }
-}
 function readDiscount(pre){
+  var box=(typeof document!=='undefined') ? document.getElementById(pre+'LessVat') : null;
   return { parts:Number(val(pre+'Parts'))||0, labor:Number(val(pre+'Labor'))||0,
-    other:Number(val(pre+'Other'))||0, otherNote:val(pre+'Note')||'' };
+    other:Number(val(pre+'Other'))||0, otherNote:val(pre+'Note')||'', lessVat:!!(box && box.checked) };
 }
 function quickC3(id){ var j=jobById(id); j.status='C3'; j.statusLog.push({time:new Date().toISOString(),code:'C3',by:j.saId,note:'Release cleared, forward to billing.'}); persist(); toast('Status → C3'); render(); }
 
@@ -3809,7 +3785,7 @@ function deductInventory(j){
   (j.lines||[]).forEach(function(l){ if(l.type==='part'&&l.ref){ var p=partById(l.ref); if(p){ p.stock=round2((p.stock||0)-(Number(l.qty)||0)); } } });
   j.inventoryDeducted=true;
 }
-function applyDiscount(id){ var j=jobById(id); var dd=markLessVat(readDiscount('dsc'), j), dm=discountReasonMissing(dd, j);
+function applyDiscount(id){ var j=jobById(id); var dd=markLessVat(readDiscount('dsc')), dm=discountReasonMissing(dd, j);
   if(dm){ toast(dm,'err'); return; }
   if(JSON.stringify(dd)!==JSON.stringify(j.discount||{})) stampDiscount(j);
   j.discount=dd; persist(); toast('Discount applied'); render(); }
@@ -3887,7 +3863,7 @@ function advanceBilling(id){
   if(!sup || sup.role!=='SV'){ toast('Select the approving Supervisor first','err'); return; }
   var sec=staffById(j.paymentReceivedBy);
   if(!sec || sec.role!=='Secretary'){ toast('Enter the Secretary who received payment first','err'); return; }
-  var dsc=document.getElementById('dscParts') ? markLessVat(readDiscount('dsc'), j) : null;
+  var dsc=document.getElementById('dscParts') ? markLessVat(readDiscount('dsc')) : null;
   if(dsc && discountReasonMissing(dsc, j)){ toast(discountReasonMissing(dsc, j),'err'); return; }
   if(_issuingOR[id]) return;                                     // in-flight guard (prevents double-click gaps)
   _issuingOR[id]=true;
@@ -5928,9 +5904,10 @@ function totalsBox(j,opts){
     // Itemise the discount into Parts / Labor / Other when the job uses the
     // per-bucket model AND the buckets sum to the applied discount (i.e. it
     // wasn't capped at the subtotal). Otherwise fall back to one Discount line.
-    var d=j.discount||{}, dp=discParts(j), dl=discLabor(j), doo=discOther(j);
-    var hasBuckets=(d.parts!==undefined||d.labor!==undefined||d.other!==undefined);
-    if(hasBuckets && round2(dp+dl+doo)===b.disc){
+    var d=j.discount||{}, dp=discParts(j), dl=discLabor(j), doo=discOther(j), dv=discVat(j);
+    var hasBuckets=(d.parts!==undefined||d.labor!==undefined||d.other!==undefined||d.lessVat);
+    if(hasBuckets && round2(dp+dl+doo+dv)===b.disc){
+      if(dv) rows+='<div class="l2"><span>Less: VAT</span><span>−'+peso(dv)+'</span></div>';
       if(dp) rows+='<div class="l2"><span>Less: Parts discount</span><span>−'+peso(dp)+'</span></div>';
       if(dl) rows+='<div class="l2"><span>Less: Labor discount</span><span>−'+peso(dl)+'</span></div>';
       if(doo) rows+='<div class="l2"><span>Less: Other discount'+(d.otherNote?(' — '+esc(d.otherNote)):'')+'</span><span>−'+peso(doo)+'</span></div>';
@@ -6703,7 +6680,7 @@ if (typeof module!=='undefined' && module.exports){
     scheduleNextService:scheduleNextService, clearNextService:clearNextService, alertStrip:alertStrip,
     jobVehicleLabel:jobVehicleLabel, replyRecipients:replyRecipients, unreadMessages:unreadMessages, messageStrip:messageStrip, myStaffIds:myStaffIds, messageAcked:messageAcked,
     buildLogEntry:buildLogEntry, logEntryFor:logEntryFor, jobStatusPanel:jobStatusPanel, lastLogForLabel:lastLogForLabel,
-    jobDescriptionPanel:jobDescriptionPanel, jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fillVehicleBlanks:fillVehicleBlanks, openJobsForPlate:openJobsForPlate, correctPayment:correctPayment, overpaidJobs:overpaidJobs, paymentCorrections:paymentCorrections, billBaseline:billBaseline, trackBillChanges:trackBillChanges, billChanges:billChanges, discountRows:discountRows, discountReasonMissing:discountReasonMissing, cashExpected:cashExpected, cashCountRows:cashCountRows, paymentsMissingRef:paymentsMissingRef, releasedOwing:releasedOwing, docMoneyChecks:docMoneyChecks, moneyCheckData:moneyCheckData, voidedReceipts:voidedReceipts, cancelledJobs:cancelledJobs, voidsHoldingMoney:voidsHoldingMoney, docVoids:docVoids, paymentsDoc:paymentsDoc, pmsGateMissing:pmsGateMissing, jobsMissingInfo:jobsMissingInfo, partNetMissing:partNetMissing, lessVatApplied:lessVatApplied, lessVatStale:lessVatStale, markLessVat:markLessVat, syncLessVat:syncLessVat, discountEditor:discountEditor, pmsDefaultMechs:pmsDefaultMechs, pmsReadyToSubmit:pmsReadyToSubmit, PMS_TEMPLATE:function(){ return PMS_TEMPLATE; }, pmsSectionMissing:pmsSectionMissing, orSeriesInRange:orSeriesInRange, orRangeGaps:orRangeGaps, inRptRange:inRptRange, setRptRangeRaw:function(k,r){ RPT_RANGE[k]=r; }, docDiscounts:docDiscounts, warnIfPlateOnBoard:warnIfPlateOnBoard, plFor:plFor, opexFor:opexFor, payFor:payFor, monthlyPay:monthlyPay, addMonths:addMonths, syncCollections:syncCollections, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
+    jobDescriptionPanel:jobDescriptionPanel, jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fillVehicleBlanks:fillVehicleBlanks, openJobsForPlate:openJobsForPlate, correctPayment:correctPayment, overpaidJobs:overpaidJobs, paymentCorrections:paymentCorrections, billBaseline:billBaseline, trackBillChanges:trackBillChanges, billChanges:billChanges, discountRows:discountRows, discountReasonMissing:discountReasonMissing, cashExpected:cashExpected, cashCountRows:cashCountRows, paymentsMissingRef:paymentsMissingRef, releasedOwing:releasedOwing, docMoneyChecks:docMoneyChecks, moneyCheckData:moneyCheckData, voidedReceipts:voidedReceipts, cancelledJobs:cancelledJobs, voidsHoldingMoney:voidsHoldingMoney, docVoids:docVoids, paymentsDoc:paymentsDoc, pmsGateMissing:pmsGateMissing, jobsMissingInfo:jobsMissingInfo, partNetMissing:partNetMissing, lessVatApplied:lessVatApplied, lessVatStale:lessVatStale, markLessVat:markLessVat, syncLessVat:syncLessVat, discVat:discVat, discountAmount:discountAmount, discountedLabor:discountedLabor, readDiscountObj:function(d){ return d; }, discountEditor:discountEditor, pmsDefaultMechs:pmsDefaultMechs, pmsReadyToSubmit:pmsReadyToSubmit, PMS_TEMPLATE:function(){ return PMS_TEMPLATE; }, pmsSectionMissing:pmsSectionMissing, orSeriesInRange:orSeriesInRange, orRangeGaps:orRangeGaps, inRptRange:inRptRange, setRptRangeRaw:function(k,r){ RPT_RANGE[k]=r; }, docDiscounts:docDiscounts, warnIfPlateOnBoard:warnIfPlateOnBoard, plFor:plFor, opexFor:opexFor, payFor:payFor, monthlyPay:monthlyPay, addMonths:addMonths, syncCollections:syncCollections, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
     afterServiceMissing:afterServiceMissing, afterServiceDone:afterServiceDone, afterServiceStaff:afterServiceStaff,
     canWriteAfterService:canWriteAfterService, afterServiceSignerName:afterServiceSignerName, afterServiceBlock:afterServiceBlock,
     allocateSeriesNumber:allocateSeriesNumber, maxSeriesNo:maxSeriesNo, nextNo:nextNo,
@@ -10294,14 +10271,13 @@ function stampDiscount(j){
 /* A discount needs a reason from now on — an unexplained discount is the
    easiest place for money to go missing. Returns an error message or ''. */
 function discountReasonMissing(d, j){
-  var total=(Number(d.parts)||0)+(Number(d.labor)||0)+(Number(d.other)||0);
-  if(total>0 && !String(d.otherNote||'').trim()) return 'Give the reason for the discount (e.g. senior citizen, promo, suki)';
-  /* Beyond the VAT, "LESS VAT" alone explains nothing — staff were rounding
-     prices down with an extra labor discount and labelling it only LESS VAT
-     (Fairview JO-1060/1068/1073, Commonwealth JO-0486, Oct 2026). */
-  var vat=(j && typeof runningBill==='function') ? runningBill(j).vat : 0;
-  if(j && vat>0 && total>vat+0.5 && !discountExtraReason(d.otherNote))
-    return 'This discount is '+peso(round2(total-vat))+' more than the VAT — add why, e.g. "LESS VAT · ROUND OFF" or "LESS VAT · SUKI"';
+  /* Less VAT is a switch and needs no reason. A Parts / Labor / Other discount
+     does — and "VAT" alone does not explain it. Older saves that carried the VAT
+     inside Other: only the part beyond the VAT counts here. */
+  var real=(Number(d.parts)||0)+(Number(d.labor)||0)+(Number(d.other)||0);
+  if(!d.lessVat && j && typeof runningBill==='function' && /\bVAT\b/i.test(String(d.otherNote||''))) real=Math.max(0, real-runningBill(j).vat);
+  if(real>0.5 && !discountExtraReason(d.otherNote))
+    return 'Give the reason for the '+peso(round2(real))+' Parts / Labor / Other discount (e.g. SUKI, ROUND OFF) — Less VAT needs no reason';
   return '';
 }
 /* The part of a discount reason that is not just "less VAT" / "VAT". */
@@ -10316,7 +10292,7 @@ function discountRows(r){
     return !jobCancelled(j) && inRptRange(localDay(j.billedAt||''), r) && (discountAmount(j)>0.009 || j.warranty);
   }).map(function(j){
     var d=j.discount||{}, disc=discountAmount(j), due=jobGross(j), vat=runningBill(j).vat;
-    var reason=j.warranty ? 'Warranty — no charge' : String(d.otherNote||'').trim();
+    var reason=j.warranty ? 'Warranty — no charge' : [d.lessVat?'LESS VAT':'', String(d.otherNote||'').trim()].filter(Boolean).join(' · ');
     /* Most jobs have the VAT discounted back out ("LESS VAT"). That is not a
        real discount, so it is split out: `beyond` is what was given ON TOP of
        the VAT, and a discount equal to the VAT is lessVat — whether or not it
