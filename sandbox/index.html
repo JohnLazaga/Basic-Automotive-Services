@@ -583,6 +583,14 @@ a.lnk{color:var(--brand);cursor:pointer;font-weight:600}
 /* PMS sign-off: the "not saved until you tap Complete PMS" banner — must be impossible to miss */
 .pms-laststep{margin:0 0 12px;padding:12px 14px;border-radius:12px;font-size:15px;line-height:1.4;background:#fdecec;color:#7a0d0d;border:1.5px solid #f2a7a7}
 [data-theme="dark"] .pms-laststep{background:rgba(242,23,23,.16);color:#ffb4b4;border-color:rgba(242,23,23,.45)}
+
+/* Pipeline discount: the Less VAT tick box — big enough not to be missed */
+.lessvat-box{display:flex;align-items:center;gap:12px;margin:4px 0 12px;padding:12px 14px;border:2px solid var(--brand);border-radius:12px;background:var(--brand-tint);cursor:pointer}
+.lessvat-box input{width:26px;height:26px;flex:none;margin:0;accent-color:var(--brand);cursor:pointer}
+.lessvat-box b{display:block;font-size:16px}
+.lessvat-box.on{background:#e3f7ea;border-color:#34c759}
+.lessvat-box.on input{accent-color:#1a7a3c}
+[data-theme="dark"] .lessvat-box.on{background:rgba(52,199,89,.16);border-color:#34c759}
 </style>
 </head>
 <body>
@@ -662,7 +670,7 @@ var BRANCH = {"id":"sandbox","slug":"sandbox","name":"Basic by JMSI — Sandbox 
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-10-13 · ff4aeee';
+var APP_VERSION = 'v1.3.0 · 2026-10-13 · f19caf2';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -3723,8 +3731,9 @@ function discountEditor(j, pre){
   var other = round2((Number(d.other)||0) - legacyVat);
   var note = String(d.otherNote||'');
   if(vatOn) note = note.replace(/less\s*vat|\bvat\b/ig,'').replace(/^[\s·,\-]+|[\s·,\-]+$/g,'');
-  return (vat>0 ? '<div style="margin:4px 0 10px"><label class="chk" style="font-weight:600"><input type="checkbox" id="'+pre+'LessVat"'+(vatOn?' checked':'')+'> '+
-      'Less VAT ('+peso(vat)+')</label><div class="muted small">Follows the bill if prices change. No reason needed.</div></div>' : '')+
+  return (vat>0 ? '<label class="lessvat-box'+(vatOn?' on':'')+'"><input type="checkbox" id="'+pre+'LessVat"'+(vatOn?' checked':'')+
+      ' onchange="this.parentNode.classList.toggle(\'on\',this.checked)">'+
+      '<span><b>Less VAT ('+peso(vat)+')</b><span class="muted small">Follows the bill if prices change. No reason needed.</span></span></label>' : '')+
     '<div class="grid2">'+
     field('Discount on Parts (₱)','<input id="'+pre+'Parts" type="number" step="0.01" value="'+attr(Number(d.parts)||0)+'">')+
     field('Discount on Labor (₱)','<input id="'+pre+'Labor" type="number" step="0.01" value="'+attr(Number(d.labor)||0)+'">')+'</div>'+
