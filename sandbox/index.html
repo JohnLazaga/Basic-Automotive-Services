@@ -670,7 +670,7 @@ var BRANCH = {"id":"sandbox","slug":"sandbox","name":"Basic by JMSI — Sandbox 
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-10-14 · 655a7a8';
+var APP_VERSION = 'v1.3.0 · 2026-10-14 · 7e8af9f';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -6726,7 +6726,7 @@ if (typeof module!=='undefined' && module.exports){
     scheduleNextService:scheduleNextService, clearNextService:clearNextService, alertStrip:alertStrip,
     jobVehicleLabel:jobVehicleLabel, replyRecipients:replyRecipients, unreadMessages:unreadMessages, messageStrip:messageStrip, myStaffIds:myStaffIds, messageAcked:messageAcked,
     buildLogEntry:buildLogEntry, logEntryFor:logEntryFor, jobStatusPanel:jobStatusPanel, lastLogForLabel:lastLogForLabel,
-    jobDescriptionPanel:jobDescriptionPanel, jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fillVehicleBlanks:fillVehicleBlanks, openJobsForPlate:openJobsForPlate, correctPayment:correctPayment, overpaidJobs:overpaidJobs, paymentCorrections:paymentCorrections, billBaseline:billBaseline, trackBillChanges:trackBillChanges, billChanges:billChanges, discountRows:discountRows, discountReasonMissing:discountReasonMissing, cashExpected:cashExpected, cashCountRows:cashCountRows, paymentsMissingRef:paymentsMissingRef, releasedOwing:releasedOwing, docMoneyChecks:docMoneyChecks, moneyCheckData:moneyCheckData, voidedReceipts:voidedReceipts, cancelledJobs:cancelledJobs, voidsHoldingMoney:voidsHoldingMoney, docVoids:docVoids, addPayAdj:addPayAdj, payAdjInPeriod:payAdjInPeriod, netPayoutRows:netPayoutRows, docPayout:docPayout, docMechCommission:docMechCommission, setProdPeriod:function(p,f,t){ PROD_PERIOD=p; PROD_FROM=f||''; PROD_TO=t||''; }, paymentsDoc:paymentsDoc, pmsGateMissing:pmsGateMissing, jobsMissingInfo:jobsMissingInfo, partNetMissing:partNetMissing, lessVatApplied:lessVatApplied, lessVatStale:lessVatStale, markLessVat:markLessVat, syncLessVat:syncLessVat, discVat:discVat, discountReasonPicker:discountReasonPicker, discountAmount:discountAmount, discountedLabor:discountedLabor, readDiscountObj:function(d){ return d; }, discountEditor:discountEditor, pmsDefaultMechs:pmsDefaultMechs, pmsReadyToSubmit:pmsReadyToSubmit, PMS_TEMPLATE:function(){ return PMS_TEMPLATE; }, pmsSectionMissing:pmsSectionMissing, orSeriesInRange:orSeriesInRange, orRangeGaps:orRangeGaps, inRptRange:inRptRange, setRptRangeRaw:function(k,r){ RPT_RANGE[k]=r; }, docDiscounts:docDiscounts, warnIfPlateOnBoard:warnIfPlateOnBoard, plFor:plFor, opexFor:opexFor, payFor:payFor, monthlyPay:monthlyPay, addMonths:addMonths, syncCollections:syncCollections, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
+    jobDescriptionPanel:jobDescriptionPanel, jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fillVehicleBlanks:fillVehicleBlanks, openJobsForPlate:openJobsForPlate, correctPayment:correctPayment, overpaidJobs:overpaidJobs, paymentCorrections:paymentCorrections, billBaseline:billBaseline, trackBillChanges:trackBillChanges, billChanges:billChanges, discountRows:discountRows, discountReasonMissing:discountReasonMissing, cashExpected:cashExpected, cashCountRows:cashCountRows, paymentsMissingRef:paymentsMissingRef, releasedOwing:releasedOwing, docMoneyChecks:docMoneyChecks, moneyCheckData:moneyCheckData, voidedReceipts:voidedReceipts, cancelledJobs:cancelledJobs, voidsHoldingMoney:voidsHoldingMoney, docVoids:docVoids, addPayAdj:addPayAdj, payAdjInPeriod:payAdjInPeriod, netPayoutRows:netPayoutRows, docPayout:docPayout, docMechCommission:docMechCommission, setProdPeriod:function(p,f,t){ PROD_PERIOD=p; PROD_FROM=f||''; PROD_TO=t||''; }, paymentsDoc:paymentsDoc, pmsGateMissing:pmsGateMissing, jobsMissingInfo:jobsMissingInfo, partNetMissing:partNetMissing, lessVatApplied:lessVatApplied, lessVatStale:lessVatStale, markLessVat:markLessVat, syncLessVat:syncLessVat, discVat:discVat, discountReasonPicker:discountReasonPicker, jobPLSplit:jobPLSplit, discountExVat:discountExVat, discountAmount:discountAmount, discountedLabor:discountedLabor, readDiscountObj:function(d){ return d; }, discountEditor:discountEditor, pmsDefaultMechs:pmsDefaultMechs, pmsReadyToSubmit:pmsReadyToSubmit, PMS_TEMPLATE:function(){ return PMS_TEMPLATE; }, pmsSectionMissing:pmsSectionMissing, orSeriesInRange:orSeriesInRange, orRangeGaps:orRangeGaps, inRptRange:inRptRange, setRptRangeRaw:function(k,r){ RPT_RANGE[k]=r; }, docDiscounts:docDiscounts, warnIfPlateOnBoard:warnIfPlateOnBoard, plFor:plFor, opexFor:opexFor, payFor:payFor, monthlyPay:monthlyPay, addMonths:addMonths, syncCollections:syncCollections, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
     afterServiceMissing:afterServiceMissing, afterServiceDone:afterServiceDone, afterServiceStaff:afterServiceStaff,
     canWriteAfterService:canWriteAfterService, afterServiceSignerName:afterServiceSignerName, afterServiceBlock:afterServiceBlock,
     allocateSeriesNumber:allocateSeriesNumber, maxSeriesNo:maxSeriesNo, nextNo:nextNo,
@@ -10014,13 +10014,34 @@ function opexFor(m){
 var COMMADJ_CATEGORY = 'Commission bonuses & deductions';
 /* Month P&L. Job side uses the same released-job, ex-VAT figures as Reports,
    bucketed by the month the job was billed (the Revenue-by-month basis). */
+/* A job's ex-VAT sales and discount, split into parts and labor (labor includes
+   approved additional work). A Parts discount stays on parts and a Labor
+   discount on labor; anything else (Less VAT, warranty write-off, older Other
+   amounts) is shared by each side's share of sales. The two discounts always
+   add up to discountExVat(j), so parts + labor = the job's ex-VAT revenue. */
+function jobPLSplit(j){
+  var ps=partsTotal(j.lines), ls=round2(laborTotal(j.lines)+addlTotal(j)), sales=ps+ls;
+  var dIn=discountAmount(j), dEx=discountExVat(j);
+  var pd=0, ld=0;
+  if(dIn>0){
+    var bp=j.warranty?0:Math.min(discParts(j), dIn), bl=j.warranty?0:Math.min(discLabor(j), dIn-bp);
+    var rest=Math.max(0, dIn-bp-bl), share=sales>0 ? ps/sales : 0;
+    var k=dEx/dIn;                                     // VAT-inclusive -> ex-VAT
+    pd=round2((bp+rest*share)*k); ld=round2(dEx-pd);
+  }
+  return { partsSales:ps, laborSales:ls, partsDisc:pd, laborDisc:ld };
+}
 function plFor(m){
   var rel=releasedJobs().filter(function(j){ return localDay(j.billedAt||j.dateIn).slice(0,7)===m; });
-  var rev=0, parts=0, comm=0;
-  rel.forEach(function(j){ rev+=jobRevenueExVat(j); parts+=jobCostOfParts(j); comm+=jobLaborCommission(j,S).pool; });
+  var rev=0, parts=0, comm=0, ps=0, ls=0, pd=0, ld=0;
+  rel.forEach(function(j){ rev+=jobRevenueExVat(j); parts+=jobCostOfParts(j); comm+=jobLaborCommission(j,S).pool;
+    var x=jobPLSplit(j); ps+=x.partsSales; ls+=x.laborSales; pd+=x.partsDisc; ld+=x.laborDisc; });
   rev=round2(rev); parts=round2(parts); comm=round2(comm);
+  ps=round2(ps); ls=round2(ls); pd=round2(pd); ld=round2(ld);
+  var partsProfit=round2(ps-pd-parts), laborProfit=round2(ls-ld-comm);
   var gross=round2(rev-parts-comm), opex=opexFor(m), net=round2(gross-opex.total);
   return { month:m, jobs:rel.length, revenue:rev, partsCost:parts, commission:comm, gross:gross,
+    partsSales:ps, laborSales:ls, partsDisc:pd, laborDisc:ld, partsProfit:partsProfit, laborProfit:laborProfit,
     opex:opex, net:net, margin: rev ? Math.round(net/rev*100) : 0 };
 }
 
@@ -10052,25 +10073,36 @@ VIEWS.expenses = function(){
     payrollCard(m)+
   '</div>';
 };
+function pct(a, b){ return b>0 ? Math.round(a/b*100)+'%' : '—'; }
 function plCard(m){
   var p=plFor(m);
   var cats=Object.keys(p.opex.byCat).sort(function(a,b){ return p.opex.byCat[b]-p.opex.byCat[a]; });
   var trend=[]; for(var i=5;i>=0;i--) trend.push(plFor(addMonths(m,-i)));
   return '<div class="card"><h2>Profit &amp; loss · '+esc(fmtMonth(m))+' <span class="muted small">· ex-VAT · '+p.jobs+' released job'+(p.jobs===1?'':'s')+'</span></h2>'+
-    '<div class="kpis">'+kpi('Gross profit (jobs)',peso(p.gross))+kpi('Operating expenses',peso(p.opex.total))+
+    '<div class="kpis">'+kpi('Parts profit',peso(p.partsProfit), pct(p.partsProfit, p.partsSales-p.partsDisc)+' of parts sales')+
+      kpi('Labor profit',peso(p.laborProfit), pct(p.laborProfit, p.laborSales-p.laborDisc)+' of labor sales')+
+      kpi('Operating expenses',peso(p.opex.total))+
       kpi('Net profit','<span class="'+(p.net<0?'st-bad-t':'st-good-t')+'">'+peso(p.net)+'</span>', p.margin+'% of revenue')+'</div>'+
-    line2('Revenue (ex-VAT)',peso(p.revenue))+line2('− Parts cost',peso(p.partsCost))+line2('− Commission (mechanics &amp; staff)',peso(p.commission))+
-    line2('Gross profit from jobs','<b>'+peso(p.gross)+'</b>')+
+    '<div class="muted small" style="font-weight:700;margin-top:4px">PARTS</div>'+
+    line2('Parts sales (ex-VAT)',peso(p.partsSales))+line2('− Parts discounts',peso(p.partsDisc))+line2('− Parts cost (net prices)',peso(p.partsCost))+
+    line2('Parts profit','<b>'+peso(p.partsProfit)+'</b>')+
+    '<div class="muted small" style="font-weight:700;margin-top:8px">LABOR</div>'+
+    line2('Labor sales (ex-VAT, incl. additional work)',peso(p.laborSales))+line2('− Labor discounts',peso(p.laborDisc))+line2('− Commission (mechanics &amp; staff)',peso(p.commission))+
+    line2('Labor profit','<b>'+peso(p.laborProfit)+'</b>')+
+    '<div class="bill-sep"></div>'+
+    line2('Revenue (ex-VAT, after discounts)',peso(p.revenue))+
+    line2('Gross profit from jobs (parts + labor)','<b>'+peso(p.gross)+'</b>')+
     '<div class="bill-sep"></div>'+
     (cats.length ? cats.map(function(c){ return line2('− '+esc(c),peso(p.opex.byCat[c])); }).join('') : '<div class="muted small">No expenses recorded for this month.</div>')+
     line2('Operating expenses','<b>'+peso(p.opex.total)+'</b>')+
     '<div class="bill-sep"></div>'+
     line2('Net profit','<b class="'+(p.net<0?'st-bad-t':'st-good-t')+'">'+peso(p.net)+'</b>')+
-    '<table class="tbl sm mt8"><thead><tr><th>Month</th><th class="r">Gross profit</th><th class="r">Expenses</th><th class="r">Net profit</th></tr></thead><tbody>'+
-      trend.map(function(t){ return '<tr><td>'+esc(fmtMonth(t.month))+'</td><td class="r">'+peso(t.gross)+'</td><td class="r">'+peso(t.opex.total)+'</td>'+
+    '<table class="tbl sm mt8"><thead><tr><th>Month</th><th class="r">Parts profit</th><th class="r">Labor profit</th><th class="r">Gross profit</th><th class="r">Expenses</th><th class="r">Net profit</th></tr></thead><tbody>'+
+      trend.map(function(t){ return '<tr><td>'+esc(fmtMonth(t.month))+'</td><td class="r">'+peso(t.partsProfit)+'</td><td class="r">'+peso(t.laborProfit)+'</td><td class="r">'+peso(t.gross)+'</td><td class="r">'+peso(t.opex.total)+'</td>'+
         '<td class="r '+(t.net<0?'st-bad-t':'')+'">'+peso(t.net)+'</td></tr>'; }).join('')+
     '</tbody></table>'+
-    '<p class="muted small mt8">Gross profit = ex-VAT revenue of jobs released that month − parts cost − labor commission (same as Reports). '+
+    '<p class="muted small mt8">Parts profit = parts sales − parts discounts − what the parts cost (net prices). Labor profit = labor sales − labor discounts − commission. '+
+      'Less VAT and other bill-wide discounts are shared between parts and labor by their share of sales. Gross profit = the two together (same as Reports). '+
       'Operating expenses = recurring items + one-off expenses dated that month + base pay. Commission is already in gross profit, so base pay excludes it.</p></div>';
 }
 function expensesCard(m){
