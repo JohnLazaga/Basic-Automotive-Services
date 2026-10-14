@@ -670,7 +670,7 @@ var BRANCH = {"id":"sandbox","slug":"sandbox","name":"Basic by JMSI — Sandbox 
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-10-13 · f19caf2';
+var APP_VERSION = 'v1.3.0 · 2026-10-14 · 7a7a767';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -1213,6 +1213,7 @@ function seedState(){
     purchaseOrders:[po1],
     expenses:[],
     cashcounts:[],
+    commadj:[],
     counters:{ est:0, jo:1, or:1000, po:1 }
   };
 }
@@ -1225,7 +1226,7 @@ async function loadState(){
   }
   if (!S || S.version!==2){ S = seedState(); persist(); }
   // migration safety: ensure arrays exist
-  ['staff','bays','parts','labor','vehicles','estimates','jobs','appointments','purchaseOrders','expenses','cashcounts'].forEach(function(k){
+  ['staff','bays','parts','labor','vehicles','estimates','jobs','appointments','purchaseOrders','expenses','cashcounts','commadj'].forEach(function(k){
     if (!Array.isArray(S[k])) S[k]=[];
   });
   if (!S.counters) S.counters = { est:0, jo:0, or:1000, po:0 };
@@ -5442,6 +5443,7 @@ VIEWS.productivity = function(){
     '<p class="muted small mt8">Commission is each staff member’s own admin-set rate × the job’s labor (set per person on the Staff page). The Commission column is the <b>evaluation</b> figure — shown even for staff switched off (greyed). The <b>Payout sheet</b> pays only staff with <b>Payout</b> on.</p>'+
     '<p class="muted small">Job hrs = standard hours from the Job Order. Actual hrs = the per-mechanic labor <b>timer</b> when used, else time in status <b>B2</b> from the log (each interval capped at 8h). Efficiency = Job hrs ÷ Actual hrs (green ≥ 100%). On-time = finished on/before ETD. <b>Comebacks</b> = warranty rework charged to the mechanic (% of their jobs) — watch this next to efficiency.</p>'+
     '<div class="card pad0"><table class="tbl"><thead><tr><th>Staff</th><th class="r">Jobs</th><th class="r">Job hrs</th><th class="r">Actual hrs</th><th class="r">Efficiency</th><th class="r">On-time</th><th class="r">Comebacks</th><th class="r">Labor billed</th><th class="r">Avg/job</th><th class="r">Commission</th><th class="center">Payout</th></tr></thead><tbody>'+(rows||'<tr><td colspan="11" class="muted center">No staff.</td></tr>')+'</tbody></table></div>'+
+    payAdjCard()+
     mechPerfSection(list)+
     '<div class="card"><h2>Commission by staff</h2>'+(commBars.length?bars(commBars,peso):emptyState('No commissions in this period.'))+'</div></div>';
 };
@@ -6104,20 +6106,25 @@ function printStatement(encName){ printDoc(docStatement(decodeURIComponent(encNa
 
 /* ---- Payout sheet --------------------------------------------------------- */
 function docPayout(){
-  var jobs=jobsInProdPeriod(billedJobs());
-  var byId={};
-  jobs.forEach(function(j){ var cm=jobLaborCommissionMap(j,S);
-    Object.keys(cm).forEach(function(id){ var s=staffById(id); if(!s) return;
-      if(!byId[id]) byId[id]={name:s.name,role:s.role,jobs:0,commission:0};
-      byId[id].jobs++; byId[id].commission=round2(byId[id].commission+cm[id]); }); });
-  var rows=Object.keys(byId).map(function(k){var r=byId[k];
-    return '<tr><td>'+esc(r.name)+' ('+esc(roleLabel(r.role))+')</td><td class="r">'+r.jobs+'</td><td class="r">'+peso(r.commission)+'</td><td class="sigline" style="margin-top:18px"></td></tr>';}).join('')
-    || '<tr><td colspan="4" class="r">No commissions in this period.</td></tr>';
-  var tot=Object.keys(byId).reduce(function(s,k){return s+byId[k].commission;},0);
+  /* Commission (payout-on staff, from jobs) ± payout adjustments (part20) = net. */
+  var jobsBy={}; jobsInProdPeriod(billedJobs()).forEach(function(j){ Object.keys(jobLaborCommissionMap(j,S)).forEach(function(id){ jobsBy[id]=(jobsBy[id]||0)+1; }); });
+  var rows=netPayoutRows(), adjs=payAdjInPeriod();
+  var tot={c:0,a:0,n:0}; rows.forEach(function(r){ tot.c+=r.commission; tot.a+=r.adj; tot.n+=r.net; });
   var body=docHeader('Commission Payout · '+esc(prodPeriodLabel()))+
-    '<table><thead><tr><th>Staff</th><th class="r">Jobs</th><th class="r">Commission</th><th>Signature</th></tr></thead><tbody>'+rows+'</tbody></table>'+
-    '<div class="totbox"><div class="l2 grand"><span>Total payout</span><span>'+peso(tot)+'</span></div></div>'+
-    '<div class="foot">Commission = each staff member’s own rate × the job’s labor, on jobs they were assigned to. Includes only staff switched on for payout.</div>';
+    '<table><thead><tr><th>Staff</th><th class="r">Jobs</th><th class="r">Commission</th><th class="r">Adjustments</th><th class="r">Net payout</th><th>Signature</th></tr></thead><tbody>'+
+    (rows.map(function(r){ return '<tr><td>'+esc(r.name)+' ('+esc(roleLabel(r.role))+')</td><td class="r">'+(jobsBy[r.id]||0)+'</td>'+
+      '<td class="r">'+peso(r.commission)+'</td><td class="r">'+(r.adj?(r.adj>0?'+':'')+peso(r.adj):'—')+'</td><td class="r"><b>'+peso(r.net)+'</b></td>'+
+      '<td class="sigline" style="margin-top:18px"></td></tr>'; }).join('') || '<tr><td colspan="6" class="r">No commissions in this period.</td></tr>')+
+    '</tbody></table>'+
+    '<div class="totbox"><div class="l2"><span>Total commission</span><span>'+peso(round2(tot.c))+'</span></div>'+
+      (tot.a?'<div class="l2"><span>Total adjustments</span><span>'+(tot.a>0?'+':'')+peso(round2(tot.a))+'</span></div>':'')+
+      '<div class="l2 grand"><span>Total net payout</span><span>'+peso(round2(tot.n))+'</span></div></div>'+
+    (adjs.length?'<div class="dtitle" style="font-size:12px;margin-top:14px">Adjustments</div>'+
+      '<table><thead><tr><th>Date</th><th>Staff</th><th>Type</th><th class="r">Amount</th><th>Reason</th></tr></thead><tbody>'+
+      adjs.map(function(a){ return '<tr><td>'+esc(fmtDate(a.date))+'</td><td>'+esc(staffName(a.staffId))+'</td><td>'+esc(payAdjType(a.type).label)+'</td>'+
+        '<td class="r">'+(a.amount>0?'+':'')+peso(a.amount)+'</td><td>'+esc(a.reason)+'</td></tr>'; }).join('')+'</tbody></table>':'')+
+    '<div class="foot">Commission = each staff member’s own rate × the job’s labor, on jobs they were assigned to (payout-on staff only). '+
+      'Adjustments = cash advances, deductions and bonuses dated in this period.</div>';
   return docShell('Payout sheet', body);
 }
 function printPayout(){ printDoc(docPayout()); }
@@ -6145,21 +6152,31 @@ function docMechCommission(){
     var A=byMech[a], B=byMech[b];
     return kpiRoleRank(A.role)-kpiRoleRank(B.role) || String(A.name).localeCompare(String(B.name));
   });
-  var grand=0;
+  /* Payout adjustments for mechanics this period (part20); a mechanic with only
+     an adjustment (no jobs) still gets a block so the advance is not missed. */
+  var adjBy={}; payAdjInPeriod().forEach(function(a){ var s=staffById(a.staffId); if(!s || !isMechanicRole(s.role)) return; (adjBy[a.staffId]=adjBy[a.staffId]||[]).push(a); });
+  Object.keys(adjBy).forEach(function(id){ if(!byMech[id]){ var s=staffById(id); byMech[id]={ name:s.name, role:s.role, rows:[], labor:0, commission:0 }; ids.push(id); } });
+  var grand=0, grandAdj=0;
   var blocks=ids.map(function(id){
     var m=byMech[id]; grand=round2(grand+m.commission);
     var rows=m.rows.map(function(r){
       return '<tr><td>'+esc(r.no)+'</td><td>'+esc(r.plate)+(r.veh?' · '+esc(r.veh):'')+'</td><td>'+esc(r.desc)+'</td>'+
         '<td class="r">'+peso(r.labor)+'</td><td class="r">'+peso(r.comm)+'</td></tr>';
     }).join('');
+    var adjRows=(adjBy[id]||[]).map(function(a){ return '<tr><td>'+esc(fmtDate(a.date))+'</td><td colspan="2">'+esc(payAdjType(a.type).label)+' — '+esc(a.reason)+'</td><td></td>'+
+      '<td class="r">'+(a.amount>0?'+':'')+peso(a.amount)+'</td></tr>'; }).join('');
+    var adjSum=round2((adjBy[id]||[]).reduce(function(t,a){ return t+(Number(a.amount)||0); },0)); grandAdj=round2(grandAdj+adjSum);
     return '<div class="dtitle" style="margin-top:16px">'+esc(m.name)+' · '+esc(roleLabel(m.role))+'</div>'+
       '<table><thead><tr><th>JO #</th><th>Vehicle</th><th>Job description</th><th class="r">Labor (discounted)</th><th class="r">Commission</th></tr></thead>'+
       '<tbody>'+rows+
       '<tr class="tot"><td></td><td></td><td class="r">Subtotal</td><td class="r">'+peso(m.labor)+'</td><td class="r">'+peso(m.commission)+'</td></tr>'+
+      (adjRows?adjRows+'<tr class="tot"><td></td><td></td><td class="r">Net payout</td><td></td><td class="r"><b>'+peso(round2(m.commission+adjSum))+'</b></td></tr>':'')+
       '</tbody></table>';
   }).join('') || '<p class="r">No mechanic commissions in this period.</p>';
   var body=docHeader('Mechanic Commission Detail · '+esc(prodPeriodLabel()))+ blocks+
-    '<div class="totbox"><div class="l2 grand"><span>Total mechanic commission</span><span>'+peso(grand)+'</span></div></div>'+
+    '<div class="totbox"><div class="l2'+(grandAdj?'':' grand')+'"><span>Total mechanic commission</span><span>'+peso(grand)+'</span></div>'+
+      (grandAdj?'<div class="l2"><span>Total adjustments</span><span>'+(grandAdj>0?'+':'')+peso(grandAdj)+'</span></div>'+
+        '<div class="l2 grand"><span>Total net payout</span><span>'+peso(round2(grand+grandAdj))+'</span></div>':'')+'</div>'+
     '<div class="foot">Commission = the shop rate × the job’s labor (net of any labor discount), split evenly among the mechanics assigned. Includes only mechanics switched on for payout.</div>';
   return docShell('Mechanic commission detail', body);
 }
@@ -6709,7 +6726,7 @@ if (typeof module!=='undefined' && module.exports){
     scheduleNextService:scheduleNextService, clearNextService:clearNextService, alertStrip:alertStrip,
     jobVehicleLabel:jobVehicleLabel, replyRecipients:replyRecipients, unreadMessages:unreadMessages, messageStrip:messageStrip, myStaffIds:myStaffIds, messageAcked:messageAcked,
     buildLogEntry:buildLogEntry, logEntryFor:logEntryFor, jobStatusPanel:jobStatusPanel, lastLogForLabel:lastLogForLabel,
-    jobDescriptionPanel:jobDescriptionPanel, jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fillVehicleBlanks:fillVehicleBlanks, openJobsForPlate:openJobsForPlate, correctPayment:correctPayment, overpaidJobs:overpaidJobs, paymentCorrections:paymentCorrections, billBaseline:billBaseline, trackBillChanges:trackBillChanges, billChanges:billChanges, discountRows:discountRows, discountReasonMissing:discountReasonMissing, cashExpected:cashExpected, cashCountRows:cashCountRows, paymentsMissingRef:paymentsMissingRef, releasedOwing:releasedOwing, docMoneyChecks:docMoneyChecks, moneyCheckData:moneyCheckData, voidedReceipts:voidedReceipts, cancelledJobs:cancelledJobs, voidsHoldingMoney:voidsHoldingMoney, docVoids:docVoids, paymentsDoc:paymentsDoc, pmsGateMissing:pmsGateMissing, jobsMissingInfo:jobsMissingInfo, partNetMissing:partNetMissing, lessVatApplied:lessVatApplied, lessVatStale:lessVatStale, markLessVat:markLessVat, syncLessVat:syncLessVat, discVat:discVat, discountReasonPicker:discountReasonPicker, discountAmount:discountAmount, discountedLabor:discountedLabor, readDiscountObj:function(d){ return d; }, discountEditor:discountEditor, pmsDefaultMechs:pmsDefaultMechs, pmsReadyToSubmit:pmsReadyToSubmit, PMS_TEMPLATE:function(){ return PMS_TEMPLATE; }, pmsSectionMissing:pmsSectionMissing, orSeriesInRange:orSeriesInRange, orRangeGaps:orRangeGaps, inRptRange:inRptRange, setRptRangeRaw:function(k,r){ RPT_RANGE[k]=r; }, docDiscounts:docDiscounts, warnIfPlateOnBoard:warnIfPlateOnBoard, plFor:plFor, opexFor:opexFor, payFor:payFor, monthlyPay:monthlyPay, addMonths:addMonths, syncCollections:syncCollections, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
+    jobDescriptionPanel:jobDescriptionPanel, jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fillVehicleBlanks:fillVehicleBlanks, openJobsForPlate:openJobsForPlate, correctPayment:correctPayment, overpaidJobs:overpaidJobs, paymentCorrections:paymentCorrections, billBaseline:billBaseline, trackBillChanges:trackBillChanges, billChanges:billChanges, discountRows:discountRows, discountReasonMissing:discountReasonMissing, cashExpected:cashExpected, cashCountRows:cashCountRows, paymentsMissingRef:paymentsMissingRef, releasedOwing:releasedOwing, docMoneyChecks:docMoneyChecks, moneyCheckData:moneyCheckData, voidedReceipts:voidedReceipts, cancelledJobs:cancelledJobs, voidsHoldingMoney:voidsHoldingMoney, docVoids:docVoids, addPayAdj:addPayAdj, payAdjInPeriod:payAdjInPeriod, netPayoutRows:netPayoutRows, docPayout:docPayout, docMechCommission:docMechCommission, setProdPeriod:function(p,f,t){ PROD_PERIOD=p; PROD_FROM=f||''; PROD_TO=t||''; }, paymentsDoc:paymentsDoc, pmsGateMissing:pmsGateMissing, jobsMissingInfo:jobsMissingInfo, partNetMissing:partNetMissing, lessVatApplied:lessVatApplied, lessVatStale:lessVatStale, markLessVat:markLessVat, syncLessVat:syncLessVat, discVat:discVat, discountReasonPicker:discountReasonPicker, discountAmount:discountAmount, discountedLabor:discountedLabor, readDiscountObj:function(d){ return d; }, discountEditor:discountEditor, pmsDefaultMechs:pmsDefaultMechs, pmsReadyToSubmit:pmsReadyToSubmit, PMS_TEMPLATE:function(){ return PMS_TEMPLATE; }, pmsSectionMissing:pmsSectionMissing, orSeriesInRange:orSeriesInRange, orRangeGaps:orRangeGaps, inRptRange:inRptRange, setRptRangeRaw:function(k,r){ RPT_RANGE[k]=r; }, docDiscounts:docDiscounts, warnIfPlateOnBoard:warnIfPlateOnBoard, plFor:plFor, opexFor:opexFor, payFor:payFor, monthlyPay:monthlyPay, addMonths:addMonths, syncCollections:syncCollections, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
     afterServiceMissing:afterServiceMissing, afterServiceDone:afterServiceDone, afterServiceStaff:afterServiceStaff,
     canWriteAfterService:canWriteAfterService, afterServiceSignerName:afterServiceSignerName, afterServiceBlock:afterServiceBlock,
     allocateSeriesNumber:allocateSeriesNumber, maxSeriesNo:maxSeriesNo, nextNo:nextNo,
@@ -7017,7 +7034,7 @@ function renderCloudLoading(){
    - Writes go through cloudPersist(): diff S vs last snapshot, upsert/delete.
    - Job photos are uploaded to Firebase Storage so docs stay under 1 MB.
    ========================================================================== */
-var COLLECTIONS = ['staff','bays','parts','labor','vehicles','estimates','jobs','appointments','purchaseOrders','cashcounts'];
+var COLLECTIONS = ['staff','bays','parts','labor','vehicles','estimates','jobs','appointments','purchaseOrders','cashcounts','commadj'];
 /* Finance data (expenses, base pay) is readable only by admins and the Secretary
    (firestore.rules). It is synced only for those users: for anyone else the
    listener would be denied and the load would fail. */
@@ -10625,6 +10642,124 @@ function docVoids(){
         '<td class="r">'+(x.held>0.009?'<b>'+peso(x.held)+'</b>':'—')+'</td><td>'+esc(x.byName||'—')+'</td><td>'+esc(x.reason)+'</td></tr>'; }).join(''))+
     sec('By person', people.length, '<th>Name</th><th class="r">Voided receipts</th><th class="r">Cancelled JOs</th>',
       people.map(function(p){ return '<tr><td>'+esc(p.name)+'</td><td class="r">'+p.v+'</td><td class="r">'+p.c+'</td></tr>'; }).join('')));
+}
+
+
+/* ===== */
+
+/* ============================================================================
+   PART 20 — Commission payout adjustments
+
+   Commission itself is computed from jobs (part1 jobLaborCommission). What the
+   shop actually HANDS a mechanic for a pay period also carries cash advances,
+   deductions and bonuses — so those are recorded here, per person and date,
+   and the Productivity page, the Payout sheet and the Mechanic-commission
+   printout all show commission ± adjustments = net payout for the period.
+
+   Stored in the `commadj` collection:
+     { id, staffId, date:'YYYY-MM-DD', type, amount (signed: + adds, − deducts),
+       reason, byName, at }
+   Admins and Supervisors add or remove them; a reason is always required.
+   ========================================================================== */
+
+var PAYADJ_TYPES = [
+  { k:'advance', label:'Cash advance', sign:-1 },
+  { k:'deduct',  label:'Deduction',    sign:-1 },
+  { k:'bonus',   label:'Bonus',        sign:+1 },
+  { k:'oadd',    label:'Other (add)',  sign:+1 },
+  { k:'oded',    label:'Other (deduct)', sign:-1 }
+];
+function payAdjType(k){ return PAYADJ_TYPES.find(function(t){ return t.k===k; }) || PAYADJ_TYPES[4]; }
+function canAdjustPayout(){ return (typeof isAdminOrSV==='function') ? isAdminOrSV() : true; }
+
+/* Adjustments dated inside the Productivity period. */
+function payAdjInPeriod(){
+  var r=prodRange();
+  return (S.commadj||[]).filter(function(a){ return a && a.date>=r.from && a.date<=r.to; })
+    .sort(function(a,b){ return String(b.date).localeCompare(String(a.date)) || String(b.at).localeCompare(String(a.at)); });
+}
+function payAdjTotals(){
+  var t={}; payAdjInPeriod().forEach(function(a){ t[a.staffId]=round2((t[a.staffId]||0)+(Number(a.amount)||0)); }); return t;
+}
+/* Payout-on commission per staff for the period (what the Payout sheet pays). */
+function payoutCommissionByStaff(){
+  var by={};
+  jobsInProdPeriod(billedJobs()).forEach(function(j){ var cm=jobLaborCommissionMap(j,S);
+    Object.keys(cm).forEach(function(id){ by[id]=round2((by[id]||0)+cm[id]); }); });
+  return by;
+}
+/* Rows for the net-payout table: everyone with commission or an adjustment. */
+function netPayoutRows(){
+  var comm=payoutCommissionByStaff(), adj=payAdjTotals(), ids={};
+  Object.keys(comm).concat(Object.keys(adj)).forEach(function(id){ ids[id]=1; });
+  return Object.keys(ids).map(function(id){ var s=staffById(id)||{};
+      var c=comm[id]||0, a=adj[id]||0;
+      return { id:id, name:s.name||'—', role:s.role||'', commission:c, adj:a, net:round2(c+a) }; })
+    .sort(function(a,b){ return kpiRoleRank(a.role)-kpiRoleRank(b.role) || String(a.name).localeCompare(String(b.name)); });
+}
+
+function payAdjCard(){
+  var list=payAdjInPeriod(), rows=netPayoutRows(), can=canAdjustPayout();
+  var tot={ c:0, a:0, n:0 }; rows.forEach(function(r){ tot.c+=r.commission; tot.a+=r.adj; tot.n+=r.net; });
+  return '<div class="card"><div class="card-head"><h2>Payout adjustments &amp; net payout <span class="muted small">· '+esc(prodPeriodLabel())+'</span></h2>'+
+      (can?'<button class="btn sm primary" onclick="openPayAdj()">＋ Add adjustment</button>':'')+'</div>'+
+    '<p class="muted small">Cash advances, deductions and bonuses for this pay period. Net payout = commission (payout-on staff) + bonuses − advances and deductions. '+
+      'The Payout sheet and Mechanic commissions printouts include these.</p>'+
+    (rows.length ? '<div class="card pad0"><table class="tbl sm"><thead><tr><th>Staff</th><th class="r">Commission</th><th class="r">Adjustments</th><th class="r">Net payout</th></tr></thead><tbody>'+
+      rows.map(function(r){ return '<tr><td><b>'+esc(r.name)+'</b> <span class="muted small">'+esc(roleLabel(r.role))+'</span></td>'+
+        '<td class="r">'+peso(r.commission)+'</td><td class="r'+(r.adj<0?' st-bad-t':'')+'">'+(r.adj?(r.adj>0?'+':'')+peso(r.adj):'—')+'</td>'+
+        '<td class="r"><b>'+peso(r.net)+'</b></td></tr>'; }).join('')+
+      '<tr class="tot"><td><b>Total</b></td><td class="r">'+peso(round2(tot.c))+'</td><td class="r">'+(tot.a?(tot.a>0?'+':'')+peso(round2(tot.a)):'—')+'</td><td class="r"><b>'+peso(round2(tot.n))+'</b></td></tr>'+
+      '</tbody></table></div>' : emptyState('No commission or adjustments in this period.'))+
+    '<h3 class="mt8">Adjustments <span class="muted small">· '+list.length+'</span></h3>'+
+    (list.length ? '<div class="card pad0"><table class="tbl sm"><thead><tr><th>Date</th><th>Staff</th><th>Type</th><th class="r">Amount</th><th>Reason</th><th>By</th>'+(can?'<th></th>':'')+'</tr></thead><tbody>'+
+      list.map(function(a){ return '<tr><td>'+esc(fmtDate(a.date))+'</td><td>'+esc(staffName(a.staffId))+'</td><td>'+esc(payAdjType(a.type).label)+'</td>'+
+        '<td class="r'+(a.amount<0?' st-bad-t':'')+'"><b>'+(a.amount>0?'+':'')+peso(a.amount)+'</b></td><td>'+esc(a.reason)+'</td><td>'+esc(a.byName||'—')+'</td>'+
+        (can?'<td class="r"><button class="btn sm ghost" onclick="deletePayAdj(\''+a.id+'\')">Remove</button></td>':'')+'</tr>'; }).join('')+
+      '</tbody></table></div>' : '<div class="muted small">No adjustments in this period.</div>')+
+  '</div>';
+}
+
+function openPayAdj(){
+  if(!canAdjustPayout()){ toast('Only an admin or Supervisor can adjust payouts','err'); return; }
+  var staff=(S.staff||[]).slice().sort(function(a,b){ return kpiRoleRank(a.role)-kpiRoleRank(b.role) || String(a.name).localeCompare(String(b.name)); });
+  var r=prodRange(), today=todayISO(), dflt=(today>=r.from && today<=r.to) ? today : (r.to<'9999' ? r.to : today);
+  openModal('Add payout adjustment',
+    '<div class="grid2">'+
+      field('Staff','<select id="paStaff"><option value="">— select —</option>'+staff.map(function(s){ return '<option value="'+s.id+'">'+esc(s.name)+' ('+esc(roleLabel(s.role))+')</option>'; }).join('')+'</select>')+
+      field('Date','<input id="paDate" type="date" value="'+attr(dflt)+'">','Counts in the pay period that contains this date.')+
+      field('Type','<select id="paType">'+PAYADJ_TYPES.map(function(t){ return '<option value="'+t.k+'">'+esc(t.label)+(t.sign<0?' (−)':' (+)')+'</option>'; }).join('')+'</select>')+
+      field('Amount (₱)','<input id="paAmt" type="number" step="0.01" min="0" placeholder="0.00">','Enter the amount; the type decides whether it adds or deducts.')+
+    '</div>'+
+    field('Reason','<input id="paReason" placeholder="e.g. cash advance Oct 10, damaged part, perfect attendance" autocomplete="off">','Required.'),
+    { onOk:'savePayAdj', okText:'Add adjustment', width:'560px' });
+}
+function savePayAdj(){
+  if(!canAdjustPayout()){ toast('Only an admin or Supervisor can adjust payouts','err'); return; }
+  var r=addPayAdj(val('paStaff'), val('paDate'), val('paType'), val('paAmt'), val('paReason'));
+  if(!r.ok){ toast(r.err,'err'); return; }
+  persist(); closeModal(); toast('Adjustment added'); render();
+}
+/* Testable core. */
+function addPayAdj(staffId, date, type, amount, reason){
+  if(!staffById(staffId)) return { ok:false, err:'Pick the staff member' };
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(String(date||''))) return { ok:false, err:'Pick the date' };
+  var amt=round2(Math.abs(Number(amount)||0)); if(!(amt>0)) return { ok:false, err:'Enter the amount' };
+  reason=String(reason||'').trim(); if(reason.length<3) return { ok:false, err:'Give the reason' };
+  var t=payAdjType(type), me=(typeof CURRENT_USER!=='undefined' && CURRENT_USER) ? CURRENT_USER : null;
+  if(!Array.isArray(S.commadj)) S.commadj=[];
+  var rec={ id:uid('pa'), staffId:staffId, date:date, type:t.k, amount:round2(t.sign*amt), reason:reason,
+    byName:(me&&(me.name||me.username||me.email))||'', at:new Date().toISOString() };
+  S.commadj.push(rec);
+  return { ok:true, rec:rec };
+}
+function deletePayAdj(id){
+  if(!canAdjustPayout()){ toast('Only an admin or Supervisor can adjust payouts','err'); return; }
+  var a=(S.commadj||[]).find(function(x){ return x.id===id; }); if(!a) return;
+  confirmModal('Remove adjustment',
+    'Remove the '+esc(payAdjType(a.type).label.toLowerCase())+' of '+peso(Math.abs(a.amount))+' for '+esc(staffName(a.staffId))+' ('+esc(fmtDate(a.date))+')?',
+    function(){ S.commadj=(S.commadj||[]).filter(function(x){ return x.id!==id; }); persist(); toast('Adjustment removed'); render(); },
+    'Remove', true);
 }
 
 </script>
