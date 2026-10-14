@@ -670,7 +670,7 @@ var BRANCH = {"id":"commonwealth","slug":"commonwealth","name":"Basic by JMSI �
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-10-14 · 7e8af9f';
+var APP_VERSION = 'v1.3.0 · 2026-10-14 · 6c9b574';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -6726,7 +6726,7 @@ if (typeof module!=='undefined' && module.exports){
     scheduleNextService:scheduleNextService, clearNextService:clearNextService, alertStrip:alertStrip,
     jobVehicleLabel:jobVehicleLabel, replyRecipients:replyRecipients, unreadMessages:unreadMessages, messageStrip:messageStrip, myStaffIds:myStaffIds, messageAcked:messageAcked,
     buildLogEntry:buildLogEntry, logEntryFor:logEntryFor, jobStatusPanel:jobStatusPanel, lastLogForLabel:lastLogForLabel,
-    jobDescriptionPanel:jobDescriptionPanel, jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fillVehicleBlanks:fillVehicleBlanks, openJobsForPlate:openJobsForPlate, correctPayment:correctPayment, overpaidJobs:overpaidJobs, paymentCorrections:paymentCorrections, billBaseline:billBaseline, trackBillChanges:trackBillChanges, billChanges:billChanges, discountRows:discountRows, discountReasonMissing:discountReasonMissing, cashExpected:cashExpected, cashCountRows:cashCountRows, paymentsMissingRef:paymentsMissingRef, releasedOwing:releasedOwing, docMoneyChecks:docMoneyChecks, moneyCheckData:moneyCheckData, voidedReceipts:voidedReceipts, cancelledJobs:cancelledJobs, voidsHoldingMoney:voidsHoldingMoney, docVoids:docVoids, addPayAdj:addPayAdj, payAdjInPeriod:payAdjInPeriod, netPayoutRows:netPayoutRows, docPayout:docPayout, docMechCommission:docMechCommission, setProdPeriod:function(p,f,t){ PROD_PERIOD=p; PROD_FROM=f||''; PROD_TO=t||''; }, paymentsDoc:paymentsDoc, pmsGateMissing:pmsGateMissing, jobsMissingInfo:jobsMissingInfo, partNetMissing:partNetMissing, lessVatApplied:lessVatApplied, lessVatStale:lessVatStale, markLessVat:markLessVat, syncLessVat:syncLessVat, discVat:discVat, discountReasonPicker:discountReasonPicker, jobPLSplit:jobPLSplit, discountExVat:discountExVat, discountAmount:discountAmount, discountedLabor:discountedLabor, readDiscountObj:function(d){ return d; }, discountEditor:discountEditor, pmsDefaultMechs:pmsDefaultMechs, pmsReadyToSubmit:pmsReadyToSubmit, PMS_TEMPLATE:function(){ return PMS_TEMPLATE; }, pmsSectionMissing:pmsSectionMissing, orSeriesInRange:orSeriesInRange, orRangeGaps:orRangeGaps, inRptRange:inRptRange, setRptRangeRaw:function(k,r){ RPT_RANGE[k]=r; }, docDiscounts:docDiscounts, warnIfPlateOnBoard:warnIfPlateOnBoard, plFor:plFor, opexFor:opexFor, payFor:payFor, monthlyPay:monthlyPay, addMonths:addMonths, syncCollections:syncCollections, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
+    jobDescriptionPanel:jobDescriptionPanel, jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fillVehicleBlanks:fillVehicleBlanks, openJobsForPlate:openJobsForPlate, correctPayment:correctPayment, overpaidJobs:overpaidJobs, paymentCorrections:paymentCorrections, billBaseline:billBaseline, trackBillChanges:trackBillChanges, billChanges:billChanges, discountRows:discountRows, discountReasonMissing:discountReasonMissing, cashExpected:cashExpected, cashCountRows:cashCountRows, paymentsMissingRef:paymentsMissingRef, releasedOwing:releasedOwing, docMoneyChecks:docMoneyChecks, moneyCheckData:moneyCheckData, voidedReceipts:voidedReceipts, cancelledJobs:cancelledJobs, voidsHoldingMoney:voidsHoldingMoney, docVoids:docVoids, addPayAdj:addPayAdj, payAdjInPeriod:payAdjInPeriod, netPayoutRows:netPayoutRows, docPayout:docPayout, docMechCommission:docMechCommission, setProdPeriod:function(p,f,t){ PROD_PERIOD=p; PROD_FROM=f||''; PROD_TO=t||''; }, paymentsDoc:paymentsDoc, pmsGateMissing:pmsGateMissing, jobsMissingInfo:jobsMissingInfo, partNetMissing:partNetMissing, lessVatApplied:lessVatApplied, lessVatStale:lessVatStale, markLessVat:markLessVat, syncLessVat:syncLessVat, discVat:discVat, discountReasonPicker:discountReasonPicker, jobPLSplit:jobPLSplit, plForRange:plForRange, opexForRange:opexForRange, docPL:docPL, discountExVat:discountExVat, discountAmount:discountAmount, discountedLabor:discountedLabor, readDiscountObj:function(d){ return d; }, discountEditor:discountEditor, pmsDefaultMechs:pmsDefaultMechs, pmsReadyToSubmit:pmsReadyToSubmit, PMS_TEMPLATE:function(){ return PMS_TEMPLATE; }, pmsSectionMissing:pmsSectionMissing, orSeriesInRange:orSeriesInRange, orRangeGaps:orRangeGaps, inRptRange:inRptRange, setRptRangeRaw:function(k,r){ RPT_RANGE[k]=r; }, docDiscounts:docDiscounts, warnIfPlateOnBoard:warnIfPlateOnBoard, plFor:plFor, opexFor:opexFor, payFor:payFor, monthlyPay:monthlyPay, addMonths:addMonths, syncCollections:syncCollections, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
     afterServiceMissing:afterServiceMissing, afterServiceDone:afterServiceDone, afterServiceStaff:afterServiceStaff,
     canWriteAfterService:canWriteAfterService, afterServiceSignerName:afterServiceSignerName, afterServiceBlock:afterServiceBlock,
     allocateSeriesNumber:allocateSeriesNumber, maxSeriesNo:maxSeriesNo, nextNo:nextNo,
@@ -9996,21 +9996,27 @@ function payrollFor(m){
     return { staffId:id, name:(s&&s.name)||(p&&p.name)||'—', role:(s&&s.role)||'', pay:p, amount:monthlyPay(p) };
   }).filter(function(r){ return r.amount>0; });
 }
-/* Operating expenses for month m, grouped by category. */
-function opexFor(m){
+/* Operating expenses for a date range, grouped by category. Monthly costs
+   (recurring items, base pay) count in proportion to the days of each month
+   the range covers; one-off expenses and commission bonuses/deductions count
+   by their own date. A whole month comes out exactly as before. */
+function daysInMonth(m){ return new Date(Number(m.slice(0,4)), Number(m.slice(5,7)), 0).getDate(); }
+function opexForRange(from, to){
   var byCat={}, total=0;
-  function add(cat, amt){ amt=Number(amt)||0; if(!amt) return; byCat[cat]=round2((byCat[cat]||0)+amt); total=round2(total+amt); }
-  recurringFor(m).forEach(function(r){ add(r.category||'Miscellaneous', r.amount); });
-  oneOffFor(m).forEach(function(e){ add(e.category||'Miscellaneous', e.amount); });
-  payrollFor(m).forEach(function(p){ add(PAYROLL_CATEGORY, p.amount); });
-  /* Commission payout adjustments (part20) dated this month: a bonus is an extra
-     cost, a deduction lowers it. Cash advances are left out — money lent and
-     taken back from later pay, not a cost. */
-  (S.commadj||[]).forEach(function(a){
-    if(a && a.type!=='advance' && String(a.date||'').slice(0,7)===m) add(COMMADJ_CATEGORY, a.amount);
-  });
+  function add(cat, amt){ amt=round2(Number(amt)||0); if(!amt) return; byCat[cat]=round2((byCat[cat]||0)+amt); total=round2(total+amt); }
+  for(var m=from.slice(0,7); m<=to.slice(0,7); m=addMonths(m,1)){
+    var dim=daysInMonth(m), a=(m===from.slice(0,7))?Number(from.slice(8,10)):1, b=(m===to.slice(0,7))?Number(to.slice(8,10)):dim;
+    var frac=Math.max(0, b-a+1)/dim; if(!frac) continue;
+    recurringFor(m).forEach(function(r){ add(r.category||'Miscellaneous', (Number(r.amount)||0)*frac); });
+    payrollFor(m).forEach(function(p){ add(PAYROLL_CATEGORY, p.amount*frac); });
+  }
+  expRecords('expense').forEach(function(e){ if(e.date>=from && e.date<=to) add(e.category||'Miscellaneous', e.amount); });
+  /* Commission payout adjustments (part20): a bonus is an extra cost, a deduction
+     lowers it. Cash advances are left out — a loan taken back from pay, not a cost. */
+  (S.commadj||[]).forEach(function(a){ if(a && a.type!=='advance' && a.date>=from && a.date<=to) add(COMMADJ_CATEGORY, a.amount); });
   return { byCat:byCat, total:total };
 }
+function opexFor(m){ return opexForRange(m+'-01', m+'-'+String(daysInMonth(m)).padStart(2,'0')); }
 var COMMADJ_CATEGORY = 'Commission bonuses & deductions';
 /* Month P&L. Job side uses the same released-job, ex-VAT figures as Reports,
    bucketed by the month the job was billed (the Revenue-by-month basis). */
@@ -10031,16 +10037,17 @@ function jobPLSplit(j){
   }
   return { partsSales:ps, laborSales:ls, partsDisc:pd, laborDisc:ld };
 }
-function plFor(m){
-  var rel=releasedJobs().filter(function(j){ return localDay(j.billedAt||j.dateIn).slice(0,7)===m; });
+function plFor(m){ var r=plForRange(m+'-01', m+'-'+String(daysInMonth(m)).padStart(2,'0')); r.month=m; return r; }
+function plForRange(from, to){
+  var rel=releasedJobs().filter(function(j){ var d=localDay(j.billedAt||j.dateIn); return d && d>=from && d<=to; });
   var rev=0, parts=0, comm=0, ps=0, ls=0, pd=0, ld=0;
   rel.forEach(function(j){ rev+=jobRevenueExVat(j); parts+=jobCostOfParts(j); comm+=jobLaborCommission(j,S).pool;
     var x=jobPLSplit(j); ps+=x.partsSales; ls+=x.laborSales; pd+=x.partsDisc; ld+=x.laborDisc; });
   rev=round2(rev); parts=round2(parts); comm=round2(comm);
   ps=round2(ps); ls=round2(ls); pd=round2(pd); ld=round2(ld);
   var partsProfit=round2(ps-pd-parts), laborProfit=round2(ls-ld-comm);
-  var gross=round2(rev-parts-comm), opex=opexFor(m), net=round2(gross-opex.total);
-  return { month:m, jobs:rel.length, revenue:rev, partsCost:parts, commission:comm, gross:gross,
+  var gross=round2(rev-parts-comm), opex=opexForRange(from, to), net=round2(gross-opex.total);
+  return { from:from, to:to, jobs:rel.length, revenue:rev, partsCost:parts, commission:comm, gross:gross,
     partsSales:ps, laborSales:ls, partsDisc:pd, laborDisc:ld, partsProfit:partsProfit, laborProfit:laborProfit,
     opex:opex, net:net, margin: rev ? Math.round(net/rev*100) : 0 };
 }
@@ -10067,18 +10074,28 @@ VIEWS.expenses = function(){
       monthSelect('expMonthSel', m, 'EXP_MONTH=this.value;render()')+
       '<button class="btn sm ghost" onclick="EXP_MONTH=addMonths(expMonth(),1);render()">›</button>'+
       '<button class="btn primary" onclick="openExpense()">＋ Add expense</button></div></div>'+
-    (canSeeProfit()? plCard(m) : '')+
+    (canSeeProfit()? plCard() : '')+
     expensesCard(m)+
     recurringCard(m)+
     payrollCard(m)+
   '</div>';
 };
 function pct(a, b){ return b>0 ? Math.round(a/b*100)+'%' : '—'; }
-function plCard(m){
-  var p=plFor(m);
+/* Open ends of an "All time" range: from the first released job, to today. */
+function plBounds(rg){
+  var from=rg.from, to=rg.to||todayISO();
+  if(!from){ from=to; releasedJobs().forEach(function(j){ var d=localDay(j.billedAt||j.dateIn); if(d && d<from) from=d; }); }
+  return { from:from, to:to>todayISO()?todayISO():to };
+}
+function plCard(){
+  return '<div class="card"><div class="card-head"><h2>Profit &amp; loss <span class="muted small">· ex-VAT</span></h2>'+
+      '<button class="btn sm ghost" onclick="printDoc(docPL())">⎙ Print</button></div>'+
+    rangeControls('pl')+
+    '<div id="plBody">'+plBodyHTML(rptRange('pl'))+'</div></div>';
+}
+function plStatementHTML(p){
   var cats=Object.keys(p.opex.byCat).sort(function(a,b){ return p.opex.byCat[b]-p.opex.byCat[a]; });
-  var trend=[]; for(var i=5;i>=0;i--) trend.push(plFor(addMonths(m,-i)));
-  return '<div class="card"><h2>Profit &amp; loss · '+esc(fmtMonth(m))+' <span class="muted small">· ex-VAT · '+p.jobs+' released job'+(p.jobs===1?'':'s')+'</span></h2>'+
+  return '<div class="muted small mb8">'+esc(fmtDate(p.from))+' – '+esc(fmtDate(p.to))+' · '+p.jobs+' released job'+(p.jobs===1?'':'s')+'</div>'+
     '<div class="kpis">'+kpi('Parts profit',peso(p.partsProfit), pct(p.partsProfit, p.partsSales-p.partsDisc)+' of parts sales')+
       kpi('Labor profit',peso(p.laborProfit), pct(p.laborProfit, p.laborSales-p.laborDisc)+' of labor sales')+
       kpi('Operating expenses',peso(p.opex.total))+
@@ -10093,17 +10110,32 @@ function plCard(m){
     line2('Revenue (ex-VAT, after discounts)',peso(p.revenue))+
     line2('Gross profit from jobs (parts + labor)','<b>'+peso(p.gross)+'</b>')+
     '<div class="bill-sep"></div>'+
-    (cats.length ? cats.map(function(c){ return line2('− '+esc(c),peso(p.opex.byCat[c])); }).join('') : '<div class="muted small">No expenses recorded for this month.</div>')+
+    (cats.length ? cats.map(function(c){ return line2('− '+esc(c),peso(p.opex.byCat[c])); }).join('') : '<div class="muted small">No expenses recorded in this range.</div>')+
     line2('Operating expenses','<b>'+peso(p.opex.total)+'</b>')+
     '<div class="bill-sep"></div>'+
-    line2('Net profit','<b class="'+(p.net<0?'st-bad-t':'st-good-t')+'">'+peso(p.net)+'</b>')+
-    '<table class="tbl sm mt8"><thead><tr><th>Month</th><th class="r">Parts profit</th><th class="r">Labor profit</th><th class="r">Gross profit</th><th class="r">Expenses</th><th class="r">Net profit</th></tr></thead><tbody>'+
+    line2('Net profit','<b class="'+(p.net<0?'st-bad-t':'st-good-t')+'">'+peso(p.net)+'</b>');
+}
+function plBodyHTML(rg){
+  var b=plBounds(rg), p=plForRange(b.from, b.to), endM=b.to.slice(0,7);
+  var trend=[]; for(var i=5;i>=0;i--) trend.push(plFor(addMonths(endM,-i)));
+  return plStatementHTML(p)+
+    '<h3 class="mt8">Last 6 months</h3>'+
+    '<table class="tbl sm"><thead><tr><th>Month</th><th class="r">Parts profit</th><th class="r">Labor profit</th><th class="r">Gross profit</th><th class="r">Expenses</th><th class="r">Net profit</th></tr></thead><tbody>'+
       trend.map(function(t){ return '<tr><td>'+esc(fmtMonth(t.month))+'</td><td class="r">'+peso(t.partsProfit)+'</td><td class="r">'+peso(t.laborProfit)+'</td><td class="r">'+peso(t.gross)+'</td><td class="r">'+peso(t.opex.total)+'</td>'+
         '<td class="r '+(t.net<0?'st-bad-t':'')+'">'+peso(t.net)+'</td></tr>'; }).join('')+
     '</tbody></table>'+
-    '<p class="muted small mt8">Parts profit = parts sales − parts discounts − what the parts cost (net prices). Labor profit = labor sales − labor discounts − commission. '+
-      'Less VAT and other bill-wide discounts are shared between parts and labor by their share of sales. Gross profit = the two together (same as Reports). '+
-      'Operating expenses = recurring items + one-off expenses dated that month + base pay. Commission is already in gross profit, so base pay excludes it.</p></div>';
+    '<p class="muted small mt8">Jobs, one-off expenses and commission bonuses/deductions count by their date. Rent and other recurring costs, and base pay, are monthly — '+
+      'a range covering part of a month counts that share of the month (by days). Parts profit = parts sales − parts discounts − parts cost (net prices). '+
+      'Labor profit = labor sales − labor discounts − commission. Less VAT and other bill-wide discounts are shared between parts and labor by their share of sales.</p>';
+}
+function docPL(){
+  var b=plBounds(rptRange('pl')), p=plForRange(b.from, b.to);
+  return docShell('Profit and loss', docHeader('Profit & Loss · '+fmtDate(b.from)+' – '+fmtDate(b.to))+
+    '<div class="eod-stamp">Printed <b>'+esc(fmtDateTime(new Date().toISOString()))+'</b> · ex-VAT</div>'+
+    '<style>.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px}.kpi{border:1px solid #E5E5EA;border-radius:8px;padding:7px 9px}'+
+      '.kpi-l{font-size:10.5px;color:#6E6E73}.kpi-v{font-weight:800;font-size:15px}.kpi-s{font-size:10px;color:#6E6E73}'+
+      '.l2{display:flex;justify-content:space-between;font-size:12.5px;padding:2px 0}.bill-sep{border-top:1px solid #E5E5EA;margin:6px 0}.muted{color:#6E6E73}.small{font-size:11px}</style>'+
+    plStatementHTML(p));
 }
 function expensesCard(m){
   var list=oneOffFor(m).sort(function(a,b){ return String(b.date).localeCompare(String(a.date)); });
@@ -10276,7 +10308,7 @@ function deleteExpenseRec(id){
    replace the date box under the cursor (the bug fixed on the Sales &
    collections card). The preset buttons re-render the page. */
 var RPT_RANGE = {};
-var RPT_DEFAULT = { or:'all', mc:'all', disc:'month', vc:'all' };
+var RPT_DEFAULT = { or:'all', mc:'all', disc:'month', vc:'all', pl:'month' };
 function rptPresetRange(p){
   var today=todayISO(), dt=new Date();
   if(p==='today') return { from:today, to:today };
@@ -10305,7 +10337,7 @@ function rangeControls(key){
 function setRptRange(key, which, v){
   var r=Object.assign({}, rptRange(key)); r[which]=v||''; RPT_RANGE[key]=r;
   var el=(typeof document!=='undefined')?document.getElementById(key+'Body'):null;
-  var body={ or:orSeriesBodyHTML, mc:moneyChecksBodyHTML, disc:discountsBodyHTML, vc:voidsBodyHTML }[key];   // looked up at call time — part7 loads first
+  var body={ or:orSeriesBodyHTML, mc:moneyChecksBodyHTML, disc:discountsBodyHTML, vc:voidsBodyHTML, pl:plBodyHTML }[key];   // looked up at call time — part7 loads first
   if(el && body) el.innerHTML=body(r); else render();
 }
 function rptPreset(key, p){ RPT_RANGE[key]=rptPresetRange(p); render(); }
