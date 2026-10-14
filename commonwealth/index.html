@@ -670,7 +670,7 @@ var BRANCH = {"id":"commonwealth","slug":"commonwealth","name":"Basic by JMSI �
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-10-14 · 7a7a767';
+var APP_VERSION = 'v1.3.0 · 2026-10-14 · 576ddd0';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -10722,11 +10722,12 @@ function payAdjCard(){
 
 function openPayAdj(){
   if(!canAdjustPayout()){ toast('Only an admin or Supervisor can adjust payouts','err'); return; }
-  var staff=(S.staff||[]).slice().sort(function(a,b){ return kpiRoleRank(a.role)-kpiRoleRank(b.role) || String(a.name).localeCompare(String(b.name)); });
+  var staff=(S.staff||[]).filter(function(s){ return isMechanicRole(s.role); })   // payout adjustments are for mechanics
+    .sort(function(a,b){ return kpiRoleRank(a.role)-kpiRoleRank(b.role) || String(a.name).localeCompare(String(b.name)); });
   var r=prodRange(), today=todayISO(), dflt=(today>=r.from && today<=r.to) ? today : (r.to<'9999' ? r.to : today);
   openModal('Add payout adjustment',
     '<div class="grid2">'+
-      field('Staff','<select id="paStaff"><option value="">— select —</option>'+staff.map(function(s){ return '<option value="'+s.id+'">'+esc(s.name)+' ('+esc(roleLabel(s.role))+')</option>'; }).join('')+'</select>')+
+      field('Mechanic','<select id="paStaff"><option value="">— select —</option>'+staff.map(function(s){ return '<option value="'+s.id+'">'+esc(s.name)+' ('+esc(roleLabel(s.role))+')</option>'; }).join('')+'</select>')+
       field('Date','<input id="paDate" type="date" value="'+attr(dflt)+'">','Counts in the pay period that contains this date.')+
       field('Type','<select id="paType">'+PAYADJ_TYPES.map(function(t){ return '<option value="'+t.k+'">'+esc(t.label)+(t.sign<0?' (−)':' (+)')+'</option>'; }).join('')+'</select>')+
       field('Amount (₱)','<input id="paAmt" type="number" step="0.01" min="0" placeholder="0.00">','Enter the amount; the type decides whether it adds or deducts.')+
@@ -10742,7 +10743,7 @@ function savePayAdj(){
 }
 /* Testable core. */
 function addPayAdj(staffId, date, type, amount, reason){
-  if(!staffById(staffId)) return { ok:false, err:'Pick the staff member' };
+  var st=staffById(staffId); if(!st || !isMechanicRole(st.role)) return { ok:false, err:'Pick the mechanic' };
   if(!/^\d{4}-\d{2}-\d{2}$/.test(String(date||''))) return { ok:false, err:'Pick the date' };
   var amt=round2(Math.abs(Number(amount)||0)); if(!(amt>0)) return { ok:false, err:'Enter the amount' };
   reason=String(reason||'').trim(); if(reason.length<3) return { ok:false, err:'Give the reason' };
