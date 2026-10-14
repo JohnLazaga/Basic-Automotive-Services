@@ -670,7 +670,7 @@ var BRANCH = {"id":"main","slug":"fairview","name":"Basic by JMSI — Fairview (
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-10-14 · 576ddd0';
+var APP_VERSION = 'v1.3.0 · 2026-10-14 · 655a7a8';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -10003,8 +10003,15 @@ function opexFor(m){
   recurringFor(m).forEach(function(r){ add(r.category||'Miscellaneous', r.amount); });
   oneOffFor(m).forEach(function(e){ add(e.category||'Miscellaneous', e.amount); });
   payrollFor(m).forEach(function(p){ add(PAYROLL_CATEGORY, p.amount); });
+  /* Commission payout adjustments (part20) dated this month: a bonus is an extra
+     cost, a deduction lowers it. Cash advances are left out — money lent and
+     taken back from later pay, not a cost. */
+  (S.commadj||[]).forEach(function(a){
+    if(a && a.type!=='advance' && String(a.date||'').slice(0,7)===m) add(COMMADJ_CATEGORY, a.amount);
+  });
   return { byCat:byCat, total:total };
 }
+var COMMADJ_CATEGORY = 'Commission bonuses & deductions';
 /* Month P&L. Job side uses the same released-job, ex-VAT figures as Reports,
    bucketed by the month the job was billed (the Revenue-by-month basis). */
 function plFor(m){
@@ -10052,7 +10059,7 @@ function plCard(m){
   return '<div class="card"><h2>Profit &amp; loss · '+esc(fmtMonth(m))+' <span class="muted small">· ex-VAT · '+p.jobs+' released job'+(p.jobs===1?'':'s')+'</span></h2>'+
     '<div class="kpis">'+kpi('Gross profit (jobs)',peso(p.gross))+kpi('Operating expenses',peso(p.opex.total))+
       kpi('Net profit','<span class="'+(p.net<0?'st-bad-t':'st-good-t')+'">'+peso(p.net)+'</span>', p.margin+'% of revenue')+'</div>'+
-    line2('Revenue (ex-VAT)',peso(p.revenue))+line2('− Parts cost',peso(p.partsCost))+line2('− Labor commission',peso(p.commission))+
+    line2('Revenue (ex-VAT)',peso(p.revenue))+line2('− Parts cost',peso(p.partsCost))+line2('− Commission (mechanics &amp; staff)',peso(p.commission))+
     line2('Gross profit from jobs','<b>'+peso(p.gross)+'</b>')+
     '<div class="bill-sep"></div>'+
     (cats.length ? cats.map(function(c){ return line2('− '+esc(c),peso(p.opex.byCat[c])); }).join('') : '<div class="muted small">No expenses recorded for this month.</div>')+
