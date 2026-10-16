@@ -670,7 +670,7 @@ var BRANCH = {"id":"sandbox","slug":"sandbox","name":"Basic by JMSI — Sandbox 
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-10-14 · 6c9b574';
+var APP_VERSION = 'v1.3.0 · 2026-10-16 · 9101505';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -3643,7 +3643,7 @@ function jobStagePanel(j,b){
     html+= afterServiceBlock(j) + billingEditBlock(j) + jobPaymentBlock(j,b);
   } else {
     html+='<div class="released">✓ Released'+(j.orNumber?' · OR '+esc(j.orNumber):'')+'<div class="muted small">'+esc(fmtDateTime(j.billedAt))+'</div></div>'+
-      releasedPaymentsBlock(j) + afterServiceBlock(j) + billingEditBlock(j);
+      chargeNoteHTML(j) + releasedPaymentsBlock(j) + afterServiceBlock(j) + billingEditBlock(j);
   }
   html+='</div>';
   return html;
@@ -3931,13 +3931,16 @@ function jobPaymentBlock(j,b){
     '</div>'+
     pays+
     ((paid||!showPrice)? '' : '<div class="grid2 mt8">'+field('Amount','<input id="pyAmt" type="number" step="0.01" value="'+attr(b.balance)+'">')+
-      field('Method','<select id="pyMethod"><option>Cash</option><option>GCash</option><option>Card</option><option>Bank transfer</option><option>Check</option><option>Charge account</option></select>')+'</div>'+
+      field('Method','<select id="pyMethod"><option>Cash</option><option>GCash</option><option>Card</option><option>Bank transfer</option><option>Check</option></select>')+'</div>'+
       field('Reference #','<input id="pyRef" placeholder="GCash / bank / card ref, or check # and bank — required for GCash, bank transfer and check" autocomplete="off">')+
       '<button class="btn sm" onclick="recordPayment(\''+j.id+'\')">Record payment</button>')+
     (canRefund?'<button class="btn sm ghost mt8" onclick="refundDialog(\''+j.id+'\')">Record refund…</button>':'')+
     field('Last service odometer','<input id="relOdo" type="number" value="'+attr(j.lastServiceOdo||j.odometer||'')+'" placeholder="reading at release">','Recorded on release; updates the vehicle’s last service odometer.')+
     '<button class="btn primary full mt8" '+(paid?'':'disabled title="Balance must be fully paid"')+' onclick="releaseJob(\''+j.id+'\')">Release vehicle →</button>'+
-    (paid?'':'<div class="muted small center">Balance must be fully paid to release.</div>');
+    (paid?'':'<div class="muted small center">Balance must be fully paid to release'+
+      (canReleaseOnCharge()?' — or release it on charge for a charge-account customer.':'.')+'</div>')+
+    ((!paid && showPrice && canReleaseOnCharge() && !jobVoided(j))?
+      '<button class="btn sm ghost full mt8" onclick="releaseOnChargeDialog(\''+j.id+'\')">Release on charge (pay later)…</button>':'');
 }
 /* One line per payment (refunds are negative payments). Admins and Supervisors
    get a Correct button; a corrected line shows what it was, who changed it and why. */
@@ -4095,7 +4098,60 @@ function confirmCorrectPayment(){
 function releaseJob(id){
   var j=jobById(id);
   if (jobBalance(j)>0.001){ toast('Balance must be fully paid','err'); return; }
-  var lso=Number(val('relOdo'))||0; if(lso) j.lastServiceOdo=lso;   // odometer reading at release
+  finishRelease(j, Number(val('relOdo'))||0);
+  toast('Vehicle released ✓'); render();
+}
+/* ---- Release on charge -----------------------------------------------------
+   A charge-account customer takes the vehicle now and pays later. This is NOT a
+   payment: nothing is added to j.payments, so the balance stays on the job, it
+   stays in Receivables / the Statement of Account, and the day's collections
+   are not inflated. (It used to be entered as a "Charge account" payment, which
+   zeroed the balance and printed the receipt as Fully paid.) Admin or
+   Supervisor only, with a reason; who approved it is kept on j.charge.
+   Testable without a DOM: returns {ok:true} or {ok:false, err}. */
+function canReleaseOnCharge(){ return isAdminOrSV(); }
+function releaseOnCharge(j, reason, odo){
+  if(!canReleaseOnCharge()) return { ok:false, err:'Only an admin or Supervisor can release on charge' };
+  if(!j) return { ok:false, err:'No job order' };
+  if(j.stage!=='Final Billing') return { ok:false, err:'Only a billed job order can be released on charge' };
+  if(jobVoided(j)) return { ok:false, err:'This receipt is voided' };
+  var bal=jobBalance(j);
+  if(bal<=0.001) return { ok:false, err:'Nothing is owing — release it normally' };
+  reason=String(reason||'').trim();
+  if(reason.length<3) return { ok:false, err:'Give a reason — e.g. the account or who will pay' };
+  var me=(typeof CURRENT_USER!=='undefined' && CURRENT_USER) ? CURRENT_USER : null;
+  j.charge={ at:new Date().toISOString(), by:(me&&me.uid)||'', byName:(me&&(me.name||me.username||me.email))||'',
+    reason:reason, balance:round2(bal) };
+  finishRelease(j, Number(odo)||0);
+  return { ok:true, balance:round2(bal) };
+}
+var _chargeCtx=null;
+function releaseOnChargeDialog(id){
+  if(!canReleaseOnCharge()){ toast('Only an admin or Supervisor can release on charge','err'); return; }
+  var j=jobById(id); if(!j) return;
+  _chargeCtx={ id:id, odo:Number(val('relOdo'))||0 };   // read before the modal opens
+  openModal('Release on charge · '+j.no,
+    '<p class="muted small">The vehicle goes out with <b>'+peso(jobBalance(j))+'</b> still owing. '+
+      'Nothing is recorded as paid: the balance stays on this job order and in <b>Receivables</b> until it is collected there.</p>'+
+    field('Reason / account','<input id="chReason" placeholder="e.g. fleet account, pays every 15th" autocomplete="off">',
+      'Kept on the job with your name, and printed on the Final Billing.'),
+    { onOk:'confirmReleaseOnCharge', okText:'Release on charge' });
+}
+function confirmReleaseOnCharge(){
+  var c=_chargeCtx, j=c&&jobById(c.id); if(!j){ closeModal(); return; }
+  var r=releaseOnCharge(j, val('chReason'), c.odo);
+  if(!r.ok){ toast(r.err,'err'); return; }
+  _chargeCtx=null; closeModal(); toast('Released on charge · '+peso(r.balance)+' in Receivables'); render();
+}
+function chargeNoteHTML(j){
+  var c=j.charge; if(!c) return '';
+  var bal=jobBalance(j);
+  return '<div class="lock mt8">Released on charge'+(c.byName?' by '+esc(c.byName):'')+' · '+esc(fmtDateTime(c.at))+
+    (c.reason?' — '+esc(c.reason):'')+'<div class="muted small">'+
+    (bal>0.001?peso(bal)+' still owing (in Receivables)':'Since paid in full')+'</div></div>';
+}
+function finishRelease(j, lso){
+  if(lso) j.lastServiceOdo=lso;   // odometer reading at release
   j.stage='Released';
   // record the last service odometer on the vehicle and schedule next service
   var v=vehicleById(j.vehicleId); if(v){ var reading=Number(j.lastServiceOdo)||(j.inspection&&j.inspection.odometer)||j.odometer||0;
@@ -4105,7 +4161,6 @@ function releaseJob(id){
     // it was, so the board never nags about units that were never serviced.
     if(jobPerformedPms(j)) scheduleNextService(v, reading); }
   persist(); if(v && typeof publishPortalDoc==='function') publishPortalDoc(v.id);   // refresh public portal
-  toast('Vehicle released ✓'); render();
 }
 
 /* afterRender hook (kept as a base no-op; part12_rbac.js chains onto it). */
@@ -5465,7 +5520,7 @@ VIEWS.receivables = function(){
     return '<div class="card"><div class="card-head"><h2>'+esc(c.name)+'</h2><div class="row gap"><b>'+peso(c.total)+'</b>'+
       '<button class="btn sm ghost" onclick="printStatement(\''+attr(encodeURIComponent(c.name))+'\')">⎙ Statement</button></div></div>'+
       '<table class="tbl sm"><thead><tr><th>JO #</th><th>Billed</th><th>Age</th><th>Bucket</th><th class="r">Balance</th><th></th></tr></thead><tbody>'+
-      c.jobs.map(function(x){return '<tr><td>'+esc(x.j.no)+'</td><td>'+esc(fmtDate(x.j.billedAt))+'</td><td>'+x.days+'d</td><td>'+chip(x.bucket,x.bucket==='90+'?'due':'')+'</td>'+
+      c.jobs.map(function(x){return '<tr><td>'+esc(x.j.no)+(x.j.charge?' '+chip('on charge',''):'')+'</td><td>'+esc(fmtDate(x.j.billedAt))+'</td><td>'+x.days+'d</td><td>'+chip(x.bucket,x.bucket==='90+'?'due':'')+'</td>'+
         '<td class="r">'+peso(x.bal)+'</td><td class="r"><button class="btn xs primary" onclick="collectAR(\''+x.j.id+'\')">Collect</button></td></tr>';}).join('')+
       '</tbody></table></div>';
   }).join('') : emptyState('No outstanding receivables.');
@@ -6039,7 +6094,9 @@ function printBilling(id){ printDoc(docBilling(jobById(id))); }
    still due (or the excess, if more was recorded than due). */
 function paymentsDoc(j){
   var pays=(j.payments||[]), b=runningBill(j);
-  if(!pays.length) return '<div class="dtitle" style="font-size:12px;margin-top:14px">Payments</div><p style="font-size:12px">No payment recorded yet — '+peso(b.gross)+' due.</p>';
+  var ch=j.charge ? '<p style="font-size:12px"><b>Released on charge account</b> · '+esc(fmtDate(j.charge.at))+
+    (j.charge.byName?' · approved by '+esc(j.charge.byName):'')+(j.charge.reason?' — '+esc(j.charge.reason):'')+'</p>' : '';
+  if(!pays.length) return '<div class="dtitle" style="font-size:12px;margin-top:14px">Payments</div><p style="font-size:12px">No payment recorded yet — '+peso(b.gross)+' due.</p>'+ch;
   return '<div class="dtitle" style="font-size:12px;margin-top:14px">Payments</div>'+
     '<table><thead><tr><th>Date</th><th>Method</th><th>Reference</th><th class="r">Amount</th></tr></thead><tbody>'+
     pays.map(function(p){ var isR=Number(p.amount)<0;
@@ -6049,7 +6106,7 @@ function paymentsDoc(j){
     '<div class="totbox"><div class="l2"><span>Total paid</span><span>'+peso(b.paid)+'</span></div>'+
       (b.balance>0.009 ? '<div class="l2 grand"><span>Balance due</span><span>'+peso(b.balance)+'</span></div>'
        : b.balance<-0.009 ? '<div class="l2"><span>Paid over amount due</span><span>'+peso(-b.balance)+'</span></div>'
-       : '<div class="l2"><span><b>Fully paid</b></span><span></span></div>')+'</div>';
+       : '<div class="l2"><span><b>Fully paid</b></span><span></span></div>')+'</div>'+ch;
 }
 
 /* ---- Estimate: 2 copies --------------------------------------------------- */
@@ -6692,7 +6749,7 @@ if (typeof module!=='undefined' && module.exports){
     docJobOrder:docJobOrder, docPostJob:docPostJob, docBilling:docBilling, docEstimate:docEstimate,
     docPO:docPO, docStatement:docStatement, docPayout:docPayout, docDailyClose:docDailyClose,
     eodData:eodData, docEodRange:docEodRange, setEodRange:function(f,t){ EOD_FROM=f; EOD_TO=t; },
-    addRefund:addRefund, jobPaid:jobPaid, todayISO:todayISO,
+    addRefund:addRefund, releaseOnCharge:releaseOnCharge, jobPaid:jobPaid, todayISO:todayISO,
     setDcDate:function(d){ DC_DATE=d; },
     createJob:createJob, createJobFromAppt:createJobFromAppt, createEstimateFrom:createEstimateFrom,
     deductInventory:deductInventory, receivePO:receivePO,
