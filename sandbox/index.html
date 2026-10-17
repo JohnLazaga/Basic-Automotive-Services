@@ -670,7 +670,7 @@ var BRANCH = {"id":"sandbox","slug":"sandbox","name":"Basic by JMSI — Sandbox 
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-10-17 · 49f66de';
+var APP_VERSION = 'v1.3.0 · 2026-10-17 · 4d52605';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -1334,10 +1334,36 @@ function goBack(){
 /* ---- View dispatch (filled by later parts) -------------------------------- */
 var VIEWS = {}; // id -> function(arg) -> html string
 
+/* Startup loads open + recently billed jobs first; older ones follow a moment
+   later (part11 startJobHistory). These screens only need what is already in;
+   every other one (reports, Daily Close, Receivables, job list, vehicle
+   history, settings…) adds up the whole history, so it waits rather than show
+   short totals. A job page waits only if that job is one of the old ones. */
+var VIEWS_OK_WITHOUT_HISTORY = { board:1, appointments:1, estimates:1, estimate:1, parts:1, labor:1,
+  purchaseorders:1, po:1, staff:1, pms:1, pmsform:1, photoup:1, accounts:1 };
+function historyOkFor(view, arg){
+  if (typeof jobsHistoryReady!=='function' || jobsHistoryReady()) return true;
+  if (view==='job') return !!jobById(arg);
+  return !!VIEWS_OK_WITHOUT_HISTORY[view];
+}
+/* For actions that rewrite or list every job (comeback picker, plate rename). */
+function requireHistory(){
+  if (historyOkFor('')) return true;
+  toast('Older job orders are still loading — try again in a moment.','err'); return false;
+}
+function historyWaitHTML(){
+  var err = (typeof JOBS_HIST_ERR!=='undefined') && JOBS_HIST_ERR;
+  return '<div class="page"><div class="card center" style="padding:32px">'+
+    (err ? '<h2>Couldn’t load older job orders</h2><p class="muted">'+esc(err)+'</p>'+
+           '<button class="btn primary" onclick="location.reload()">Reload</button>'
+         : '<div class="cloud-spin"></div><p class="muted mt8">Loading older job orders…</p>')+
+    '</div></div>';
+}
 function renderView(){
   if (typeof routeAllowed==='function' && !routeAllowed(ROUTE.view)){
     return '<div class="page">'+accessDenied(viewTitle(ROUTE.view))+'</div>';
   }
+  if (!historyOkFor(ROUTE.view, ROUTE.arg)) return historyWaitHTML();
   var fn = VIEWS[ROUTE.view] || VIEWS['board'];
   try { return fn(ROUTE.arg); }
   catch(e){ return '<div class="card"><h2>View error</h2><pre>'+esc(e&&e.stack||e)+'</pre></div>'; }
@@ -3271,6 +3297,7 @@ function jobComebackPanel(j){
 var cbCtx=null;
 function editComeback(id){
   var j=jobById(id); if(!j) return;
+  if(!requireHistory()) return;   // the picker lists every earlier job for this vehicle
   var prior=(S.jobs||[]).filter(function(x){ return x.id!==j.id && (x.vehicleId===j.vehicleId || (x.plate||'').toUpperCase()===(j.plate||'').toUpperCase()); })
     .sort(function(a,b){return (b.dateIn||'')<(a.dateIn||'')?-1:1;});
   var jopts='<option value="">— none / clear —</option>'+prior.map(function(x){
@@ -4476,6 +4503,7 @@ function vehPlateCheck(){
     '<button class="btn sm" type="button" onclick="closeModal();editVehicle(\''+d.id+'\')">Open that vehicle</button>';
 }
 function saveVehicle(){
+  if(vehCtx && !requireHistory()) return;   // editing re-stamps the plate on every job order of this vehicle
   // Duplicate-plate gate: block the save (keeping the form + input open) and
   // point to the existing record so staff edit that one instead.
   var dup=vehDupe(val('vehPlate'), vehCtx);
@@ -6688,6 +6716,9 @@ function publishPortalDoc(vehicleId){
   }
   if(typeof cloudOn!=='function' || !cloudOn()) return;
   if(typeof FB==='undefined' || !FB || !FB.ready || !FB.db || !FB.user) return;
+  // Older job orders still loading: publishing now would cut them from the
+  // customer's history. Queued; part11 sends it once they are in.
+  if(typeof jobsHistoryReady==='function' && !jobsHistoryReady()){ _portalQueue[vehicleId]=true; return; }
   try {
     var pdata = portalDataForVehicle(v);
     // Carry a PIN hash (not the PIN) so the customer portal can gate client-side.
@@ -6758,7 +6789,7 @@ if (typeof module!=='undefined' && module.exports){
     docJobOrder:docJobOrder, docPostJob:docPostJob, docBilling:docBilling, docEstimate:docEstimate,
     docPO:docPO, docStatement:docStatement, docPayout:docPayout, docDailyClose:docDailyClose,
     eodData:eodData, docEodRange:docEodRange, setEodRange:function(f,t){ EOD_FROM=f; EOD_TO=t; },
-    addRefund:addRefund, releaseOnCharge:releaseOnCharge, jobPaid:jobPaid, todayISO:todayISO,
+    addRefund:addRefund, releaseOnCharge:releaseOnCharge, historyOkFor:historyOkFor, setJobsFull:function(v){ JOBS_FULL=v; }, jobsUnion:jobsUnion, trackJobSlice:trackJobSlice, resetJobParts:function(){ _jobParts={}; }, jobPaid:jobPaid, todayISO:todayISO,
     setDcDate:function(d){ DC_DATE=d; },
     createJob:createJob, createJobFromAppt:createJobFromAppt, createEstimateFrom:createEstimateFrom,
     deductInventory:deductInventory, receivePO:receivePO,
@@ -7150,15 +7181,61 @@ async function cloudLoadAll(){
    - includeMetadataChanges is on so a collection that is genuinely empty still
      reports when the server confirms it; once loaded, metadata-only snapshots
      (e.g. the ack of our own write) are ignored so they cost no re-render.
-   - Offline for 25s after the first cache-only answer = fail like get() did. */
+   - Offline for 25s after the first cache-only answer = fail like get() did.
+
+   JOBS IN TWO STAGES. Most of the download is old released jobs (Fairview:
+   1,131 of 1,168, ~3 of 4.5 MB) that the board never shows. Startup waits only
+   for the jobs that are still open plus everything billed in the last
+   JOB_RECENT_DAYS; the older ones (billedAt before the cut-off) stream in right
+   after the first screen (startJobHistory). Three queries, one per slice, are
+   merged by id into S.jobs — together they cover every job: an unbilled job is
+   never Released, and every Released job carries billedAt. Until the old slice
+   has arrived JOBS_FULL is false and every screen that needs the whole history
+   (reports, Daily Close, Receivables, vehicle history, the portal…) waits —
+   see jobsHistoryReady() / renderView(). */
+var JOB_RECENT_DAYS = 30;
+var JOBS_FULL = true;          // false only while a cloud load still lacks the old jobs
+var JOBS_HIST_ERR = null;      // why the old jobs could not be loaded, if they could not
+var _jobParts = {};            // query key -> { id: { d:doc, seq:n } }
+var _jobSeq = 0;
+function jobsHistoryReady(){ return JOBS_FULL; }
+/* Keep one query's slice current from its docChanges (also for snapshots we do
+   not apply, so the slice never misses a change). */
+function trackJobSlice(key, snap){
+  var m = _jobParts[key] || (_jobParts[key] = {});
+  snap.docChanges().forEach(function(ch){
+    var id = ch.doc.id;
+    if (ch.type==='removed') delete m[id];
+    else m[id] = { d: ch.doc.data(), seq: ++_jobSeq };
+  });
+}
+/* Every slice merged; a job matched by two queries takes the newest copy. */
+function jobsUnion(){
+  var best = {};
+  Object.keys(_jobParts).forEach(function(k){ var m=_jobParts[k];
+    Object.keys(m).forEach(function(id){ if(!best[id] || m[id].seq>best[id].seq) best[id]=m[id]; }); });
+  return Object.keys(best).map(function(id){ return best[id].d; });
+}
+function jobCutoffISO(){ return new Date(Date.now() - JOB_RECENT_DAYS*86400000).toISOString(); }
+
 function cloudListenCollections(st){
+  _jobParts = {}; JOBS_FULL = false; JOBS_HIST_ERR = null;
+  var cut = jobCutoffISO();
   return new Promise(function(resolve, reject){
-    var cols = syncCollections(), got = {}, pending = cols.length, loading = true, offlineTimer = null;
+    var sources = [];
+    syncCollections().forEach(function(c){
+      if (c!=='jobs'){ sources.push({ key:c, coll:c, q:bcol(c) }); return; }
+      sources.push({ key:'jobs:open',   coll:'jobs', q:bcol('jobs').where('stage','!=','Released') });
+      sources.push({ key:'jobs:recent', coll:'jobs', q:bcol('jobs').where('billedAt','>=',cut) });
+    });
+    var got = {}, pending = sources.length, loading = true, offlineTimer = null;
     function fail(err){
       if (!loading) return; loading = false; clearTimeout(offlineTimer); cloudUnsub(); reject(err);
     }
-    cols.forEach(function(c){
-      var u = bcol(c).onSnapshot({ includeMetadataChanges:true }, function(snap){
+    sources.forEach(function(src){
+      var isJobs = src.coll==='jobs';
+      var u = src.q.onSnapshot({ includeMetadataChanges:true }, function(snap){
+        if (isJobs) trackJobSlice(src.key, snap);
         if (loading){
           if (snap.metadata.fromCache){
             if (!offlineTimer) offlineTimer = setTimeout(function(){
@@ -7166,28 +7243,64 @@ function cloudListenCollections(st){
             }, 25000);
             return;
           }
-          st[c] = snap.docs.map(function(d){ return d.data(); });
-          if (!got[c]){ got[c] = true; pending--; }
+          if (!isJobs) st[src.coll] = snap.docs.map(function(d){ return d.data(); });
+          if (!got[src.key]){ got[src.key] = true; pending--; }
           if (pending===0){
             loading = false; clearTimeout(offlineTimer);
+            st.jobs = jobsUnion();
             S = st; ensureStateShape(); rememberSnap();
             resolve();
+            setTimeout(function(){ startJobHistory(cut); }, 0);   // after the first screen is drawn
           }
           return;
         }
         if (!snap.docChanges().length) return;                  // metadata-only: nothing new
-        onCollectionSnapshot(c, snap);
+        onCollectionSnapshot(src.coll, snap, isJobs ? jobsUnion() : null);
       }, function(err){
-        if (loading) fail(err); else console.error('listener '+c, err);
+        if (loading) fail(err); else console.error('listener '+src.key, err);
       });
       _cloudSubs.push(u);
     });
   });
 }
-function onCollectionSnapshot(c, snap){
+/* The old jobs: everything billed before the cut-off. Not awaited by the load. */
+function startJobHistory(cut){
+  var first = true;
+  var u = bcol('jobs').where('billedAt','<',cut).onSnapshot({ includeMetadataChanges:true }, function(snap){
+    trackJobSlice('jobs:old', snap);
+    if (first){
+      if (snap.metadata.fromCache) return;                      // wait for the server
+      first = false;
+      _applyingRemote = true;
+      var held = applyRemoteSnapshot('jobs', jobsUnion());
+      if (typeof billBaseline==='function') billBaseline();
+      _applyingRemote = false;
+      JOBS_FULL = true;
+      if (held && typeof persist==='function') persist();
+      flushPortalQueue();
+      if (!modalOpen()) render();
+      return;
+    }
+    if (!snap.docChanges().length) return;
+    onCollectionSnapshot('jobs', snap, jobsUnion());
+  }, function(err){
+    console.error('listener jobs:old', err);
+    if (first){ JOBS_HIST_ERR = (err&&err.message)||'Could not load older job orders'; if (!modalOpen()) render(); }
+  });
+  _cloudSubs.push(u);
+}
+/* Portal snapshots carry a vehicle's whole service history, so one published
+   before the old jobs are in would drop them from the customer's view. They
+   wait here and go out once JOBS_FULL. */
+var _portalQueue = {};
+function flushPortalQueue(){
+  var ids = Object.keys(_portalQueue); _portalQueue = {};
+  ids.forEach(function(id){ if (typeof publishPortalDoc==='function') publishPortalDoc(id); });
+}
+function onCollectionSnapshot(c, snap, merged){
   if (snap.metadata.hasPendingWrites) return;             // ignore our own local writes
   _applyingRemote = true;
-  var incoming = snap.docs.map(function(d){ return d.data(); });
+  var incoming = merged || snap.docs.map(function(d){ return d.data(); });
   // Photos re-attach off the OLD S.jobs, so this must run before the merge.
   if (c==='jobs'){ attachJobPhotos(incoming, S.jobs); attachPmsPhotos(incoming, S.jobs); }
   var held = applyRemoteSnapshot(c, incoming);
