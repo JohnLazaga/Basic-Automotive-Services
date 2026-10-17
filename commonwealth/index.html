@@ -670,7 +670,7 @@ var BRANCH = {"id":"commonwealth","slug":"commonwealth","name":"Basic by JMSI �
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-10-17 · f2fc4e9';
+var APP_VERSION = 'v1.3.0 · 2026-10-17 · a19d72b';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -5558,9 +5558,26 @@ function arSummary(){
     return c; });
   return { total:total, buckets:buckets, custList:custList, count:ar.length };
 }
-VIEWS.receivables = function(){
-  var sm=arSummary(), total=sm.total, buckets=sm.buckets, custList=sm.custList;
-  var custHTML=custList.length? custList.map(function(c){
+/* Search: a customer whose name matches shows with all its job orders; otherwise
+   only the job orders whose JO # matches are shown, under their customer.
+   Case and spacing are ignored, so "boyet  caraan" or "1064" both find. */
+var AR_Q='';
+function arFilter(custList, q){
+  q=String(q||'').replace(/\s+/g,' ').trim().toLowerCase(); if(!q) return custList;
+  var out=[];
+  custList.forEach(function(c){
+    if(c.name.toLowerCase().indexOf(q)>=0){ out.push(c); return; }
+    var jobs=c.jobs.filter(function(x){ return String(x.j.no||'').toLowerCase().indexOf(q)>=0; });
+    if(jobs.length) out.push({ name:c.name, jobs:jobs, total:round2(jobs.reduce(function(s,x){ return s+x.bal; },0)) });
+  });
+  return out;
+}
+function arSearch(v){ AR_Q=v; var el=document.getElementById('arBody'); if(el) el.innerHTML=arBodyHTML(arSummary().custList); }
+function arBodyHTML(all){
+  var custList=arFilter(all, AR_Q);
+  if(!all.length) return emptyState('No outstanding receivables.');
+  if(!custList.length) return '<div class="empty">No customer or JO # matches “'+esc(AR_Q)+'”.</div>';
+  return custList.map(function(c){
     return '<div class="card"><div class="card-head"><h2>'+esc(c.name)+'</h2><div class="row gap"><b>'+peso(c.total)+'</b>'+
       '<button class="btn sm ghost" onclick="printStatement(\''+attr(encodeURIComponent(c.name))+'\')">⎙ Statement</button></div></div>'+
       '<table class="tbl sm"><thead><tr><th>JO #</th><th>Billed</th><th>Age</th><th>Bucket</th><th class="r">Balance</th><th></th></tr></thead><tbody>'+
@@ -5568,7 +5585,13 @@ VIEWS.receivables = function(){
         '<td class="r">'+peso(x.bal)+'</td><td class="r"><button class="btn xs primary" onclick="collectAR(\''+x.j.id+'\')">Collect</button>'+
         (canSettleAccounts()?' <button class="btn xs ghost" onclick="adminSettleDialog(\''+x.j.id+'\')">Admin settlement</button>':'')+'</td></tr>';}).join('')+
       '</tbody></table></div>';
-  }).join('') : emptyState('No outstanding receivables.');
+  }).join('');
+}
+VIEWS.receivables = function(){
+  var sm=arSummary(), total=sm.total, buckets=sm.buckets, custList=sm.custList;
+  var custHTML=(custList.length?'<input class="searchbox mt8" id="arSearch" value="'+attr(AR_Q)+'" oninput="arSearch(this.value)" '+
+      'placeholder="Search customer name or JO #…" autocomplete="off">':'')+
+    '<div id="arBody">'+arBodyHTML(custList)+'</div>';
   return '<div class="page"><div class="page-head"><h1>Receivables (A/R)</h1>'+
       (custList.length?'<button class="btn ghost" onclick="printReceivables()">⎙ Print list</button>':'')+'</div>'+
     '<div class="kpis">'+kpi('Total A/R',peso(total))+kpi('0–30',peso(buckets['0-30']))+kpi('31–60',peso(buckets['31-60']))+
@@ -6904,7 +6927,7 @@ if (typeof module!=='undefined' && module.exports){
     docJobOrder:docJobOrder, docPostJob:docPostJob, docBilling:docBilling, docEstimate:docEstimate,
     docPO:docPO, docStatement:docStatement, docPayout:docPayout, docDailyClose:docDailyClose,
     eodData:eodData, docEodRange:docEodRange, setEodRange:function(f,t){ EOD_FROM=f; EOD_TO=t; },
-    addRefund:addRefund, releaseOnCharge:releaseOnCharge, docReceivables:docReceivables, settleJobs:settleJobs, settleWarnText:settleWarnText, historyOkFor:historyOkFor, setJobsFull:function(v){ JOBS_FULL=v; }, jobsUnion:jobsUnion, trackJobSlice:trackJobSlice, resetJobParts:function(){ _jobParts={}; }, jobPaid:jobPaid, todayISO:todayISO,
+    addRefund:addRefund, releaseOnCharge:releaseOnCharge, docReceivables:docReceivables, arFilter:arFilter, arSummary:arSummary, settleJobs:settleJobs, settleWarnText:settleWarnText, historyOkFor:historyOkFor, setJobsFull:function(v){ JOBS_FULL=v; }, jobsUnion:jobsUnion, trackJobSlice:trackJobSlice, resetJobParts:function(){ _jobParts={}; }, jobPaid:jobPaid, todayISO:todayISO,
     setDcDate:function(d){ DC_DATE=d; },
     createJob:createJob, createJobFromAppt:createJobFromAppt, createEstimateFrom:createEstimateFrom,
     deductInventory:deductInventory, receivePO:receivePO,
