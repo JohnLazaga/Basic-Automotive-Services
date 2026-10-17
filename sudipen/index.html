@@ -670,7 +670,7 @@ var BRANCH = {"id":"sudipen","slug":"sudipen","name":"Basic by JMSI — Sudipen"
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-10-17 · ed2bc63';
+var APP_VERSION = 'v1.3.0 · 2026-10-17 · 8f5616d';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -5549,7 +5549,11 @@ VIEWS.receivables = function(){
     var key=custKey(j); (byCust[key]=byCust[key]||{name:custName(j),total:0,jobs:[]}); byCust[key].total=round2(byCust[key].total+bal);
     byCust[key].jobs.push({ j:j, days:days, bucket:b, bal:bal }); });
   var total=round2(Object.keys(buckets).reduce(function(s,k){return s+buckets[k];},0));
-  var custList=Object.keys(byCust).map(function(k){return byCust[k];}).sort(function(a,b){return b.total-a.total;});
+  /* Customers A–Z (by the grouping key, so case/spacing never reorders them);
+     each customer's job orders oldest billing first — same order as the Statement. */
+  var custList=Object.keys(byCust).sort().map(function(k){ var c=byCust[k];
+    c.jobs.sort(function(a,b){ var x=String(a.j.billedAt||''), y=String(b.j.billedAt||''); return x<y?-1:x>y?1:0; });
+    return c; });
   var custHTML=custList.length? custList.map(function(c){
     return '<div class="card"><div class="card-head"><h2>'+esc(c.name)+'</h2><div class="row gap"><b>'+peso(c.total)+'</b>'+
       '<button class="btn sm ghost" onclick="printStatement(\''+attr(encodeURIComponent(c.name))+'\')">⎙ Statement</button></div></div>'+
