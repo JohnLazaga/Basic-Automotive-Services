@@ -670,7 +670,7 @@ var BRANCH = {"id":"commonwealth","slug":"commonwealth","name":"Basic by JMSI �
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-10-17 · ace72c0';
+var APP_VERSION = 'v1.3.0 · 2026-10-17 · 49f66de';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -7117,19 +7117,86 @@ function plain(o){ return JSON.parse(JSON.stringify(o)); }          /* drops und
 function snapMap(arr){ var m={}; (arr||[]).forEach(function(r){ m[r.id]=JSON.stringify(r); }); return m; }
 function modalOpen(){ return typeof document!=='undefined' && !!document.querySelector('#modalRoot .modal'); }
 
+/* SPEED: the load used to get() every collection one after another and then
+   cloudSubscribe() opened listeners whose first snapshot downloaded all of it a
+   second time — ~10 MB in 12+ sequential round trips for Fairview, painful on a
+   phone. Now the two meta docs come in parallel and the collection listeners
+   ARE the load: all start at once and their first server snapshot fills S.
+   One download, one round trip's worth of waiting. */
 async function cloudLoadAll(){
-  // is the cloud already populated?
-  var shopDoc = await bcol('meta').doc('shop').get();
-  if (!shopDoc.exists){
+  cloudUnsub();
+  function getMeta(){ return Promise.all([bcol('meta').doc('shop').get(), bcol('meta').doc('counters').get()]); }
+  var meta = await getMeta();
+  if (!meta[0].exists){
     // empty cloud → migrate from current local data (or a fresh seed)
     var raw = await Storage.get(STORE_KEY);
     var base = null; try { base = raw ? JSON.parse(raw) : null; } catch(e){}
     if (!base || base.version!==2) base = seedState();
     await cloudMigrate(base);
+    meta = await getMeta();
   }
-  S = await cloudFetchState();
-  ensureStateShape();
-  rememberSnap();
+  var st = seedState();              // defaults for shop/counters + array shape
+  if (meta[0].exists) st.shop = Object.assign(st.shop, meta[0].data());
+  if (meta[1].exists) st.counters = Object.assign(st.counters, meta[1].data());
+  await cloudListenCollections(st);
+}
+
+/* Opens one live listener per collection and resolves once every one of them
+   has delivered its first answer FROM THE SERVER; that answer becomes S. After
+   that the same listeners carry live changes (onCollectionSnapshot), so
+   cloudSubscribe() must not open them again.
+   - fromCache snapshots are skipped while loading: the cache is memory-only, so
+     one means "offline, nothing known" and would load an empty shop.
+   - includeMetadataChanges is on so a collection that is genuinely empty still
+     reports when the server confirms it; once loaded, metadata-only snapshots
+     (e.g. the ack of our own write) are ignored so they cost no re-render.
+   - Offline for 25s after the first cache-only answer = fail like get() did. */
+function cloudListenCollections(st){
+  return new Promise(function(resolve, reject){
+    var cols = syncCollections(), got = {}, pending = cols.length, loading = true, offlineTimer = null;
+    function fail(err){
+      if (!loading) return; loading = false; clearTimeout(offlineTimer); cloudUnsub(); reject(err);
+    }
+    cols.forEach(function(c){
+      var u = bcol(c).onSnapshot({ includeMetadataChanges:true }, function(snap){
+        if (loading){
+          if (snap.metadata.fromCache){
+            if (!offlineTimer) offlineTimer = setTimeout(function(){
+              fail(new Error('You appear to be offline. Check your connection and reload.'));
+            }, 25000);
+            return;
+          }
+          st[c] = snap.docs.map(function(d){ return d.data(); });
+          if (!got[c]){ got[c] = true; pending--; }
+          if (pending===0){
+            loading = false; clearTimeout(offlineTimer);
+            S = st; ensureStateShape(); rememberSnap();
+            resolve();
+          }
+          return;
+        }
+        if (!snap.docChanges().length) return;                  // metadata-only: nothing new
+        onCollectionSnapshot(c, snap);
+      }, function(err){
+        if (loading) fail(err); else console.error('listener '+c, err);
+      });
+      _cloudSubs.push(u);
+    });
+  });
+}
+function onCollectionSnapshot(c, snap){
+  if (snap.metadata.hasPendingWrites) return;             // ignore our own local writes
+  _applyingRemote = true;
+  var incoming = snap.docs.map(function(d){ return d.data(); });
+  // Photos re-attach off the OLD S.jobs, so this must run before the merge.
+  if (c==='jobs'){ attachJobPhotos(incoming, S.jobs); attachPmsPhotos(incoming, S.jobs); }
+  var held = applyRemoteSnapshot(c, incoming);
+  if (c==='jobs' && typeof billBaseline==='function') billBaseline();   // another device's change is theirs to log
+  _applyingRemote = false;
+  // Anything held back is still owed to the server; make sure a write is queued
+  // even if the edit that dirtied it already had its debounce consumed.
+  if (held && typeof persist==='function') persist();
+  if (!modalOpen()) render();
 }
 
 function ensureStateShape(){
@@ -7141,23 +7208,9 @@ function ensureStateShape(){
   if(ensurePmsLabor()) persist();   // guarantee the standard PMS LABOR item in this branch
 }
 
-async function cloudFetchState(){
-  var st = seedState();              // defaults for shop/counters + array shape
-  var shopDoc = await bcol('meta').doc('shop').get();
-  if (shopDoc.exists) st.shop = Object.assign(st.shop, shopDoc.data());
-  var cntDoc = await bcol('meta').doc('counters').get();
-  if (cntDoc.exists) st.counters = Object.assign(st.counters, cntDoc.data());
-  var cols = syncCollections();
-  for (var i=0;i<cols.length;i++){
-    var c = cols[i];
-    var snap = await bcol(c).get();
-    st[c] = snap.docs.map(function(d){ return d.data(); });
-  }
-  // QUOTA: photos are NOT bulk-loaded here anymore — reading every job's photos on
-  // every session was the dominant Firestore-read cost. They load lazily per job when
-  // opened (watchJobPhotos). Jobs come in without photo bytes; that's expected.
-  return st;
-}
+/* QUOTA: photos are NOT bulk-loaded at startup — reading every job's photos on
+   every session was the dominant Firestore-read cost. They load lazily per job when
+   opened (watchJobPhotos). Jobs come in without photo bytes; that's expected. */
 
 async function cloudMigrate(base){
   await bcol('meta').doc('shop').set(plain(base.shop||{}));
@@ -7445,25 +7498,9 @@ function applyRemoteSnapshot(c, incoming){
   return Object.keys(dirty).length;
 }
 
+/* Collection listeners are already running — cloudLoadAll() opened them and they
+   were the load. This adds the meta-doc listeners alongside them (no unsub). */
 function cloudSubscribe(){
-  cloudUnsub();
-  syncCollections().forEach(function(c){
-    var u = bcol(c).onSnapshot(function(snap){
-      if (snap.metadata.hasPendingWrites) return;             // ignore our own local writes
-      _applyingRemote = true;
-      var incoming = snap.docs.map(function(d){ return d.data(); });
-      // Photos re-attach off the OLD S.jobs, so this must run before the merge.
-      if (c==='jobs'){ attachJobPhotos(incoming, S.jobs); attachPmsPhotos(incoming, S.jobs); }
-      var held = applyRemoteSnapshot(c, incoming);
-      if (c==='jobs' && typeof billBaseline==='function') billBaseline();   // another device's change is theirs to log
-      _applyingRemote = false;
-      // Anything held back is still owed to the server; make sure a write is queued
-      // even if the edit that dirtied it already had its debounce consumed.
-      if (held && typeof persist==='function') persist();
-      if (!modalOpen()) render();
-    }, function(err){ console.error('listener '+c, err); });
-    _cloudSubs.push(u);
-  });
   // Photos are NOT globally subscribed anymore (that read every photo doc on the
   // initial snapshot). Instead the currently-open job's photos are watched live by
   // watchJobPhotos(), reading only that one job's photo docs.
