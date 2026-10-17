@@ -670,7 +670,7 @@ var BRANCH = {"id":"sandbox","slug":"sandbox","name":"Basic by JMSI — Sandbox 
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-10-17 · a19d72b';
+var APP_VERSION = 'v1.3.0 · 2026-10-17 · b6fef8e';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -5589,11 +5589,12 @@ function arBodyHTML(all){
 }
 VIEWS.receivables = function(){
   var sm=arSummary(), total=sm.total, buckets=sm.buckets, custList=sm.custList;
-  var custHTML=(custList.length?'<input class="searchbox mt8" id="arSearch" value="'+attr(AR_Q)+'" oninput="arSearch(this.value)" '+
-      'placeholder="Search customer name or JO #…" autocomplete="off">':'')+
-    '<div id="arBody">'+arBodyHTML(custList)+'</div>';
-  return '<div class="page"><div class="page-head"><h1>Receivables (A/R)</h1>'+
-      (custList.length?'<button class="btn ghost" onclick="printReceivables()">⎙ Print list</button>':'')+'</div>'+
+  var custHTML='<div id="arBody">'+arBodyHTML(custList)+'</div>';
+  /* Search + Print sit in the page header, as on Vehicles / Job Orders. */
+  var tools=custList.length ? '<div class="row gap wrap"><input class="searchbox" id="arSearch" value="'+attr(AR_Q)+'" oninput="arSearch(this.value)" '+
+      'placeholder="Search customer name or JO #…" autocomplete="off">'+
+      '<button class="btn ghost" onclick="printReceivables()">⎙ Print list</button></div>' : '';
+  return '<div class="page"><div class="page-head"><h1>Receivables (A/R)</h1>'+tools+'</div>'+
     '<div class="kpis">'+kpi('Total A/R',peso(total))+kpi('0–30',peso(buckets['0-30']))+kpi('31–60',peso(buckets['31-60']))+
       kpi('61–90',peso(buckets['61-90']))+kpi('90+',peso(buckets['90+']),buckets['90+']>0?'<span class="amber">overdue</span>':'')+'</div>'+
     custHTML+'</div>';
@@ -5627,10 +5628,20 @@ function canSettleAccounts(){ return (typeof CURRENT_USER==='undefined' || !CURR
 function settleDayStamp(day){   // a local calendar day -> noon local, so localDay() reads it back as that day
   var p=String(day||'').split('-'); return new Date(Number(p[0]), Number(p[1])-1, Number(p[2]), 12, 0, 0).toISOString();
 }
-function settleJobs(jobs, day, method, ref){
+/* `amount` (optional, one job order only) records part of the balance; left
+   out, each job's whole balance is paid. */
+function settleJobs(jobs, day, method, ref, amount){
   if(!canSettleAccounts()) return { ok:false, err:'Only an admin can settle accounts' };
   jobs=(jobs||[]).filter(Boolean);
   if(!jobs.length) return { ok:false, err:'Tick at least one job order' };
+  var part = (amount!==undefined && amount!==null && String(amount).trim()!=='');
+  if(part){
+    if(jobs.length!==1) return { ok:false, err:'A partial amount can only be settled on one job order at a time' };
+    amount=round2(Number(amount));
+    if(!(amount>0)) return { ok:false, err:'Enter the amount received' };
+    var owing=jobBalance(jobs[0]);
+    if(amount>owing+0.001) return { ok:false, err:'That is more than the '+peso(owing)+' still owing on '+jobs[0].no };
+  }
   if(!/^\d{4}-\d{2}-\d{2}$/.test(String(day||''))) return { ok:false, err:'Enter the date the customer paid' };
   if(day>todayISO()) return { ok:false, err:'The payment date cannot be in the future' };
   ref=String(ref||'').trim();
@@ -5644,6 +5655,7 @@ function settleJobs(jobs, day, method, ref){
   var stamp=settleDayStamp(day), total=0, count=0;
   jobs.forEach(function(j){
     var bal=jobBalance(j); if(bal<=0.001) return;
+    if(part) bal=amount;
     var pay={ amount:round2(bal), method:method, date:stamp, settled:true,
       enteredAt:new Date().toISOString(), enteredBy:(me&&(me.name||me.username||me.email))||'' };
     if(ref) pay.ref=ref;
@@ -5651,7 +5663,7 @@ function settleJobs(jobs, day, method, ref){
     total=round2(total+bal); count++;
   });
   if(!count) return { ok:false, err:'Nothing is owing on the ticked job orders' };
-  return { ok:true, count:count, total:total };
+  return { ok:true, count:count, total:total, left:round2(jobs.reduce(function(t,j){ return t+Math.max(0,jobBalance(j)); },0)) };
 }
 /* The same settlement for ONE job order, from its row in Receivables. */
 var _adminSettleId=null;
@@ -5660,9 +5672,11 @@ function adminSettleDialog(id){
   var j=jobById(id); if(!j) return;
   _adminSettleId=id;
   openModal('Admin settlement · '+j.no,
-    '<p class="muted small">For a balance the customer <b>already paid on an earlier day</b>. The full <b>'+peso(jobBalance(j))+
-      '</b> is recorded as paid <b>on the date below</b>, so that day’s Daily Close carries it. Billed '+esc(fmtDate(j.billedAt))+
-      (j.orNumber?' · '+esc(j.orNumber):'')+'.</p>'+
+    '<p class="muted small">For money the customer <b>already paid on an earlier day</b>. The amount is recorded as paid '+
+      '<b>on the date below</b>, so that day’s Daily Close carries it. For part of the balance, change the amount — '+
+      'the rest stays in Receivables. Billed '+esc(fmtDate(j.billedAt))+(j.orNumber?' · '+esc(j.orNumber):'')+'.</p>'+
+    field('Amount received (₱)','<input id="stAmt" type="number" step="0.01" min="0.01" max="'+attr(jobBalance(j))+'" value="'+attr(jobBalance(j))+'">',
+      'Balance owing: '+peso(jobBalance(j)))+
     '<div class="grid2">'+
       field('Date paid','<input id="stDate" type="date" min="'+attr(localDay(j.billedAt))+'" max="'+attr(todayISO())+'" value="'+attr(todayISO())+'" onchange="settleWarn()">')+
       field('Method','<select id="stMethod" onchange="settleWarn()"><option>Check</option><option>Bank transfer</option><option>Cash</option><option>GCash</option><option>Card</option></select>')+
@@ -5673,9 +5687,11 @@ function adminSettleDialog(id){
 }
 function confirmAdminSettle(){
   var j=jobById(_adminSettleId); if(!j){ closeModal(); return; }
-  var r=settleJobs([j], val('stDate'), val('stMethod'), val('stRef'));
+  if(!String(val('stAmt')).trim()){ toast('Enter the amount received','err'); return; }   // blank must not mean "whole balance"
+  var r=settleJobs([j], val('stDate'), val('stMethod'), val('stRef'), val('stAmt'));
   if(!r.ok){ toast(r.err,'err'); return; }
-  _adminSettleId=null; persist(); closeModal(); toast(j.no+' settled · '+peso(r.total)); render();
+  _adminSettleId=null; persist(); closeModal();
+  toast(r.left>0.001 ? j.no+' · '+peso(r.total)+' recorded, '+peso(r.left)+' still owing' : j.no+' settled · '+peso(r.total)); render();
 }
 /* A cash payment dated on a day whose drawer was already counted changes what
    that day's count should have been — say so before it is saved. */
