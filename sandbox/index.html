@@ -670,7 +670,7 @@ var BRANCH = {"id":"sandbox","slug":"sandbox","name":"Basic by JMSI — Sandbox 
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-10-17 · a725127';
+var APP_VERSION = 'v1.3.0 · 2026-10-17 · 191c347';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -5555,7 +5555,8 @@ VIEWS.receivables = function(){
       '<button class="btn sm ghost" onclick="printStatement(\''+attr(encodeURIComponent(c.name))+'\')">⎙ Statement</button></div></div>'+
       '<table class="tbl sm"><thead><tr><th>JO #</th><th>Billed</th><th>Age</th><th>Bucket</th><th class="r">Balance</th><th></th></tr></thead><tbody>'+
       c.jobs.map(function(x){return '<tr><td>'+esc(x.j.no)+(x.j.charge?' '+chip('on charge',''):'')+'</td><td>'+esc(fmtDate(x.j.billedAt))+'</td><td>'+x.days+'d</td><td>'+chip(x.bucket,x.bucket==='90+'?'due':'')+'</td>'+
-        '<td class="r">'+peso(x.bal)+'</td><td class="r"><button class="btn xs primary" onclick="collectAR(\''+x.j.id+'\')">Collect</button></td></tr>';}).join('')+
+        '<td class="r">'+peso(x.bal)+'</td><td class="r"><button class="btn xs primary" onclick="collectAR(\''+x.j.id+'\')">Collect</button>'+
+        (canSettleAccounts()?' <button class="btn xs ghost" onclick="adminSettleDialog(\''+x.j.id+'\')">Admin settlement</button>':'')+'</td></tr>';}).join('')+
       '</tbody></table></div>';
   }).join('') : emptyState('No outstanding receivables.');
   return '<div class="page"><div class="page-head"><h1>Receivables (A/R)</h1>'+
@@ -5652,6 +5653,30 @@ VIEWS.settle = function(){
       '<button class="btn primary full mt8" '+(picked.length?'':'disabled')+' onclick="confirmSettle()">Mark '+picked.length+' job order'+(picked.length===1?'':'s')+' paid · '+peso(pickedTotal)+'</button>'+
     '</div>'+body+'</div>';
 };
+/* The same settlement for ONE job order, from its row in Receivables. */
+var _adminSettleId=null;
+function adminSettleDialog(id){
+  if(!canSettleAccounts()){ toast('Only an admin can settle accounts','err'); return; }
+  var j=jobById(id); if(!j) return;
+  _adminSettleId=id;
+  openModal('Admin settlement · '+j.no,
+    '<p class="muted small">For a balance the customer <b>already paid on an earlier day</b>. The full <b>'+peso(jobBalance(j))+
+      '</b> is recorded as paid <b>on the date below</b>, so that day’s Daily Close carries it. Billed '+esc(fmtDate(j.billedAt))+
+      (j.orNumber?' · '+esc(j.orNumber):'')+'.</p>'+
+    '<div class="grid2">'+
+      field('Date paid','<input id="stDate" type="date" min="'+attr(localDay(j.billedAt))+'" max="'+attr(todayISO())+'" value="'+attr(todayISO())+'" onchange="settleWarn()">')+
+      field('Method','<select id="stMethod" onchange="settleWarn()"><option>Check</option><option>Bank transfer</option><option>Cash</option><option>GCash</option><option>Card</option></select>')+
+    '</div>'+
+    field('Reference #','<input id="stRef" placeholder="check # and bank, or transfer / GCash ref" autocomplete="off">')+
+    '<div id="stWarn"></div>',
+    { onOk:'confirmAdminSettle', okText:'Mark paid' });
+}
+function confirmAdminSettle(){
+  var j=jobById(_adminSettleId); if(!j){ closeModal(); return; }
+  var r=settleJobs([j], val('stDate'), val('stMethod'), val('stRef'));
+  if(!r.ok){ toast(r.err,'err'); return; }
+  _adminSettleId=null; persist(); closeModal(); toast(j.no+' settled · '+peso(r.total)); render();
+}
 function settlePickMany(ids, on){
   String(ids||'').split(',').forEach(function(id){ if(!id) return; if(on) _settlePick[id]=true; else delete _settlePick[id]; });
   var keep={ d:val('stDate'), m:val('stMethod'), r:val('stRef') };
