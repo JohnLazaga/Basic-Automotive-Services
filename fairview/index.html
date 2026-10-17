@@ -670,7 +670,7 @@ var BRANCH = {"id":"main","slug":"fairview","name":"Basic by JMSI — Fairview (
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-10-17 · 4d52605';
+var APP_VERSION = 'v1.3.0 · 2026-10-17 · a725127';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -1556,7 +1556,7 @@ function topbarHTML(){
 function viewTitle(v){
   var map={ board:'Operations Board', appointments:'Appointments', jobs:'Job Orders', job:'Job Order',
     estimates:'Estimates', estimate:'Estimate', reports:'Reports & Analytics', dailyclose:'Daily Close',
-    productivity:'Mechanic Productivity', receivables:'Receivables (A/R)', expenses:'Expenses & P&L', vehicles:'Vehicles', vehicle:'Vehicle',
+    productivity:'Mechanic Productivity', receivables:'Receivables (A/R)', settle:'Settle charge accounts', expenses:'Expenses & P&L', vehicles:'Vehicles', vehicle:'Vehicle',
     parts:'Parts Catalog', labor:'Labor Catalog', purchaseorders:'Purchase Orders', po:'Purchase Order',
     staff:'Staff', settings:'Settings' };
   return map[v]||'Basic by JMSI';
@@ -5558,7 +5558,8 @@ VIEWS.receivables = function(){
         '<td class="r">'+peso(x.bal)+'</td><td class="r"><button class="btn xs primary" onclick="collectAR(\''+x.j.id+'\')">Collect</button></td></tr>';}).join('')+
       '</tbody></table></div>';
   }).join('') : emptyState('No outstanding receivables.');
-  return '<div class="page"><div class="page-head"><h1>Receivables (A/R)</h1></div>'+
+  return '<div class="page"><div class="page-head"><h1>Receivables (A/R)</h1>'+
+      (canSettleAccounts()&&ar.length?'<button class="btn ghost" onclick="go(\'settle\')">Settle accounts paid earlier…</button>':'')+'</div>'+
     '<div class="kpis">'+kpi('Total A/R',peso(total))+kpi('0–30',peso(buckets['0-30']))+kpi('31–60',peso(buckets['31-60']))+
       kpi('61–90',peso(buckets['61-90']))+kpi('90+',peso(buckets['90+']),buckets['90+']>0?'<span class="amber">overdue</span>':'')+'</div>'+
     custHTML+'</div>';
@@ -5578,6 +5579,114 @@ function saveAR(){ var j=jobById(arCtx); var amt=Number(val('arAmt'))||0; if(amt
   var pay={ amount:amt, method:method, date:new Date().toISOString() }; if(ref) pay.ref=ref;
   j.payments.push(pay);
   persist(); closeModal(); toast('Payment recorded'); render(); }
+
+/* ---- Settle charge accounts -------------------------------------------------
+   Clears balances that were actually paid on an EARLIER day — typically
+   charge-account customers who settled by check or transfer without the
+   payment being entered. Collect always stamps today, which would pile
+   months of old money onto today's Daily Close; here each payment lands on the
+   day it was really received. Admins only (it writes into past days), whole
+   balance per job (part payments still go through Collect).
+   Testable without a DOM: returns {ok:true, count, total} or {ok:false, err}. */
+function canSettleAccounts(){ return (typeof CURRENT_USER==='undefined' || !CURRENT_USER) || !!CURRENT_USER.isAdmin; }
+function settleDayStamp(day){   // a local calendar day -> noon local, so localDay() reads it back as that day
+  var p=String(day||'').split('-'); return new Date(Number(p[0]), Number(p[1])-1, Number(p[2]), 12, 0, 0).toISOString();
+}
+function settleJobs(jobs, day, method, ref){
+  if(!canSettleAccounts()) return { ok:false, err:'Only an admin can settle accounts' };
+  jobs=(jobs||[]).filter(Boolean);
+  if(!jobs.length) return { ok:false, err:'Tick at least one job order' };
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(String(day||''))) return { ok:false, err:'Enter the date the customer paid' };
+  if(day>todayISO()) return { ok:false, err:'The payment date cannot be in the future' };
+  ref=String(ref||'').trim();
+  if(payRefRequired(method) && !ref) return { ok:false, err:'Enter the '+method+' reference #' };
+  for(var i=0;i<jobs.length;i++){
+    var bd=localDay(jobs[i].billedAt);
+    if(bd && day<bd) return { ok:false, err:jobs[i].no+' was billed on '+fmtDate(jobs[i].billedAt)+' — it cannot have been paid before that' };
+    if(jobVoided(jobs[i])) return { ok:false, err:jobs[i].no+' is voided' };
+  }
+  var me=(typeof CURRENT_USER!=='undefined' && CURRENT_USER) ? CURRENT_USER : null;
+  var stamp=settleDayStamp(day), total=0, count=0;
+  jobs.forEach(function(j){
+    var bal=jobBalance(j); if(bal<=0.001) return;
+    var pay={ amount:round2(bal), method:method, date:stamp, settled:true,
+      enteredAt:new Date().toISOString(), enteredBy:(me&&(me.name||me.username||me.email))||'' };
+    if(ref) pay.ref=ref;
+    (j.payments=j.payments||[]).push(pay);
+    total=round2(total+bal); count++;
+  });
+  if(!count) return { ok:false, err:'Nothing is owing on the ticked job orders' };
+  return { ok:true, count:count, total:total };
+}
+var _settlePick={};
+VIEWS.settle = function(){
+  if(!canSettleAccounts()) return '<div class="page">'+accessDenied('Settle charge accounts')+'</div>';
+  var groups={};
+  arJobs().forEach(function(j){ var k=custKey(j); (groups[k]=groups[k]||{ name:custName(j), jobs:[], total:0 }).jobs.push(j);
+    groups[k].total=round2(groups[k].total+jobBalance(j)); });
+  var list=Object.keys(groups).map(function(k){ return groups[k]; }).sort(function(a,b){ return a.name<b.name?-1:1; });
+  var picked=arJobs().filter(function(j){ return _settlePick[j.id]; });
+  var pickedTotal=round2(picked.reduce(function(s,j){ return s+jobBalance(j); },0));
+  var body=list.length ? list.map(function(g){
+    var allOn=g.jobs.every(function(j){ return _settlePick[j.id]; });
+    var ids=g.jobs.map(function(j){ return j.id; }).join(',');
+    return '<div class="card"><div class="card-head"><label class="row gap"><input type="checkbox" '+(allOn?'checked':'')+
+        ' onchange="settlePickMany(\''+ids+'\',this.checked)"> <h2>'+esc(g.name)+'</h2></label><b>'+peso(g.total)+'</b></div>'+
+      '<table class="tbl sm"><thead><tr><th></th><th>JO #</th><th>OR #</th><th>Plate</th><th>Billed</th><th class="r">Balance</th></tr></thead><tbody>'+
+      g.jobs.map(function(j){ return '<tr><td><input type="checkbox" '+(_settlePick[j.id]?'checked':'')+' onchange="settlePickMany(\''+j.id+'\',this.checked)"></td>'+
+        '<td>'+esc(j.no)+(j.charge?' '+chip('on charge',''):'')+'</td><td>'+esc(j.orNumber||'—')+'</td><td>'+esc(j.plate||'')+'</td>'+
+        '<td>'+esc(fmtDate(j.billedAt))+'</td><td class="r">'+peso(jobBalance(j))+'</td></tr>'; }).join('')+
+      '</tbody></table></div>';
+  }).join('') : emptyState('No outstanding receivables.');
+  return '<div class="page"><div class="page-head"><h1>Settle charge accounts</h1>'+
+      '<button class="btn ghost" onclick="go(\'receivables\')">← Receivables</button></div>'+
+    '<div class="card"><p class="muted small">For balances the customer <b>already paid on an earlier day</b>. Tick the job orders, '+
+      'enter when and how the money came in, and each one is recorded as paid in full <b>on that date</b> — so that day’s '+
+      'Daily Close carries it, not today’s. For a payment received today, or a part payment, use <b>Collect</b> in Receivables.</p>'+
+      '<div class="grid2">'+
+        field('Date paid','<input id="stDate" type="date" max="'+attr(todayISO())+'" value="'+attr(todayISO())+'" onchange="settleWarn()">')+
+        field('Method','<select id="stMethod" onchange="settleWarn()"><option>Check</option><option>Bank transfer</option><option>Cash</option><option>GCash</option><option>Card</option></select>')+
+      '</div>'+
+      field('Reference #','<input id="stRef" placeholder="check # and bank, or transfer / GCash ref — required for check, bank transfer and GCash" autocomplete="off">')+
+      '<div id="stWarn"></div>'+
+      '<button class="btn primary full mt8" '+(picked.length?'':'disabled')+' onclick="confirmSettle()">Mark '+picked.length+' job order'+(picked.length===1?'':'s')+' paid · '+peso(pickedTotal)+'</button>'+
+    '</div>'+body+'</div>';
+};
+function settlePickMany(ids, on){
+  String(ids||'').split(',').forEach(function(id){ if(!id) return; if(on) _settlePick[id]=true; else delete _settlePick[id]; });
+  var keep={ d:val('stDate'), m:val('stMethod'), r:val('stRef') };
+  render();
+  if(typeof document!=='undefined'){ var d=document.getElementById('stDate'), m=document.getElementById('stMethod'), r=document.getElementById('stRef');
+    if(d&&keep.d) d.value=keep.d; if(m&&keep.m) m.value=keep.m; if(r) r.value=keep.r||''; settleWarn(); }
+}
+/* A cash payment dated on a day whose drawer was already counted changes what
+   that day's count should have been — say so before it is saved. */
+function settleWarnText(day, method){
+  if(!day || day===todayISO()) return '';
+  var cc=(typeof cashCountFor==='function') ? cashCountFor(day) : null;
+  if(method==='Cash' && cc) return 'The cash drawer for '+fmtDate(day)+' was already counted'+(cc.byName?' by '+cc.byName:'')+
+    '. Recording cash on that day changes its expected cash and variance.';
+  return 'This adds to the collections of '+fmtDate(day)+', not today’s.';
+}
+function settleWarn(){
+  if(typeof document==='undefined') return; var el=document.getElementById('stWarn'); if(!el) return;
+  var t=settleWarnText(val('stDate'), val('stMethod'));
+  el.innerHTML=t?'<div class="lock mt8">'+esc(t)+'</div>':'';
+}
+function confirmSettle(){
+  var jobs=arJobs().filter(function(j){ return _settlePick[j.id]; });
+  var day=val('stDate'), method=val('stMethod'), ref=val('stRef');
+  var total=round2(jobs.reduce(function(s,j){ return s+jobBalance(j); },0));
+  var warn=settleWarnText(day, method);
+  confirmModal('Mark '+jobs.length+' job order'+(jobs.length===1?'':'s')+' paid?',
+    peso(total)+' by '+method+(ref?' (#'+ref+')':'')+', dated '+fmtDate(day)+'. '+(warn?warn+' ':'')+
+      'Each balance is recorded as one payment on that date; a wrong one can be fixed later with Correct on the job order.',
+    function(){
+      var r=settleJobs(jobs, day, method, ref);
+      if(!r.ok){ toast(r.err,'err'); return; }
+      _settlePick={}; persist(); toast(r.count+' job order'+(r.count===1?'':'s')+' settled · '+peso(r.total)); render();
+    });
+}
 
 
 /* ===== */
@@ -6789,7 +6898,7 @@ if (typeof module!=='undefined' && module.exports){
     docJobOrder:docJobOrder, docPostJob:docPostJob, docBilling:docBilling, docEstimate:docEstimate,
     docPO:docPO, docStatement:docStatement, docPayout:docPayout, docDailyClose:docDailyClose,
     eodData:eodData, docEodRange:docEodRange, setEodRange:function(f,t){ EOD_FROM=f; EOD_TO=t; },
-    addRefund:addRefund, releaseOnCharge:releaseOnCharge, historyOkFor:historyOkFor, setJobsFull:function(v){ JOBS_FULL=v; }, jobsUnion:jobsUnion, trackJobSlice:trackJobSlice, resetJobParts:function(){ _jobParts={}; }, jobPaid:jobPaid, todayISO:todayISO,
+    addRefund:addRefund, releaseOnCharge:releaseOnCharge, settleJobs:settleJobs, settleWarnText:settleWarnText, historyOkFor:historyOkFor, setJobsFull:function(v){ JOBS_FULL=v; }, jobsUnion:jobsUnion, trackJobSlice:trackJobSlice, resetJobParts:function(){ _jobParts={}; }, jobPaid:jobPaid, todayISO:todayISO,
     setDcDate:function(d){ DC_DATE=d; },
     createJob:createJob, createJobFromAppt:createJobFromAppt, createEstimateFrom:createEstimateFrom,
     deductInventory:deductInventory, receivePO:receivePO,
@@ -8464,7 +8573,7 @@ function accessDenied(what){
 /* Map a route to the capability it requires (for the renderView guard). */
 var VIEW_CAP = {
   appointments:'appointments', estimates:'estimates', estimate:'estimates',
-  dailyclose:'dailyclose', productivity:'productivity', receivables:'receivables',
+  dailyclose:'dailyclose', productivity:'productivity', receivables:'receivables', settle:'receivables',
   parts:'parts_manage', labor:'parts_manage', purchaseorders:'parts_manage', po:'parts_manage',
   staff:'staff_manage', accounts:'staff_manage', settings:'settings'
 };
