@@ -670,7 +670,7 @@ var BRANCH = {"id":"sudipen","slug":"sudipen","name":"Basic by JMSI — Sudipen"
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-10-16 · 9101505';
+var APP_VERSION = 'v1.3.0 · 2026-10-17 · ace72c0';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -5504,6 +5504,12 @@ VIEWS.productivity = function(){
 };
 
 /* ---- Receivables (A/R) ---------------------------------------------------- */
+/* Receivables / Statement grouping key for a customer. Owner names are typed by
+   hand, so the same account turns up as "BOYET CARAAN", "Boyet  Caraan " or with
+   a stray tab — those must land on ONE statement. Case and spacing only; word
+   order and spelling are left alone ("LGU SUDIPEN" vs "SUDIPEN LGU" stay apart). */
+function custName(j){ return String((j&&(j.owner||j.plate))||'').replace(/\s+/g,' ').trim(); }
+function custKey(nameOrJob){ return (typeof nameOrJob==='string' ? nameOrJob.replace(/\s+/g,' ').trim() : custName(nameOrJob)).toUpperCase(); }
 function arJobs(){ return S.jobs.filter(function(j){return (j.stage==='Final Billing'||j.stage==='Released') && !jobVoided(j) && jobBalance(j)>0.001;}); }
 function agingBucket(days){ if(days<=30) return '0-30'; if(days<=60) return '31-60'; if(days<=90) return '61-90'; return '90+'; }
 VIEWS.receivables = function(){
@@ -5512,7 +5518,7 @@ VIEWS.receivables = function(){
   var byCust={};
   ar.forEach(function(j){ var days=j.billedAt?Math.max(0,daysBetween(j.billedAt, new Date().toISOString())):0;
     var b=agingBucket(days); var bal=jobBalance(j); buckets[b]=round2(buckets[b]+bal);
-    var key=j.owner||j.plate; (byCust[key]=byCust[key]||{name:key,total:0,jobs:[]}); byCust[key].total=round2(byCust[key].total+bal);
+    var key=custKey(j); (byCust[key]=byCust[key]||{name:custName(j),total:0,jobs:[]}); byCust[key].total=round2(byCust[key].total+bal);
     byCust[key].jobs.push({ j:j, days:days, bucket:b, bal:bal }); });
   var total=round2(Object.keys(buckets).reduce(function(s,k){return s+buckets[k];},0));
   var custList=Object.keys(byCust).map(function(k){return byCust[k];}).sort(function(a,b){return b.total-a.total;});
@@ -6147,17 +6153,20 @@ function docPO(po){
 function printPO(id){ printDoc(docPO(S.purchaseOrders.find(function(x){return x.id===id;}))); }
 
 /* ---- Statement of Account ------------------------------------------------- */
-function docStatement(custName){
-  var ar=arJobs().filter(function(j){return (j.owner||j.plate)===custName;});
+function docStatement(who){
+  /* Every job for this customer, however the name was spaced or cased on each JO. */
+  var k=custKey(who);
+  var ar=arJobs().filter(function(j){return custKey(j)===k;})
+    .sort(function(a,b){ return String(a.billedAt||'')<String(b.billedAt||'')?-1:1; });
   var total=round2(ar.reduce(function(s,j){return s+jobBalance(j);},0));
   var body=docHeader('Statement of Account')+
-    metaRows([['Customer', esc(custName)],['Date', fmtDate(todayISO())],['Total outstanding', peso(total)]])+
-    '<table><thead><tr><th>JO #</th><th>Billed</th><th>OR #</th><th class="r">Total</th><th class="r">Paid</th><th class="r">Balance</th></tr></thead><tbody>'+
-    ar.map(function(j){return '<tr><td>'+esc(j.no)+'</td><td>'+fmtDate(j.billedAt)+'</td><td>'+esc(j.orNumber||'—')+'</td>'+
+    metaRows([['Customer', esc(who)],['Date', fmtDate(todayISO())],['Total outstanding', peso(total)]])+
+    '<table><thead><tr><th>JO #</th><th>Plate</th><th>Billed</th><th>OR #</th><th class="r">Total</th><th class="r">Paid</th><th class="r">Balance</th></tr></thead><tbody>'+
+    ar.map(function(j){return '<tr><td>'+esc(j.no)+'</td><td>'+esc(j.plate||'')+'</td><td>'+fmtDate(j.billedAt)+'</td><td>'+esc(j.orNumber||'—')+'</td>'+
       '<td class="r">'+peso(jobGross(j))+'</td><td class="r">'+peso(jobPaid(j))+'</td><td class="r">'+peso(jobBalance(j))+'</td></tr>';}).join('')+'</tbody></table>'+
     '<div class="totbox"><div class="l2 grand"><span>Total Amount Due</span><span>'+peso(total)+'</span></div></div>'+
     '<div class="foot">Please settle the outstanding balance at your earliest convenience. Thank you.</div>';
-  return docShell('Statement — '+custName, body);
+  return docShell('Statement — '+who, body);
 }
 function printStatement(encName){ printDoc(docStatement(decodeURIComponent(encName))); }
 
