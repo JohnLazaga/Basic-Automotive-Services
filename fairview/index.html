@@ -670,7 +670,7 @@ var BRANCH = {"id":"main","slug":"fairview","name":"Basic by JMSI — Fairview (
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-10-17 · b6fef8e';
+var APP_VERSION = 'v1.3.0 · 2026-10-17 · 812d72a';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -5591,7 +5591,7 @@ VIEWS.receivables = function(){
   var sm=arSummary(), total=sm.total, buckets=sm.buckets, custList=sm.custList;
   var custHTML='<div id="arBody">'+arBodyHTML(custList)+'</div>';
   /* Search + Print sit in the page header, as on Vehicles / Job Orders. */
-  var tools=custList.length ? '<div class="row gap wrap"><input class="searchbox" id="arSearch" value="'+attr(AR_Q)+'" oninput="arSearch(this.value)" '+
+  var tools=custList.length ? '<div class="row gap" style="flex-wrap:nowrap"><input class="searchbox" style="width:240px;min-width:160px" id="arSearch" value="'+attr(AR_Q)+'" oninput="arSearch(this.value)" '+
       'placeholder="Search customer name or JO #…" autocomplete="off">'+
       '<button class="btn ghost" onclick="printReceivables()">⎙ Print list</button></div>' : '';
   return '<div class="page"><div class="page-head"><h1>Receivables (A/R)</h1>'+tools+'</div>'+
