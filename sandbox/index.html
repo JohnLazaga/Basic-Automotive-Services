@@ -670,7 +670,7 @@ var BRANCH = {"id":"sandbox","slug":"sandbox","name":"Basic by JMSI — Sandbox 
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-10-17 · 812d72a';
+var APP_VERSION = 'v1.3.0 · 2026-10-17 · fbf3104';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -1212,6 +1212,7 @@ function seedState(){
     appointments:[appt1,appt2],
     purchaseOrders:[po1],
     expenses:[],
+    payroll:[],
     cashcounts:[],
     commadj:[],
     counters:{ est:0, jo:1, or:1000, po:1 }
@@ -7290,8 +7291,12 @@ var COLLECTIONS = ['staff','bays','parts','labor','vehicles','estimates','jobs',
    (firestore.rules). It is synced only for those users: for anyone else the
    listener would be denied and the load would fail. */
 var FINANCE_COLLECTIONS = ['expenses'];
+/* Base pay (part17) — admins only, in the database rule and here. */
+var PAYROLL_COLLECTIONS = ['payroll'];
 function syncCollections(){
-  return (typeof canFinance==='function' && canFinance()) ? COLLECTIONS.concat(FINANCE_COLLECTIONS) : COLLECTIONS;
+  var cols = (typeof canFinance==='function' && canFinance()) ? COLLECTIONS.concat(FINANCE_COLLECTIONS) : COLLECTIONS;
+  if (typeof canSeePay==='function' && canSeePay()) cols = cols.concat(PAYROLL_COLLECTIONS);
+  return cols;
 }
 var _cloudSnap = {};       /* {collection: {id: jsonString}} — for diffing */
 var _metaSnap = { shop:null, counters:null };  /* last-synced meta docs */
@@ -7467,7 +7472,7 @@ function onCollectionSnapshot(c, snap, merged){
 }
 
 function ensureStateShape(){
-  COLLECTIONS.concat(FINANCE_COLLECTIONS).forEach(function(c){ if(!Array.isArray(S[c])) S[c]=[]; });
+  COLLECTIONS.concat(FINANCE_COLLECTIONS, PAYROLL_COLLECTIONS).forEach(function(c){ if(!Array.isArray(S[c])) S[c]=[]; });
   if (typeof billBaseline==='function') billBaseline();   // bill totals as loaded (part18)
   if(!S.counters) S.counters={ est:0, jo:0, or:1000, po:0 };
   if(!S.shop) S.shop=seedState().shop;
@@ -10292,19 +10297,21 @@ afterRender = function(){
    it costs to keep the doors open. This module records those costs and puts
    them against the month's job profit for a true net figure.
 
-   Everything lives in ONE collection, `expenses`, as three kinds of record:
+   Costs live in `expenses`, as two kinds of record:
      expense    one-off cost on a date             {date, category, desc, amount, method, ref}
      recurring  fixed monthly cost, auto-posted    {category, desc, amount, startMonth, endMonth}
+   Base pay lives in its OWN collection, `payroll` (kind 'pay'):
      pay        a staff member's base pay          {staffId, name, basis:'month'|'day', amount,
                                                     daysPerMonth, from}
-   Base pay is kept here, NOT on the staff record: every signed-in account can
-   read `staff`, while `expenses` is readable only by admins and the Secretary
-   (firestore.rules) — and the collection is only synced for those users
-   (syncCollections in part11). A raise is a NEW pay record with a later `from`
-   month, so past months keep the pay that applied then.
+   Not on the staff record (every account reads `staff`), and not in `expenses`
+   either: the Secretary reads `expenses`, and base pay is ADMINS ONLY. The
+   `payroll` rule (firestore.rules) admits admins alone and the collection is
+   synced only for them (syncCollections in part11), so no one else's device
+   ever downloads it. A raise is a NEW pay record with a later `from` month, so
+   past months keep the pay that applied then.
 
-   Access: admins and the Secretary (Accounts) record expenses and pay; the P&L
-   itself is admin-only, like every other profit figure (canSeeProfit).
+   Access: admins and the Secretary (Accounts) record expenses; base pay and the
+   P&L are admin-only (canSeePay / canSeeProfit).
    ========================================================================== */
 
 var EXPENSE_CATEGORIES = ['Rent','Electricity','Water','Internet & phone','Government contributions',
@@ -10322,8 +10329,18 @@ function canFinance(){
   return !!CURRENT_USER.isAdmin || CURRENT_USER.role==='Secretary';
 }
 
+/* Base pay: admins only — screen, editing and data alike. Pre-auth / local /
+   tests: true, like can(). */
+function canSeePay(){
+  if (typeof CURRENT_USER==='undefined' || !CURRENT_USER) return true;
+  return !!CURRENT_USER.isAdmin;
+}
+
 function monthOf(d){ return String(d||'').slice(0,7); }
-function expRecords(kind){ return (S.expenses||[]).filter(function(x){ return x && x.kind===kind; }); }
+function expRecords(kind){
+  var src = kind==='pay' ? S.payroll : S.expenses;   // base pay is its own (admin-only) collection
+  return (src||[]).filter(function(x){ return x && x.kind===kind; });
+}
 function fmtMonth(m){
   if(!/^\d{4}-\d{2}$/.test(m||'')) return m||'—';
   var names=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -10447,7 +10464,7 @@ VIEWS.expenses = function(){
     (canSeeProfit()? plCard() : '')+
     expensesCard(m)+
     recurringCard(m)+
-    payrollCard(m)+
+    (canSeePay()? payrollCard(m) : '')+
   '</div>';
 };
 function pct(a, b){ return b>0 ? Math.round(a/b*100)+'%' : '—'; }
@@ -10606,7 +10623,7 @@ function saveRecurring(){
   closeModal(); toast('Recurring expense saved'); render();
 }
 function openPay(staffId){
-  if(!canFinance()){ toast('Admins and the Secretary only','err'); return; }
+  if(!canSeePay()){ toast('Base pay is for admins only','err'); return; }
   var s=staffById(staffId); if(!s) return;
   var m=expMonth(), p=payFor(staffId, m)||{};
   _expCtx=staffId;
@@ -10623,14 +10640,19 @@ function openPay(staffId){
     { footer:'<button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="savePay()">Save</button>', width:'520px' });
 }
 function savePay(){
+  if(!canSeePay()){ toast('Base pay is for admins only','err'); return; }
   var s=staffById(_expCtx); if(!s) return;
   var amt=Number(val('pyAmt'))||0, basis=val('pyBasis')==='day'?'day':'month';
   if(amt<0){ toast('Pay cannot be negative','err'); return; }
   var from=val('pyFrom');
   /* Same staff + same month → replace that record; a new month → a new record (history). */
   var same=expRecords('pay').find(function(p){ return p.staffId===s.id && p.from===from; });
-  upsertExpenseRec(same?same.id:null, { kind:'pay', staffId:s.id, name:s.name, basis:basis, amount:round2(amt),
-    daysPerMonth: basis==='day' ? (Number(val('pyDays'))||DEFAULT_WORK_DAYS) : '', from:from, by:expBy(), at:new Date().toISOString() });
+  var rec={ kind:'pay', staffId:s.id, name:s.name, basis:basis, amount:round2(amt),
+    daysPerMonth: basis==='day' ? (Number(val('pyDays'))||DEFAULT_WORK_DAYS) : '', from:from, by:expBy(), at:new Date().toISOString() };
+  if(!Array.isArray(S.payroll)) S.payroll=[];
+  var cur=same ? S.payroll.find(function(x){ return x.id===same.id; }) : null;
+  if(cur) Object.assign(cur, rec); else { rec.id=uid('py'); S.payroll.push(rec); }
+  persist();
   closeModal(); toast('Base pay saved for '+s.name); render();
 }
 function expBy(){ return (typeof CURRENT_USER!=='undefined' && CURRENT_USER) ? (CURRENT_USER.name||CURRENT_USER.email||'') : ''; }
