@@ -670,7 +670,7 @@ var BRANCH = {"id":"sudipen","slug":"sudipen","name":"Basic by JMSI — Sudipen"
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-10-17 · 8f5616d';
+var APP_VERSION = 'v1.3.0 · 2026-10-17 · f2fc4e9';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -5540,7 +5540,9 @@ function custName(j){ return String((j&&(j.owner||j.plate))||'').replace(/\s+/g,
 function custKey(nameOrJob){ return (typeof nameOrJob==='string' ? nameOrJob.replace(/\s+/g,' ').trim() : custName(nameOrJob)).toUpperCase(); }
 function arJobs(){ return S.jobs.filter(function(j){return (j.stage==='Final Billing'||j.stage==='Released') && !jobVoided(j) && jobBalance(j)>0.001;}); }
 function agingBucket(days){ if(days<=30) return '0-30'; if(days<=60) return '31-60'; if(days<=90) return '61-90'; return '90+'; }
-VIEWS.receivables = function(){
+/* Receivables grouped by customer with aging — shared by the screen and its
+   printout (docReceivables) so the two always list the same thing. */
+function arSummary(){
   var ar=arJobs();
   var buckets={'0-30':0,'31-60':0,'61-90':0,'90+':0};
   var byCust={};
@@ -5554,6 +5556,10 @@ VIEWS.receivables = function(){
   var custList=Object.keys(byCust).sort().map(function(k){ var c=byCust[k];
     c.jobs.sort(function(a,b){ var x=String(a.j.billedAt||''), y=String(b.j.billedAt||''); return x<y?-1:x>y?1:0; });
     return c; });
+  return { total:total, buckets:buckets, custList:custList, count:ar.length };
+}
+VIEWS.receivables = function(){
+  var sm=arSummary(), total=sm.total, buckets=sm.buckets, custList=sm.custList;
   var custHTML=custList.length? custList.map(function(c){
     return '<div class="card"><div class="card-head"><h2>'+esc(c.name)+'</h2><div class="row gap"><b>'+peso(c.total)+'</b>'+
       '<button class="btn sm ghost" onclick="printStatement(\''+attr(encodeURIComponent(c.name))+'\')">⎙ Statement</button></div></div>'+
@@ -5563,7 +5569,8 @@ VIEWS.receivables = function(){
         (canSettleAccounts()?' <button class="btn xs ghost" onclick="adminSettleDialog(\''+x.j.id+'\')">Admin settlement</button>':'')+'</td></tr>';}).join('')+
       '</tbody></table></div>';
   }).join('') : emptyState('No outstanding receivables.');
-  return '<div class="page"><div class="page-head"><h1>Receivables (A/R)</h1></div>'+
+  return '<div class="page"><div class="page-head"><h1>Receivables (A/R)</h1>'+
+      (custList.length?'<button class="btn ghost" onclick="printReceivables()">⎙ Print list</button>':'')+'</div>'+
     '<div class="kpis">'+kpi('Total A/R',peso(total))+kpi('0–30',peso(buckets['0-30']))+kpi('31–60',peso(buckets['31-60']))+
       kpi('61–90',peso(buckets['61-90']))+kpi('90+',peso(buckets['90+']),buckets['90+']>0?'<span class="amber">overdue</span>':'')+'</div>'+
     custHTML+'</div>';
@@ -6281,6 +6288,31 @@ function docStatement(who){
 }
 function printStatement(encName){ printDoc(docStatement(decodeURIComponent(encName))); }
 
+/* ---- Receivables list ----------------------------------------------------- */
+/* Everything owed, as on the Receivables screen: customers A–Z, each with its
+   job orders oldest first and a subtotal, then the aging summary and total. */
+function docReceivables(){
+  var sm=arSummary(), b=sm.buckets;
+  var rows=sm.custList.map(function(c){
+    return '<tr><td colspan="5"><b>'+esc(c.name)+'</b> <span style="color:#666">('+c.jobs.length+' job order'+(c.jobs.length===1?'':'s')+')</span></td>'+
+        '<td class="r"><b>'+peso(c.total)+'</b></td></tr>'+
+      c.jobs.map(function(x){ return '<tr><td style="padding-left:16px">'+esc(x.j.no)+(x.j.charge?' · on charge':'')+'</td><td>'+esc(x.j.plate||'')+'</td>'+
+        '<td>'+esc(x.j.orNumber||'—')+'</td><td>'+fmtDate(x.j.billedAt)+'</td><td class="r">'+x.days+'d</td><td class="r">'+peso(x.bal)+'</td></tr>'; }).join('');
+  }).join('');
+  var body=docHeader('Receivables (A/R)')+
+    metaRows([['Date', fmtDate(todayISO())],['Customers', String(sm.custList.length)],['Job orders', String(sm.count)],['Total outstanding', peso(sm.total)]])+
+    '<table><thead><tr><th>Customer / JO #</th><th>Plate</th><th>OR #</th><th>Billed</th><th class="r">Age</th><th class="r">Balance</th></tr></thead><tbody>'+
+      (rows||'<tr><td colspan="6">No outstanding receivables.</td></tr>')+'</tbody></table>'+
+    '<div class="totbox">'+
+      '<div class="l2"><span>0–30 days</span><span>'+peso(b['0-30'])+'</span></div>'+
+      '<div class="l2"><span>31–60 days</span><span>'+peso(b['31-60'])+'</span></div>'+
+      '<div class="l2"><span>61–90 days</span><span>'+peso(b['61-90'])+'</span></div>'+
+      '<div class="l2"><span>Over 90 days</span><span>'+peso(b['90+'])+'</span></div>'+
+      '<div class="l2 grand"><span>Total Receivables</span><span>'+peso(sm.total)+'</span></div></div>';
+  return docShell('Receivables '+todayISO(), body);
+}
+function printReceivables(){ printDoc(docReceivables()); }
+
 /* ---- Payout sheet --------------------------------------------------------- */
 function docPayout(){
   /* Commission (payout-on staff, from jobs) ± payout adjustments (part20) = net. */
@@ -6872,7 +6904,7 @@ if (typeof module!=='undefined' && module.exports){
     docJobOrder:docJobOrder, docPostJob:docPostJob, docBilling:docBilling, docEstimate:docEstimate,
     docPO:docPO, docStatement:docStatement, docPayout:docPayout, docDailyClose:docDailyClose,
     eodData:eodData, docEodRange:docEodRange, setEodRange:function(f,t){ EOD_FROM=f; EOD_TO=t; },
-    addRefund:addRefund, releaseOnCharge:releaseOnCharge, settleJobs:settleJobs, settleWarnText:settleWarnText, historyOkFor:historyOkFor, setJobsFull:function(v){ JOBS_FULL=v; }, jobsUnion:jobsUnion, trackJobSlice:trackJobSlice, resetJobParts:function(){ _jobParts={}; }, jobPaid:jobPaid, todayISO:todayISO,
+    addRefund:addRefund, releaseOnCharge:releaseOnCharge, docReceivables:docReceivables, settleJobs:settleJobs, settleWarnText:settleWarnText, historyOkFor:historyOkFor, setJobsFull:function(v){ JOBS_FULL=v; }, jobsUnion:jobsUnion, trackJobSlice:trackJobSlice, resetJobParts:function(){ _jobParts={}; }, jobPaid:jobPaid, todayISO:todayISO,
     setDcDate:function(d){ DC_DATE=d; },
     createJob:createJob, createJobFromAppt:createJobFromAppt, createEstimateFrom:createEstimateFrom,
     deductInventory:deductInventory, receivePO:receivePO,
