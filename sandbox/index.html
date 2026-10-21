@@ -670,7 +670,7 @@ var BRANCH = {"id":"sandbox","slug":"sandbox","name":"Basic by JMSI — Sandbox 
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-10-21 · d272f59';
+var APP_VERSION = 'v1.3.0 · 2026-10-21 · 2a4321f';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -10399,8 +10399,8 @@ function opexForRange(from, to){
   }
   expRecords('expense').forEach(function(e){ if(e.date>=from && e.date<=to) add(e.category||'Miscellaneous', e.amount); });
   /* Commission payout adjustments (part20): a bonus is an extra cost, a deduction
-     lowers it. Cash advances are left out — a loan taken back from pay, not a cost. */
-  (S.commadj||[]).forEach(function(a){ if(a && a.type!=='advance' && a.date>=from && a.date<=to) add(COMMADJ_CATEGORY, a.amount); });
+     lowers it, and so does a one-time comeback deduction. Cash advances are left out — a loan taken back from pay, not a cost. */
+  (S.commadj||[]).concat(comebackDeductions()).forEach(function(a){ if(a && a.type!=='advance' && a.date>=from && a.date<=to) add(COMMADJ_CATEGORY, a.amount); });
   return { byCat:byCat, total:total };
 }
 function opexFor(m){ return opexForRange(m+'-01', m+'-'+String(daysInMonth(m)).padStart(2,'0')); }
