@@ -670,7 +670,7 @@ var BRANCH = {"id":"main","slug":"fairview","name":"Basic by JMSI — Fairview (
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-10-17 · fbf3104';
+var APP_VERSION = 'v1.3.0 · 2026-10-21 · d272f59';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -6373,7 +6373,7 @@ function docPayout(){
       adjs.map(function(a){ return '<tr><td>'+esc(fmtDate(a.date))+'</td><td>'+esc(staffName(a.staffId))+'</td><td>'+esc(payAdjType(a.type).label)+'</td>'+
         '<td class="r">'+(a.amount>0?'+':'')+peso(a.amount)+'</td><td>'+esc(a.reason)+'</td></tr>'; }).join('')+'</tbody></table>':'')+
     '<div class="foot">Commission = each staff member’s own rate × the job’s labor, on jobs they were assigned to (payout-on staff only). '+
-      'Adjustments = cash advances, deductions and bonuses dated in this period.</div>';
+      'Adjustments = cash advances, deductions and bonuses dated in this period, plus a one-time comeback deduction of the at-fault mechanic’s commission on the original job.</div>';
   return docShell('Payout sheet', body);
 }
 function printPayout(){ printDoc(docPayout()); }
@@ -11132,13 +11132,34 @@ var PAYADJ_TYPES = [
   { k:'oadd',    label:'Other (add)',  sign:+1 },
   { k:'oded',    label:'Other (deduct)', sign:-1 }
 ];
-function payAdjType(k){ return PAYADJ_TYPES.find(function(t){ return t.k===k; }) || PAYADJ_TYPES[4]; }
+/* Not pickable in the modal — added automatically by comebackDeductions(). */
+var COMEBACK_ADJ = { k:'comeback', label:'Comeback deduction', sign:-1 };
+function payAdjType(k){ if(k===COMEBACK_ADJ.k) return COMEBACK_ADJ; return PAYADJ_TYPES.find(function(t){ return t.k===k; }) || PAYADJ_TYPES[4]; }
 function canAdjustPayout(){ return (typeof isAdminOrSV==='function') ? isAdminOrSV() : true; }
 
-/* Adjustments dated inside the Productivity period. */
+/* Comeback deductions: when a job is marked a comeback with an at-fault
+   mechanic, that mechanic gives back the commission they were paid on the
+   ORIGINAL job — one time. It lands in the pay period the comeback job is
+   billed in; a second comeback of the same original job deducts nothing more.
+   Computed (not stored), so clearing the comeback also clears the deduction. */
+function comebackDeductions(){
+  var billed=billedJobs(), isBilled={}, first={};
+  billed.forEach(function(j){ isBilled[j.id]=1; });
+  billed.forEach(function(j){
+    if(!j.comebackOf || !j.comebackMechId || !isBilled[j.comebackOf] || !localDay(j.billedAt)) return;
+    var f=first[j.comebackOf];
+    if(!f || String(j.billedAt)<String(f.billedAt)) first[j.comebackOf]=j;
+  });
+  return Object.keys(first).map(function(oid){
+    var cb=first[oid], orig=jobById(oid), amt=jobLaborCommissionMap(orig,S)[cb.comebackMechId]||0;
+    return { id:'cb-'+cb.id, auto:true, staffId:cb.comebackMechId, date:localDay(cb.billedAt), type:COMEBACK_ADJ.k,
+      amount:round2(-amt), reason:'Comeback '+cb.no+' of '+orig.no+(cb.comebackReason?' — '+cb.comebackReason:''), byName:'Auto', at:String(cb.billedAt) };
+  }).filter(function(d){ return d.amount<0; });
+}
+/* Adjustments dated inside the Productivity period (manual + comeback deductions). */
 function payAdjInPeriod(){
   var r=prodRange();
-  return (S.commadj||[]).filter(function(a){ return a && a.date>=r.from && a.date<=r.to; })
+  return (S.commadj||[]).concat(comebackDeductions()).filter(function(a){ return a && a.date>=r.from && a.date<=r.to; })
     .sort(function(a,b){ return String(b.date).localeCompare(String(a.date)) || String(b.at).localeCompare(String(a.at)); });
 }
 function payAdjTotals(){
@@ -11167,6 +11188,7 @@ function payAdjCard(){
   return '<div class="card"><div class="card-head"><h2>Payout adjustments &amp; net payout <span class="muted small">· '+esc(prodPeriodLabel())+'</span></h2>'+
       (can?'<button class="btn sm primary" onclick="openPayAdj()">＋ Add adjustment</button>':'')+'</div>'+
     '<p class="muted small">Cash advances, deductions and bonuses for this pay period. Net payout = commission (payout-on staff) + bonuses − advances and deductions. '+
+      'A <b>comeback</b> with an at-fault mechanic automatically deducts that mechanic’s commission on the original job, once. '+
       'The Payout sheet and Mechanic commissions printouts include these.</p>'+
     (rows.length ? '<div class="card pad0"><table class="tbl sm"><thead><tr><th>Staff</th><th class="r">Commission</th><th class="r">Adjustments</th><th class="r">Net payout</th></tr></thead><tbody>'+
       rows.map(function(r){ return '<tr><td><b>'+esc(r.name)+'</b> <span class="muted small">'+esc(roleLabel(r.role))+'</span></td>'+
@@ -11178,7 +11200,8 @@ function payAdjCard(){
     (list.length ? '<div class="card pad0"><table class="tbl sm"><thead><tr><th>Date</th><th>Staff</th><th>Type</th><th class="r">Amount</th><th>Reason</th><th>By</th>'+(can?'<th></th>':'')+'</tr></thead><tbody>'+
       list.map(function(a){ return '<tr><td>'+esc(fmtDate(a.date))+'</td><td>'+esc(staffName(a.staffId))+'</td><td>'+esc(payAdjType(a.type).label)+'</td>'+
         '<td class="r'+(a.amount<0?' st-bad-t':'')+'"><b>'+(a.amount>0?'+':'')+peso(a.amount)+'</b></td><td>'+esc(a.reason)+'</td><td>'+esc(a.byName||'—')+'</td>'+
-        (can?'<td class="r"><button class="btn sm ghost" onclick="deletePayAdj(\''+a.id+'\')">Remove</button></td>':'')+'</tr>'; }).join('')+
+        (can?'<td class="r">'+(a.auto?'<span class="muted small" title="Clear the comeback on the job to remove it">auto</span>'
+          :'<button class="btn sm ghost" onclick="deletePayAdj(\''+a.id+'\')">Remove</button>')+'</td>':'')+'</tr>'; }).join('')+
       '</tbody></table></div>' : '<div class="muted small">No adjustments in this period.</div>')+
   '</div>';
 }
