@@ -670,7 +670,7 @@ var BRANCH = {"id":"sudipen","slug":"sudipen","name":"Basic by JMSI — Sudipen"
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-10-21 · 2a4321f';
+var APP_VERSION = 'v1.3.0 · 2026-10-21 · 39b275f';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -5499,6 +5499,9 @@ VIEWS.productivity = function(){
     // Comeback attribution: counts against the at-fault mechanic (the one who did the original job).
     if(j.comebackMechId){ var rc=byId[j.comebackMechId]; if(rc) rc.comebacks++; }
   });
+  // ...and the comeback takes their commission on the original job back, once (part20).
+  var cbDed=comebackDeductionByStaff();
+  Object.keys(cbDed).forEach(function(id){ var r=byId[id]; if(r) r.commission=round2(r.commission+cbDed[id]); });
   var rows=list.map(function(m){
     var toggle='<label class="switch" title="Include in commission payout"><input type="checkbox" '+(m.on?'checked':'')+
       ' onchange="toggleStaffCommission(\''+m.id+'\',this.checked)"><span class="track"><span class="knob"></span></span></label>';
@@ -5525,7 +5528,7 @@ VIEWS.productivity = function(){
     '<div class="row gap" style="align-items:center;flex-wrap:wrap"><div class="seg">'+seg+'</div>'+custom+
       '<span class="muted small">'+esc(prodPeriodLabel())+'</span></div>'+
     '<p class="muted small mt8">Commission is each staff member’s own admin-set rate × the job’s labor (set per person on the Staff page). The Commission column is the <b>evaluation</b> figure — shown even for staff switched off (greyed). The <b>Payout sheet</b> pays only staff with <b>Payout</b> on.</p>'+
-    '<p class="muted small">Job hrs = standard hours from the Job Order. Actual hrs = the per-mechanic labor <b>timer</b> when used, else time in status <b>B2</b> from the log (each interval capped at 8h). Efficiency = Job hrs ÷ Actual hrs (green ≥ 100%). On-time = finished on/before ETD. <b>Comebacks</b> = warranty rework charged to the mechanic (% of their jobs) — watch this next to efficiency.</p>'+
+    '<p class="muted small">Job hrs = standard hours from the Job Order. Actual hrs = the per-mechanic labor <b>timer</b> when used, else time in status <b>B2</b> from the log (each interval capped at 8h). Efficiency = Job hrs ÷ Actual hrs (green ≥ 100%). On-time = finished on/before ETD. <b>Comebacks</b> = warranty rework charged to the mechanic (% of their jobs) — watch this next to efficiency. A comeback also takes the at-fault mechanic’s commission on the original job off their <b>Commission</b>, once.</p>'+
     '<div class="card pad0"><table class="tbl"><thead><tr><th>Staff</th><th class="r">Jobs</th><th class="r">Job hrs</th><th class="r">Actual hrs</th><th class="r">Efficiency</th><th class="r">On-time</th><th class="r">Comebacks</th><th class="r">Labor billed</th><th class="r">Avg/job</th><th class="r">Commission</th><th class="center">Payout</th></tr></thead><tbody>'+(rows||'<tr><td colspan="11" class="muted center">No staff.</td></tr>')+'</tbody></table></div>'+
     payAdjCard()+
     mechPerfSection(list)+
@@ -6373,7 +6376,8 @@ function docPayout(){
       adjs.map(function(a){ return '<tr><td>'+esc(fmtDate(a.date))+'</td><td>'+esc(staffName(a.staffId))+'</td><td>'+esc(payAdjType(a.type).label)+'</td>'+
         '<td class="r">'+(a.amount>0?'+':'')+peso(a.amount)+'</td><td>'+esc(a.reason)+'</td></tr>'; }).join('')+'</tbody></table>':'')+
     '<div class="foot">Commission = each staff member’s own rate × the job’s labor, on jobs they were assigned to (payout-on staff only). '+
-      'Adjustments = cash advances, deductions and bonuses dated in this period, plus a one-time comeback deduction of the at-fault mechanic’s commission on the original job.</div>';
+      'Commission is net of comebacks: the at-fault mechanic’s commission on the original job is taken off once. '+
+      'Adjustments = cash advances, deductions and bonuses dated in this period.</div>';
   return docShell('Payout sheet', body);
 }
 function printPayout(){ printDoc(docPayout()); }
@@ -6396,6 +6400,13 @@ function docMechCommission(){
       byMech[id].labor=round2(byMech[id].labor+lab);
       byMech[id].commission=round2(byMech[id].commission+cm[id]);
     });
+  });
+  /* Comebacks (part20): the at-fault mechanic's commission on the original job comes off, once. */
+  comebackDeductionsInPeriod().forEach(function(d){
+    var s=staffById(d.staffId); if(!s || !isMechanicRole(s.role)) return;
+    if(!byMech[d.staffId]) byMech[d.staffId]={ name:s.name, role:s.role, rows:[], labor:0, commission:0 };
+    byMech[d.staffId].rows.push({ no:d.cbNo, veh:'', plate:d.origPlate, desc:'Comeback deduction — commission on '+d.origNo+' returned', labor:0, comm:d.amount });
+    byMech[d.staffId].commission=round2(byMech[d.staffId].commission+d.amount);
   });
   var ids=Object.keys(byMech).sort(function(a,b){
     var A=byMech[a], B=byMech[b];
@@ -6978,7 +6989,7 @@ if (typeof module!=='undefined' && module.exports){
     scheduleNextService:scheduleNextService, clearNextService:clearNextService, alertStrip:alertStrip,
     jobVehicleLabel:jobVehicleLabel, replyRecipients:replyRecipients, unreadMessages:unreadMessages, messageStrip:messageStrip, myStaffIds:myStaffIds, messageAcked:messageAcked,
     buildLogEntry:buildLogEntry, logEntryFor:logEntryFor, jobStatusPanel:jobStatusPanel, lastLogForLabel:lastLogForLabel,
-    jobDescriptionPanel:jobDescriptionPanel, jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fillVehicleBlanks:fillVehicleBlanks, openJobsForPlate:openJobsForPlate, correctPayment:correctPayment, overpaidJobs:overpaidJobs, paymentCorrections:paymentCorrections, billBaseline:billBaseline, trackBillChanges:trackBillChanges, billChanges:billChanges, discountRows:discountRows, discountReasonMissing:discountReasonMissing, cashExpected:cashExpected, cashCountRows:cashCountRows, paymentsMissingRef:paymentsMissingRef, releasedOwing:releasedOwing, docMoneyChecks:docMoneyChecks, moneyCheckData:moneyCheckData, voidedReceipts:voidedReceipts, cancelledJobs:cancelledJobs, voidsHoldingMoney:voidsHoldingMoney, docVoids:docVoids, addPayAdj:addPayAdj, payAdjInPeriod:payAdjInPeriod, netPayoutRows:netPayoutRows, docPayout:docPayout, docMechCommission:docMechCommission, setProdPeriod:function(p,f,t){ PROD_PERIOD=p; PROD_FROM=f||''; PROD_TO=t||''; }, paymentsDoc:paymentsDoc, pmsGateMissing:pmsGateMissing, jobsMissingInfo:jobsMissingInfo, partNetMissing:partNetMissing, lessVatApplied:lessVatApplied, lessVatStale:lessVatStale, markLessVat:markLessVat, syncLessVat:syncLessVat, discVat:discVat, discountReasonPicker:discountReasonPicker, jobPLSplit:jobPLSplit, plForRange:plForRange, opexForRange:opexForRange, docPL:docPL, discountExVat:discountExVat, discountAmount:discountAmount, discountedLabor:discountedLabor, readDiscountObj:function(d){ return d; }, discountEditor:discountEditor, pmsDefaultMechs:pmsDefaultMechs, pmsReadyToSubmit:pmsReadyToSubmit, PMS_TEMPLATE:function(){ return PMS_TEMPLATE; }, pmsSectionMissing:pmsSectionMissing, orSeriesInRange:orSeriesInRange, orRangeGaps:orRangeGaps, inRptRange:inRptRange, setRptRangeRaw:function(k,r){ RPT_RANGE[k]=r; }, docDiscounts:docDiscounts, warnIfPlateOnBoard:warnIfPlateOnBoard, plFor:plFor, opexFor:opexFor, payFor:payFor, monthlyPay:monthlyPay, addMonths:addMonths, syncCollections:syncCollections, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
+    jobDescriptionPanel:jobDescriptionPanel, jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fillVehicleBlanks:fillVehicleBlanks, openJobsForPlate:openJobsForPlate, correctPayment:correctPayment, overpaidJobs:overpaidJobs, paymentCorrections:paymentCorrections, billBaseline:billBaseline, trackBillChanges:trackBillChanges, billChanges:billChanges, discountRows:discountRows, discountReasonMissing:discountReasonMissing, cashExpected:cashExpected, cashCountRows:cashCountRows, paymentsMissingRef:paymentsMissingRef, releasedOwing:releasedOwing, docMoneyChecks:docMoneyChecks, moneyCheckData:moneyCheckData, voidedReceipts:voidedReceipts, cancelledJobs:cancelledJobs, voidsHoldingMoney:voidsHoldingMoney, docVoids:docVoids, addPayAdj:addPayAdj, payAdjInPeriod:payAdjInPeriod, comebackDeductionsInPeriod:comebackDeductionsInPeriod, netPayoutRows:netPayoutRows, docPayout:docPayout, docMechCommission:docMechCommission, setProdPeriod:function(p,f,t){ PROD_PERIOD=p; PROD_FROM=f||''; PROD_TO=t||''; }, paymentsDoc:paymentsDoc, pmsGateMissing:pmsGateMissing, jobsMissingInfo:jobsMissingInfo, partNetMissing:partNetMissing, lessVatApplied:lessVatApplied, lessVatStale:lessVatStale, markLessVat:markLessVat, syncLessVat:syncLessVat, discVat:discVat, discountReasonPicker:discountReasonPicker, jobPLSplit:jobPLSplit, plForRange:plForRange, opexForRange:opexForRange, docPL:docPL, discountExVat:discountExVat, discountAmount:discountAmount, discountedLabor:discountedLabor, readDiscountObj:function(d){ return d; }, discountEditor:discountEditor, pmsDefaultMechs:pmsDefaultMechs, pmsReadyToSubmit:pmsReadyToSubmit, PMS_TEMPLATE:function(){ return PMS_TEMPLATE; }, pmsSectionMissing:pmsSectionMissing, orSeriesInRange:orSeriesInRange, orRangeGaps:orRangeGaps, inRptRange:inRptRange, setRptRangeRaw:function(k,r){ RPT_RANGE[k]=r; }, docDiscounts:docDiscounts, warnIfPlateOnBoard:warnIfPlateOnBoard, plFor:plFor, opexFor:opexFor, payFor:payFor, monthlyPay:monthlyPay, addMonths:addMonths, syncCollections:syncCollections, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
     afterServiceMissing:afterServiceMissing, afterServiceDone:afterServiceDone, afterServiceStaff:afterServiceStaff,
     canWriteAfterService:canWriteAfterService, afterServiceSignerName:afterServiceSignerName, afterServiceBlock:afterServiceBlock,
     allocateSeriesNumber:allocateSeriesNumber, maxSeriesNo:maxSeriesNo, nextNo:nextNo,
@@ -11141,7 +11152,9 @@ function canAdjustPayout(){ return (typeof isAdminOrSV==='function') ? isAdminOr
    mechanic, that mechanic gives back the commission they were paid on the
    ORIGINAL job — one time. It lands in the pay period the comeback job is
    billed in; a second comeback of the same original job deducts nothing more.
-   Computed (not stored), so clearing the comeback also clears the deduction. */
+   Computed (not stored), so clearing the comeback also clears the deduction.
+   It comes straight off the mechanic's Commission (not an adjustment line);
+   the P&L (part17) carries it on the commission bonuses & deductions line. */
 function comebackDeductions(){
   var billed=billedJobs(), isBilled={}, first={};
   billed.forEach(function(j){ isBilled[j.id]=1; });
@@ -11152,24 +11165,35 @@ function comebackDeductions(){
   });
   return Object.keys(first).map(function(oid){
     var cb=first[oid], orig=jobById(oid), amt=jobLaborCommissionMap(orig,S)[cb.comebackMechId]||0;
-    return { id:'cb-'+cb.id, auto:true, staffId:cb.comebackMechId, date:localDay(cb.billedAt), type:COMEBACK_ADJ.k,
+    return { id:'cb-'+cb.id, auto:true, staffId:cb.comebackMechId, cbNo:cb.no, origNo:orig.no, origPlate:orig.plate, date:localDay(cb.billedAt), type:COMEBACK_ADJ.k,
       amount:round2(-amt), reason:'Comeback '+cb.no+' of '+orig.no+(cb.comebackReason?' — '+cb.comebackReason:''), byName:'Auto', at:String(cb.billedAt) };
   }).filter(function(d){ return d.amount<0; });
 }
-/* Adjustments dated inside the Productivity period (manual + comeback deductions). */
+function comebackDeductionsInPeriod(){
+  var r=prodRange();
+  return comebackDeductions().filter(function(d){ return d.date>=r.from && d.date<=r.to; });
+}
+/* Comeback deduction per staff for the period (negative amounts). */
+function comebackDeductionByStaff(){
+  var by={}; comebackDeductionsInPeriod().forEach(function(d){ by[d.staffId]=round2((by[d.staffId]||0)+d.amount); }); return by;
+}
+/* Adjustments dated inside the Productivity period. */
 function payAdjInPeriod(){
   var r=prodRange();
-  return (S.commadj||[]).concat(comebackDeductions()).filter(function(a){ return a && a.date>=r.from && a.date<=r.to; })
+  return (S.commadj||[]).filter(function(a){ return a && a.date>=r.from && a.date<=r.to; })
     .sort(function(a,b){ return String(b.date).localeCompare(String(a.date)) || String(b.at).localeCompare(String(a.at)); });
 }
 function payAdjTotals(){
   var t={}; payAdjInPeriod().forEach(function(a){ t[a.staffId]=round2((t[a.staffId]||0)+(Number(a.amount)||0)); }); return t;
 }
-/* Payout-on commission per staff for the period (what the Payout sheet pays). */
+/* Payout-on commission per staff for the period (what the Payout sheet pays),
+   net of comeback deductions. */
 function payoutCommissionByStaff(){
   var by={};
   jobsInProdPeriod(billedJobs()).forEach(function(j){ var cm=jobLaborCommissionMap(j,S);
     Object.keys(cm).forEach(function(id){ by[id]=round2((by[id]||0)+cm[id]); }); });
+  var cb=comebackDeductionByStaff();
+  Object.keys(cb).forEach(function(id){ by[id]=round2((by[id]||0)+cb[id]); });
   return by;
 }
 /* Rows for the net-payout table: everyone with commission or an adjustment. */
@@ -11188,7 +11212,7 @@ function payAdjCard(){
   return '<div class="card"><div class="card-head"><h2>Payout adjustments &amp; net payout <span class="muted small">· '+esc(prodPeriodLabel())+'</span></h2>'+
       (can?'<button class="btn sm primary" onclick="openPayAdj()">＋ Add adjustment</button>':'')+'</div>'+
     '<p class="muted small">Cash advances, deductions and bonuses for this pay period. Net payout = commission (payout-on staff) + bonuses − advances and deductions. '+
-      'A <b>comeback</b> with an at-fault mechanic automatically deducts that mechanic’s commission on the original job, once. '+
+      'A <b>comeback</b> with an at-fault mechanic automatically takes that mechanic’s commission on the original job off their Commission, once. '+
       'The Payout sheet and Mechanic commissions printouts include these.</p>'+
     (rows.length ? '<div class="card pad0"><table class="tbl sm"><thead><tr><th>Staff</th><th class="r">Commission</th><th class="r">Adjustments</th><th class="r">Net payout</th></tr></thead><tbody>'+
       rows.map(function(r){ return '<tr><td><b>'+esc(r.name)+'</b> <span class="muted small">'+esc(roleLabel(r.role))+'</span></td>'+
@@ -11200,8 +11224,7 @@ function payAdjCard(){
     (list.length ? '<div class="card pad0"><table class="tbl sm"><thead><tr><th>Date</th><th>Staff</th><th>Type</th><th class="r">Amount</th><th>Reason</th><th>By</th>'+(can?'<th></th>':'')+'</tr></thead><tbody>'+
       list.map(function(a){ return '<tr><td>'+esc(fmtDate(a.date))+'</td><td>'+esc(staffName(a.staffId))+'</td><td>'+esc(payAdjType(a.type).label)+'</td>'+
         '<td class="r'+(a.amount<0?' st-bad-t':'')+'"><b>'+(a.amount>0?'+':'')+peso(a.amount)+'</b></td><td>'+esc(a.reason)+'</td><td>'+esc(a.byName||'—')+'</td>'+
-        (can?'<td class="r">'+(a.auto?'<span class="muted small" title="Clear the comeback on the job to remove it">auto</span>'
-          :'<button class="btn sm ghost" onclick="deletePayAdj(\''+a.id+'\')">Remove</button>')+'</td>':'')+'</tr>'; }).join('')+
+        (can?'<td class="r"><button class="btn sm ghost" onclick="deletePayAdj(\''+a.id+'\')">Remove</button></td>':'')+'</tr>'; }).join('')+
       '</tbody></table></div>' : '<div class="muted small">No adjustments in this period.</div>')+
   '</div>';
 }
