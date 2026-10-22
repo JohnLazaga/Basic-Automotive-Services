@@ -670,7 +670,7 @@ var BRANCH = {"id":"sandbox","slug":"sandbox","name":"Basic by JMSI — Sandbox 
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-10-22 · 7954963';
+var APP_VERSION = 'v1.3.0 · 2026-10-22 · 581536b';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -3289,6 +3289,7 @@ function jobComebackPanel(j){
         (j.comebackReason?kv('Reason',esc(j.comebackReason)):'')+
       '</div>'+
       (j.warranty?'<p class="muted small mt8">No charge to the customer; no commission is paid on this job. Counts against the at-fault mechanic’s comeback rate.</p>':'')+
+      (comebackSetupWarning(j)?'<p class="small mt8 st-bad-t">⚠ '+esc(comebackSetupWarning(j))+'</p>':'')+
     '</div>';
   }
   return '<div class="card"><div class="card-head"><h2>Comeback / Warranty</h2></div>'+
@@ -3299,7 +3300,9 @@ var cbCtx=null;
 function editComeback(id){
   var j=jobById(id); if(!j) return;
   if(!requireHistory()) return;   // the picker lists every earlier job for this vehicle
-  var prior=(S.jobs||[]).filter(function(x){ return x.id!==j.id && (x.vehicleId===j.vehicleId || (x.plate||'').toUpperCase()===(j.plate||'').toUpperCase()); })
+  // Plate compared without spaces/dashes: "ARA 3001" and "ARA3001" are the same car.
+  var np=function(p){ return String(p||'').toUpperCase().replace(/[^A-Z0-9]/g,''); };
+  var prior=(S.jobs||[]).filter(function(x){ return x.id!==j.id && ((j.vehicleId && x.vehicleId===j.vehicleId) || (np(j.plate) && np(x.plate)===np(j.plate))); })
     .sort(function(a,b){return (b.dateIn||'')<(a.dateIn||'')?-1:1;});
   var jopts='<option value="">— none / clear —</option>'+prior.map(function(x){
     var svc=(x.lines||[]).map(function(l){return l.desc;}).slice(0,2).join(', ');
@@ -3308,12 +3311,28 @@ function editComeback(id){
   var mechs=(S.staff||[]).filter(function(s){return isMechanicRole(s.role);});
   var mopts='<option value="">— select mechanic —</option>'+mechs.map(function(s){return '<option value="'+s.id+'"'+(j.comebackMechId===s.id?' selected':'')+'>'+esc(s.name)+'</option>';}).join('');
   openModal('Mark as comeback / warranty',
-    field('Comeback of (previous JO)','<select id="cbOf">'+jopts+'</select>','Previous job for this vehicle that this rework relates to.')+
-    field('At-fault mechanic','<select id="cbMech">'+mopts+'</select>','Counts against this mechanic’s comeback rate.')+
+    field('Comeback of (previous JO)','<select id="cbOf" onchange="cbPickOrig()">'+jopts+'</select>','Previous job for this vehicle that this rework relates to. Needed for the commission deduction.')+
+    field('At-fault mechanic','<select id="cbMech">'+mopts+'</select>','The mechanic who did the ORIGINAL job. Their commission on that job is deducted once.')+
     field('Reason / what failed','<textarea id="cbReason" rows="2">'+esc(j.comebackReason||'')+'</textarea>')+
     '<label class="chk"><input type="checkbox" id="cbWarranty"'+(j.warranty?' checked':'')+'> Warranty — no charge to customer, no commission</label>',
     { onOk:'saveComeback', width:'580px' });
   setTimeout(function(){ cbCtx=id; },10);
+}
+/* Why a comeback will deduct no commission, or '' when it will (or none is meant). */
+function comebackSetupWarning(j){
+  if(!j || !j.comebackMechId) return '';
+  var who=staffName(j.comebackMechId);
+  if(!j.comebackOf) return 'No commission deducted from '+who+': pick the previous JO under “Comeback of”.';
+  var o=jobById(j.comebackOf); if(!o) return '';
+  if((o.mechanicIds||[]).indexOf(j.comebackMechId)<0)
+    return 'No commission deducted: '+who+' did not work '+o.no+' (done by '+mechName(o.mechanicIds)+').';
+  return '';
+}
+/* Picking the previous JO fills the at-fault mechanic with whoever worked it. */
+function cbPickOrig(){
+  var o=jobById(val('cbOf')), sel=document.getElementById('cbMech'); if(!o || !sel) return;
+  var m=(o.mechanicIds||[]).filter(function(x){ return x && x!=='TBA'; });
+  if(m.length && m.indexOf(sel.value)<0) sel.value=m[0];
 }
 function saveComeback(){
   var j=jobById(cbCtx); if(!j) return;
@@ -3326,6 +3345,8 @@ function saveComeback(){
   j.comebackReason=val('cbReason')||'';
   j.warranty=checked('cbWarranty');
   persist(); closeModal(); render();
+  var warn=comebackSetupWarning(j);
+  if(warn){ toast(warn,'err'); return; }
   toast(j.warranty?'Marked as warranty comeback — no charge, no commission':(j.comebackOf?'Marked as comeback':'Comeback cleared'));
 }
 
@@ -6993,7 +7014,7 @@ if (typeof module!=='undefined' && module.exports){
     scheduleNextService:scheduleNextService, clearNextService:clearNextService, alertStrip:alertStrip,
     jobVehicleLabel:jobVehicleLabel, replyRecipients:replyRecipients, unreadMessages:unreadMessages, messageStrip:messageStrip, myStaffIds:myStaffIds, messageAcked:messageAcked,
     buildLogEntry:buildLogEntry, logEntryFor:logEntryFor, jobStatusPanel:jobStatusPanel, lastLogForLabel:lastLogForLabel,
-    jobDescriptionPanel:jobDescriptionPanel, jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fillVehicleBlanks:fillVehicleBlanks, openJobsForPlate:openJobsForPlate, correctPayment:correctPayment, overpaidJobs:overpaidJobs, paymentCorrections:paymentCorrections, billBaseline:billBaseline, trackBillChanges:trackBillChanges, billChanges:billChanges, discountRows:discountRows, discountReasonMissing:discountReasonMissing, cashExpected:cashExpected, cashCountRows:cashCountRows, paymentsMissingRef:paymentsMissingRef, releasedOwing:releasedOwing, docMoneyChecks:docMoneyChecks, moneyCheckData:moneyCheckData, voidedReceipts:voidedReceipts, cancelledJobs:cancelledJobs, voidsHoldingMoney:voidsHoldingMoney, docVoids:docVoids, addPayAdj:addPayAdj, payAdjInPeriod:payAdjInPeriod, accessLogHTML:accessLogHTML, comebackDeductionsInPeriod:comebackDeductionsInPeriod, netPayoutRows:netPayoutRows, docPayout:docPayout, docMechCommission:docMechCommission, setProdPeriod:function(p,f,t){ PROD_PERIOD=p; PROD_FROM=f||''; PROD_TO=t||''; }, paymentsDoc:paymentsDoc, pmsGateMissing:pmsGateMissing, jobsMissingInfo:jobsMissingInfo, partNetMissing:partNetMissing, lessVatApplied:lessVatApplied, lessVatStale:lessVatStale, markLessVat:markLessVat, syncLessVat:syncLessVat, discVat:discVat, discountReasonPicker:discountReasonPicker, jobPLSplit:jobPLSplit, plForRange:plForRange, opexForRange:opexForRange, docPL:docPL, discountExVat:discountExVat, discountAmount:discountAmount, discountedLabor:discountedLabor, readDiscountObj:function(d){ return d; }, discountEditor:discountEditor, pmsDefaultMechs:pmsDefaultMechs, pmsReadyToSubmit:pmsReadyToSubmit, PMS_TEMPLATE:function(){ return PMS_TEMPLATE; }, pmsSectionMissing:pmsSectionMissing, orSeriesInRange:orSeriesInRange, orRangeGaps:orRangeGaps, inRptRange:inRptRange, setRptRangeRaw:function(k,r){ RPT_RANGE[k]=r; }, docDiscounts:docDiscounts, warnIfPlateOnBoard:warnIfPlateOnBoard, plFor:plFor, opexFor:opexFor, payFor:payFor, monthlyPay:monthlyPay, addMonths:addMonths, syncCollections:syncCollections, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
+    jobDescriptionPanel:jobDescriptionPanel, jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fillVehicleBlanks:fillVehicleBlanks, openJobsForPlate:openJobsForPlate, correctPayment:correctPayment, overpaidJobs:overpaidJobs, paymentCorrections:paymentCorrections, billBaseline:billBaseline, trackBillChanges:trackBillChanges, billChanges:billChanges, discountRows:discountRows, discountReasonMissing:discountReasonMissing, cashExpected:cashExpected, cashCountRows:cashCountRows, paymentsMissingRef:paymentsMissingRef, releasedOwing:releasedOwing, docMoneyChecks:docMoneyChecks, moneyCheckData:moneyCheckData, voidedReceipts:voidedReceipts, cancelledJobs:cancelledJobs, voidsHoldingMoney:voidsHoldingMoney, docVoids:docVoids, addPayAdj:addPayAdj, payAdjInPeriod:payAdjInPeriod, accessLogHTML:accessLogHTML, comebackSetupWarning:comebackSetupWarning, comebackDeductionsInPeriod:comebackDeductionsInPeriod, netPayoutRows:netPayoutRows, docPayout:docPayout, docMechCommission:docMechCommission, setProdPeriod:function(p,f,t){ PROD_PERIOD=p; PROD_FROM=f||''; PROD_TO=t||''; }, paymentsDoc:paymentsDoc, pmsGateMissing:pmsGateMissing, jobsMissingInfo:jobsMissingInfo, partNetMissing:partNetMissing, lessVatApplied:lessVatApplied, lessVatStale:lessVatStale, markLessVat:markLessVat, syncLessVat:syncLessVat, discVat:discVat, discountReasonPicker:discountReasonPicker, jobPLSplit:jobPLSplit, plForRange:plForRange, opexForRange:opexForRange, docPL:docPL, discountExVat:discountExVat, discountAmount:discountAmount, discountedLabor:discountedLabor, readDiscountObj:function(d){ return d; }, discountEditor:discountEditor, pmsDefaultMechs:pmsDefaultMechs, pmsReadyToSubmit:pmsReadyToSubmit, PMS_TEMPLATE:function(){ return PMS_TEMPLATE; }, pmsSectionMissing:pmsSectionMissing, orSeriesInRange:orSeriesInRange, orRangeGaps:orRangeGaps, inRptRange:inRptRange, setRptRangeRaw:function(k,r){ RPT_RANGE[k]=r; }, docDiscounts:docDiscounts, warnIfPlateOnBoard:warnIfPlateOnBoard, plFor:plFor, opexFor:opexFor, payFor:payFor, monthlyPay:monthlyPay, addMonths:addMonths, syncCollections:syncCollections, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
     afterServiceMissing:afterServiceMissing, afterServiceDone:afterServiceDone, afterServiceStaff:afterServiceStaff,
     canWriteAfterService:canWriteAfterService, afterServiceSignerName:afterServiceSignerName, afterServiceBlock:afterServiceBlock,
     allocateSeriesNumber:allocateSeriesNumber, maxSeriesNo:maxSeriesNo, nextNo:nextNo,
