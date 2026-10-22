@@ -670,7 +670,7 @@ var BRANCH = {"id":"commonwealth","slug":"commonwealth","name":"Basic by JMSI �
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-10-22 · 3c41922';
+var APP_VERSION = 'v1.3.0 · 2026-10-22 · 7954963';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -2394,7 +2394,7 @@ function blankJob(){
     lines:[], partsSalesman:'', siRef:'', pmsRef:'', notes:'',
     inspection:{ odometer:0, fuel:'', lights:'', condition:'', testDrive:'' },
     checklist:{ created:false, leaveUnit:false, items:{}, bodyNotes:'' },
-    comebackOf:null, comebackMechId:'', comebackReason:'', warranty:false,   // comeback / warranty rework
+    comebackOf:null, comebackMechId:'', comebackReason:'', comebackAt:'', warranty:false,   // comeback / warranty rework
     workAuth:[],    // customer authorizations for extra work: {id,desc,amount,approvedBy,method,note,at}
     workLog:[],     // per-mechanic labor timer segments: {id,mechId,start,end|null}
     status:'A1', statusLog:[], addlWork:[], approvedReleaseBy:null, paymentReceivedBy:null,
@@ -3317,8 +3317,12 @@ function editComeback(id){
 }
 function saveComeback(){
   var j=jobById(cbCtx); if(!j) return;
+  var was=(j.comebackOf||'')+'|'+(j.comebackMechId||'');
   j.comebackOf=val('cbOf')||null;
   j.comebackMechId=val('cbMech')||'';
+  // When it was recorded: the commission deduction (part20) lands in that pay period.
+  if(!j.comebackOf || !j.comebackMechId) j.comebackAt='';
+  else if(!j.comebackAt || was!==j.comebackOf+'|'+j.comebackMechId) j.comebackAt=new Date().toISOString();
   j.comebackReason=val('cbReason')||'';
   j.warranty=checked('cbWarranty');
   persist(); closeModal(); render();
@@ -11197,24 +11201,29 @@ function canAdjustPayout(){ return (typeof isAdminOrSV==='function') ? isAdminOr
 
 /* Comeback deductions: when a job is marked a comeback with an at-fault
    mechanic, that mechanic gives back the commission they were paid on the
-   ORIGINAL job — one time. It lands in the pay period the comeback job is
-   billed in; a second comeback of the same original job deducts nothing more.
+   ORIGINAL job — one time. It lands in the pay period the comeback was
+   RECORDED in (j.comebackAt; older ones fall back to the back job's date in),
+   whether or not the back job is billed yet — a free warranty back job may
+   never reach billing. A second comeback of the same original job deducts
+   nothing more; a voided or cancelled back job deducts nothing.
    Computed (not stored), so clearing the comeback also clears the deduction.
    It comes straight off the mechanic's Commission (not an adjustment line);
    the P&L (part17) carries it on the commission bonuses & deductions line. */
 function comebackDeductions(){
-  var billed=billedJobs(), isBilled={}, first={};
-  billed.forEach(function(j){ isBilled[j.id]=1; });
-  billed.forEach(function(j){
-    if(!j.comebackOf || !j.comebackMechId || !isBilled[j.comebackOf] || !localDay(j.billedAt)) return;
+  var isBilled={}, first={};
+  billedJobs().forEach(function(j){ isBilled[j.id]=1; });   // the original must have been paid out
+  var when=function(j){ return String(j.comebackAt || j.dateIn || ''); };
+  (S.jobs||[]).forEach(function(j){
+    if(!j.comebackOf || !j.comebackMechId || !isBilled[j.comebackOf] || !localDay(when(j))) return;
+    if(jobVoided(j) || jobCancelled(j)) return;
     var f=first[j.comebackOf];
-    if(!f || String(j.billedAt)<String(f.billedAt)) first[j.comebackOf]=j;
+    if(!f || when(j)<when(f)) first[j.comebackOf]=j;
   });
   return Object.keys(first).map(function(oid){
     // Evaluation map: deducts even if the mechanic is switched off for payout.
     var cb=first[oid], orig=jobById(oid), amt=jobLaborCommissionMapAll(orig,S)[cb.comebackMechId]||0;
-    return { id:'cb-'+cb.id, auto:true, staffId:cb.comebackMechId, cbNo:cb.no, origNo:orig.no, origPlate:orig.plate, date:localDay(cb.billedAt), type:COMEBACK_ADJ.k,
-      amount:round2(-amt), reason:'Comeback '+cb.no+' of '+orig.no+(cb.comebackReason?' — '+cb.comebackReason:''), byName:'Auto', at:String(cb.billedAt) };
+    return { id:'cb-'+cb.id, auto:true, staffId:cb.comebackMechId, cbNo:cb.no, origNo:orig.no, origPlate:orig.plate, date:localDay(when(cb)), type:COMEBACK_ADJ.k,
+      amount:round2(-amt), reason:'Comeback '+cb.no+' of '+orig.no+(cb.comebackReason?' — '+cb.comebackReason:''), byName:'Auto', at:when(cb) };
   }).filter(function(d){ return d.amount<0; });
 }
 function comebackDeductionsInPeriod(){
