@@ -670,7 +670,7 @@ var BRANCH = {"id":"commonwealth","slug":"commonwealth","name":"Basic by JMSI �
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-10-21 · 39b275f';
+var APP_VERSION = 'v1.3.0 · 2026-10-22 · 7431767';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -11164,7 +11164,8 @@ function comebackDeductions(){
     if(!f || String(j.billedAt)<String(f.billedAt)) first[j.comebackOf]=j;
   });
   return Object.keys(first).map(function(oid){
-    var cb=first[oid], orig=jobById(oid), amt=jobLaborCommissionMap(orig,S)[cb.comebackMechId]||0;
+    // Evaluation map: deducts even if the mechanic is switched off for payout.
+    var cb=first[oid], orig=jobById(oid), amt=jobLaborCommissionMapAll(orig,S)[cb.comebackMechId]||0;
     return { id:'cb-'+cb.id, auto:true, staffId:cb.comebackMechId, cbNo:cb.no, origNo:orig.no, origPlate:orig.plate, date:localDay(cb.billedAt), type:COMEBACK_ADJ.k,
       amount:round2(-amt), reason:'Comeback '+cb.no+' of '+orig.no+(cb.comebackReason?' — '+cb.comebackReason:''), byName:'Auto', at:String(cb.billedAt) };
   }).filter(function(d){ return d.amount<0; });
