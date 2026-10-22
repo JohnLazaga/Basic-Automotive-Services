@@ -670,7 +670,7 @@ var BRANCH = {"id":"sandbox","slug":"sandbox","name":"Basic by JMSI — Sandbox 
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-10-22 · 7431767';
+var APP_VERSION = 'v1.3.0 · 2026-10-22 · 3c41922';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -6989,7 +6989,7 @@ if (typeof module!=='undefined' && module.exports){
     scheduleNextService:scheduleNextService, clearNextService:clearNextService, alertStrip:alertStrip,
     jobVehicleLabel:jobVehicleLabel, replyRecipients:replyRecipients, unreadMessages:unreadMessages, messageStrip:messageStrip, myStaffIds:myStaffIds, messageAcked:messageAcked,
     buildLogEntry:buildLogEntry, logEntryFor:logEntryFor, jobStatusPanel:jobStatusPanel, lastLogForLabel:lastLogForLabel,
-    jobDescriptionPanel:jobDescriptionPanel, jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fillVehicleBlanks:fillVehicleBlanks, openJobsForPlate:openJobsForPlate, correctPayment:correctPayment, overpaidJobs:overpaidJobs, paymentCorrections:paymentCorrections, billBaseline:billBaseline, trackBillChanges:trackBillChanges, billChanges:billChanges, discountRows:discountRows, discountReasonMissing:discountReasonMissing, cashExpected:cashExpected, cashCountRows:cashCountRows, paymentsMissingRef:paymentsMissingRef, releasedOwing:releasedOwing, docMoneyChecks:docMoneyChecks, moneyCheckData:moneyCheckData, voidedReceipts:voidedReceipts, cancelledJobs:cancelledJobs, voidsHoldingMoney:voidsHoldingMoney, docVoids:docVoids, addPayAdj:addPayAdj, payAdjInPeriod:payAdjInPeriod, comebackDeductionsInPeriod:comebackDeductionsInPeriod, netPayoutRows:netPayoutRows, docPayout:docPayout, docMechCommission:docMechCommission, setProdPeriod:function(p,f,t){ PROD_PERIOD=p; PROD_FROM=f||''; PROD_TO=t||''; }, paymentsDoc:paymentsDoc, pmsGateMissing:pmsGateMissing, jobsMissingInfo:jobsMissingInfo, partNetMissing:partNetMissing, lessVatApplied:lessVatApplied, lessVatStale:lessVatStale, markLessVat:markLessVat, syncLessVat:syncLessVat, discVat:discVat, discountReasonPicker:discountReasonPicker, jobPLSplit:jobPLSplit, plForRange:plForRange, opexForRange:opexForRange, docPL:docPL, discountExVat:discountExVat, discountAmount:discountAmount, discountedLabor:discountedLabor, readDiscountObj:function(d){ return d; }, discountEditor:discountEditor, pmsDefaultMechs:pmsDefaultMechs, pmsReadyToSubmit:pmsReadyToSubmit, PMS_TEMPLATE:function(){ return PMS_TEMPLATE; }, pmsSectionMissing:pmsSectionMissing, orSeriesInRange:orSeriesInRange, orRangeGaps:orRangeGaps, inRptRange:inRptRange, setRptRangeRaw:function(k,r){ RPT_RANGE[k]=r; }, docDiscounts:docDiscounts, warnIfPlateOnBoard:warnIfPlateOnBoard, plFor:plFor, opexFor:opexFor, payFor:payFor, monthlyPay:monthlyPay, addMonths:addMonths, syncCollections:syncCollections, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
+    jobDescriptionPanel:jobDescriptionPanel, jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fillVehicleBlanks:fillVehicleBlanks, openJobsForPlate:openJobsForPlate, correctPayment:correctPayment, overpaidJobs:overpaidJobs, paymentCorrections:paymentCorrections, billBaseline:billBaseline, trackBillChanges:trackBillChanges, billChanges:billChanges, discountRows:discountRows, discountReasonMissing:discountReasonMissing, cashExpected:cashExpected, cashCountRows:cashCountRows, paymentsMissingRef:paymentsMissingRef, releasedOwing:releasedOwing, docMoneyChecks:docMoneyChecks, moneyCheckData:moneyCheckData, voidedReceipts:voidedReceipts, cancelledJobs:cancelledJobs, voidsHoldingMoney:voidsHoldingMoney, docVoids:docVoids, addPayAdj:addPayAdj, payAdjInPeriod:payAdjInPeriod, accessLogHTML:accessLogHTML, comebackDeductionsInPeriod:comebackDeductionsInPeriod, netPayoutRows:netPayoutRows, docPayout:docPayout, docMechCommission:docMechCommission, setProdPeriod:function(p,f,t){ PROD_PERIOD=p; PROD_FROM=f||''; PROD_TO=t||''; }, paymentsDoc:paymentsDoc, pmsGateMissing:pmsGateMissing, jobsMissingInfo:jobsMissingInfo, partNetMissing:partNetMissing, lessVatApplied:lessVatApplied, lessVatStale:lessVatStale, markLessVat:markLessVat, syncLessVat:syncLessVat, discVat:discVat, discountReasonPicker:discountReasonPicker, jobPLSplit:jobPLSplit, plForRange:plForRange, opexForRange:opexForRange, docPL:docPL, discountExVat:discountExVat, discountAmount:discountAmount, discountedLabor:discountedLabor, readDiscountObj:function(d){ return d; }, discountEditor:discountEditor, pmsDefaultMechs:pmsDefaultMechs, pmsReadyToSubmit:pmsReadyToSubmit, PMS_TEMPLATE:function(){ return PMS_TEMPLATE; }, pmsSectionMissing:pmsSectionMissing, orSeriesInRange:orSeriesInRange, orRangeGaps:orRangeGaps, inRptRange:inRptRange, setRptRangeRaw:function(k,r){ RPT_RANGE[k]=r; }, docDiscounts:docDiscounts, warnIfPlateOnBoard:warnIfPlateOnBoard, plFor:plFor, opexFor:opexFor, payFor:payFor, monthlyPay:monthlyPay, addMonths:addMonths, syncCollections:syncCollections, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
     afterServiceMissing:afterServiceMissing, afterServiceDone:afterServiceDone, afterServiceStaff:afterServiceStaff,
     canWriteAfterService:canWriteAfterService, afterServiceSignerName:afterServiceSignerName, afterServiceBlock:afterServiceBlock,
     allocateSeriesNumber:allocateSeriesNumber, maxSeriesNo:maxSeriesNo, nextNo:nextNo,
@@ -9892,6 +9892,7 @@ function premisesCard(){
     '<div class="tags">'+rows+'</div>'+
     '<div class="row gap mt8">'+
       '<button class="btn primary" onclick="trustShopNetwork()">＋ Trust this network</button>'+
+      '<button class="btn ghost" onclick="openAccessLog()">Access log</button>'+
       '<button class="btn ghost" onclick="togglePremisesEnforce('+(on?'false':'true')+')">'+
         (on?'Turn enforcement OFF':'Turn enforcement ON')+'</button>'+
     '</div>'+
@@ -9901,6 +9902,52 @@ function premisesCard(){
     '<p class="muted small">Administrators are always exempt, so you keep working from home. '+
     'Internet providers change a connection’s address from time to time; when staff suddenly get '+
     '“BASIC can only be opened at the shop” <i>while at the shop</i>, come here and tap Trust this network again.</p></div>';
+}
+
+/* ---- Access log (admin only) ----------------------------------------------
+   startShopSession writes branches/{b}/accesslog: one row per person, per day,
+   per internet address — admins included, gate on or off. Only the server can
+   write it, so nobody can erase their own trail. */
+var ACCESS_LOG_DAYS = 14;
+var ACCESS_LOG = null, ACCESS_LOG_OUTSIDE = false;
+function _alTime(t){ var d=(t && t.toDate) ? t.toDate() : (t ? new Date(t) : null); return d && !isNaN(d) ? d : null; }
+function openAccessLog(){
+  if(!isAdminUser()){ toast('Admins only','err'); return; }
+  ACCESS_LOG = null; _renderAccessLog();
+  var from = todayISO(new Date(Date.now() - (ACCESS_LOG_DAYS-1)*86400000));
+  bcol('accesslog').where('day','>=',from).get().then(function(snap){
+    ACCESS_LOG = snap.docs.map(function(d){ return d.data()||{}; });
+    _renderAccessLog();
+  }).catch(function(e){ ACCESS_LOG = []; _renderAccessLog(); toast('Could not load the access log','err'); });
+}
+function toggleAccessLogOutside(on){ ACCESS_LOG_OUTSIDE = !!on; _renderAccessLog(); }
+function _renderAccessLog(){ openModal('Access log · last '+ACCESS_LOG_DAYS+' days', accessLogHTML(ACCESS_LOG, ACCESS_LOG_OUTSIDE), { width:'860px', footer:'<button class="btn ghost" onclick="closeModal()">Close</button>' }); }
+/* Testable: the log table for a list of accesslog docs. */
+function accessLogHTML(list, outsideOnly){
+  if(list===null) return '<div class="muted small">Loading…</div>';
+  var rows = list.filter(function(r){ return !outsideOnly || r.where==='outside' || r.allowed===false; })
+    .sort(function(a,b){ var A=_alTime(a.lastAt), B=_alTime(b.lastAt); return (B?B.getTime():0)-(A?A.getTime():0); });
+  var outside = list.filter(function(r){ return r.where==='outside'; }).length;
+  var unknown = list.some(function(r){ return r.where==='unknown'; });
+  var whereCell = function(r){
+    if(r.where==='shop') return '<span class="chip ok">Shop</span>';
+    if(r.where==='outside') return '<span class="chip due">Outside the shop</span>';
+    return '<span class="chip">Unknown</span>';
+  };
+  var t = function(v){ var d=_alTime(v); return d ? esc(fmtDateTime(d.toISOString())) : '—'; };
+  return '<p class="muted small">Every time someone opens BASIC (and every ~20 minutes while it stays open) the server notes their internet address. '+
+      'One row per person, per day, per address. <b>Outside the shop</b> = not one of the trusted shop networks.</p>'+
+    (outside ? '<div class="lg-msg err" style="margin:0 0 10px">'+outside+' sign-in'+(outside===1?'':'s')+' from outside the shop in the last '+ACCESS_LOG_DAYS+' days.</div>' : '')+
+    (unknown ? '<p class="muted small">Rows marked <b>Unknown</b> came before this branch had a trusted shop network — tap <b>Trust this network</b> at the shop so the log can tell the shop from anywhere else.</p>' : '')+
+    '<label class="row gap small" style="align-items:center;margin-bottom:8px"><input type="checkbox" '+(outsideOnly?'checked':'')+' onchange="toggleAccessLogOutside(this.checked)"> Show only outside / blocked</label>'+
+    (rows.length ? '<div class="card pad0"><table class="tbl sm"><thead><tr><th>Day</th><th>User</th><th>Internet address</th><th>Where</th><th>Result</th><th>First seen</th><th>Last seen</th></tr></thead><tbody>'+
+      rows.map(function(r){
+        return '<tr><td>'+esc(fmtDate(r.day))+'</td><td><b>'+esc(r.name||r.email||'—')+'</b>'+(r.admin?' <span class="muted small">admin</span>':'')+'</td>'+
+          '<td>'+esc(r.ip||'—')+'</td><td>'+whereCell(r)+'</td>'+
+          '<td>'+(r.allowed===false ? '<b class="st-bad-t">Blocked</b>' : 'Opened')+(r.blocked?' <span class="muted small">('+Number(r.blocked)+' blocked)</span>':'')+'</td>'+
+          '<td>'+t(r.firstAt)+'</td><td>'+t(r.lastAt)+'</td></tr>';
+      }).join('')+'</tbody></table></div>'
+    : emptyState(outsideOnly ? 'Nobody opened BASIC from outside the shop.' : 'No sign-ins recorded yet.'));
 }
 
 function trustShopNetwork(){
