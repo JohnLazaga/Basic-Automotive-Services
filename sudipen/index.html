@@ -670,7 +670,7 @@ var BRANCH = {"id":"sudipen","slug":"sudipen","name":"Basic by JMSI — Sudipen"
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-10-22 · 00b289f';
+var APP_VERSION = 'v1.3.0 · 2026-10-24 · d8e2989';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -1215,6 +1215,7 @@ function seedState(){
     payroll:[],
     cashcounts:[],
     commadj:[],
+    payouts:[],
     counters:{ est:0, jo:1, or:1000, po:1 }
   };
 }
@@ -1227,7 +1228,7 @@ async function loadState(){
   }
   if (!S || S.version!==2){ S = seedState(); persist(); }
   // migration safety: ensure arrays exist
-  ['staff','bays','parts','labor','vehicles','estimates','jobs','appointments','purchaseOrders','expenses','cashcounts','commadj'].forEach(function(k){
+  ['staff','bays','parts','labor','vehicles','estimates','jobs','appointments','purchaseOrders','expenses','cashcounts','commadj','payouts'].forEach(function(k){
     if (!Array.isArray(S[k])) S[k]=[];
   });
   if (!S.counters) S.counters = { est:0, jo:0, or:1000, po:0 };
@@ -3339,13 +3340,16 @@ function saveComeback(){
   var was=(j.comebackOf||'')+'|'+(j.comebackMechId||'');
   j.comebackOf=val('cbOf')||null;
   j.comebackMechId=val('cbMech')||'';
-  // When it was recorded: the commission deduction (part20) lands in that pay period.
+  // When the charge was recorded (part20). Only a NEW charge resets it: editing just the reason or the
+  // warranty box must not turn an older, already-deducted comeback into a pending one again.
+  var changed=(was!==j.comebackOf+'|'+j.comebackMechId);
   if(!j.comebackOf || !j.comebackMechId){ j.comebackAt=''; j.comebackPaid=null; }
-  else if(!j.comebackAt || was!==j.comebackOf+'|'+j.comebackMechId){ j.comebackAt=new Date().toISOString(); j.comebackPaid=null; }   // a different charge is pending again
+  else if(changed){ j.comebackAt=new Date().toISOString(); j.comebackPaid=null; }
   j.comebackReason=val('cbReason')||'';
   j.warranty=checked('cbWarranty');
   persist(); closeModal(); render();
-  var warn=comebackSetupWarning(j);
+  var wasOf=was.split('|')[0];
+  var warn=comebackSetupWarning(j) || (changed && wasOf ? comebackTakenNote(wasOf) : '');
   if(warn){ toast(warn,'err'); return; }
   toast(j.warranty?'Marked as warranty comeback — no charge, no commission':(j.comebackOf?'Marked as comeback':'Comeback cleared'));
 }
@@ -5553,7 +5557,7 @@ VIEWS.productivity = function(){
     '<div class="row gap" style="align-items:center;flex-wrap:wrap"><div class="seg">'+seg+'</div>'+custom+
       '<span class="muted small">'+esc(prodPeriodLabel())+'</span></div>'+
     '<p class="muted small mt8">Commission is each staff member’s own admin-set rate × the job’s labor (set per person on the Staff page). The Commission column is the <b>evaluation</b> figure — shown even for staff switched off (greyed). The <b>Payout sheet</b> pays only staff with <b>Payout</b> on.</p>'+
-    '<p class="muted small">Job hrs = standard hours from the Job Order. Actual hrs = the per-mechanic labor <b>timer</b> when used, else time in status <b>B2</b> from the log (each interval capped at 8h). Efficiency = Job hrs ÷ Actual hrs (green ≥ 100%). On-time = finished on/before ETD. <b>Comebacks</b> = warranty rework charged to the mechanic (% of their jobs) — watch this next to efficiency. A back job takes the at-fault mechanic’s commission on the original job off their <b>Commission</b> — once, on the next payout you print.</p>'+
+    '<p class="muted small">Job hrs = standard hours from the Job Order. Actual hrs = the per-mechanic labor <b>timer</b> when used, else time in status <b>B2</b> from the log (each interval capped at 8h). Efficiency = Job hrs ÷ Actual hrs (green ≥ 100%). On-time = finished on/before ETD. <b>Comebacks</b> = warranty rework charged to the mechanic (% of their jobs) — watch this next to efficiency. A back job takes the at-fault mechanic’s commission on the original job off their <b>Commission</b> — once, on the next payout you finalize (Custom range only; other views leave pending ones out).</p>'+
     '<div class="card pad0"><table class="tbl"><thead><tr><th>Staff</th><th class="r">Jobs</th><th class="r">Job hrs</th><th class="r">Actual hrs</th><th class="r">Efficiency</th><th class="r">On-time</th><th class="r">Comebacks</th><th class="r">Labor billed</th><th class="r">Avg/job</th><th class="r">Commission</th><th class="center">Payout</th></tr></thead><tbody>'+(rows||'<tr><td colspan="11" class="muted center">No staff.</td></tr>')+'</tbody></table></div>'+
     payAdjCard()+
     mechPerfSection(list)+
@@ -6387,7 +6391,7 @@ function docPayout(){
   var jobsBy={}; jobsInProdPeriod(billedJobs()).forEach(function(j){ Object.keys(jobLaborCommissionMap(j,S)).forEach(function(id){ jobsBy[id]=(jobsBy[id]||0)+1; }); });
   var rows=netPayoutRows(), adjs=payAdjInPeriod();
   var tot={c:0,a:0,n:0}; rows.forEach(function(r){ tot.c+=r.commission; tot.a+=r.adj; tot.n+=r.net; });
-  var body=docHeader('Commission Payout · '+esc(prodPeriodLabel()))+
+  var body=docHeader('Commission Payout · '+esc(prodPeriodLabel()))+metaRows([['Status', esc(payoutStatusText())]])+
     '<table><thead><tr><th>Staff</th><th class="r">Jobs</th><th class="r">Commission</th><th class="r">Adjustments</th><th class="r">Net payout</th><th>Signature</th></tr></thead><tbody>'+
     (rows.map(function(r){ return '<tr><td>'+esc(r.name)+' ('+esc(roleLabel(r.role))+')</td><td class="r">'+(jobsBy[r.id]||0)+'</td>'+
       '<td class="r">'+peso(r.commission)+'</td><td class="r">'+(r.adj?(r.adj>0?'+':'')+peso(r.adj):'—')+'</td><td class="r"><b>'+peso(r.net)+'</b></td>'+
@@ -6401,12 +6405,12 @@ function docPayout(){
       adjs.map(function(a){ return '<tr><td>'+esc(fmtDate(a.date))+'</td><td>'+esc(staffName(a.staffId))+'</td><td>'+esc(payAdjType(a.type).label)+'</td>'+
         '<td class="r">'+(a.amount>0?'+':'')+peso(a.amount)+'</td><td>'+esc(a.reason)+'</td></tr>'; }).join('')+'</tbody></table>':'')+
     '<div class="foot">Commission = each staff member’s own rate × the job’s labor, on jobs they were assigned to (payout-on staff only). '+
-      'Commission is net of back jobs: the at-fault mechanic’s commission on the original job is taken off once, on the first payout printed after the back job is recorded. '+
+      'Commission is net of back jobs: the at-fault mechanic’s commission on the original job is taken off once, on the first payout finalized after the back job is recorded. '+
       'Adjustments = cash advances, deductions and bonuses dated in this period.</div>';
   return docShell('Payout sheet', body);
 }
-/* Printing a payout takes the pending back-job deductions (part20) — once. */
-function printPayout(){ var d=docPayout(); takeComebackDeductions(); printDoc(d); }
+/* Printing takes nothing: back-job deductions are taken by Finalize payout (part20). */
+function printPayout(){ printDoc(docPayout()); }
 
 /* Per-mechanic commission detail: each mechanic's jobs with job description,
    discounted labor and the commission earned on that job. */
@@ -6427,9 +6431,10 @@ function docMechCommission(){
       byMech[id].commission=round2(byMech[id].commission+cm[id]);
     });
   });
-  /* Comebacks (part20): the at-fault mechanic's commission on the original job comes off, once. */
+  /* Comebacks (part20): the at-fault staff member's commission on the original job comes off, once —
+     listed whatever their role, so no deduction is taken without showing on this sheet. */
   comebackDeductionsInPeriod().forEach(function(d){
-    var s=staffById(d.staffId); if(!s || !isMechanicRole(s.role)) return;
+    var s=staffById(d.staffId); if(!s) return;
     if(!byMech[d.staffId]) byMech[d.staffId]={ name:s.name, role:s.role, rows:[], labor:0, commission:0 };
     byMech[d.staffId].rows.push({ no:d.cbNo, veh:'', plate:d.origPlate, desc:'Back-job deduction ('+d.cbNo+') — commission on '+d.origNo+' returned', labor:0, comm:d.amount });
     byMech[d.staffId].commission=round2(byMech[d.staffId].commission+d.amount);
@@ -6459,14 +6464,14 @@ function docMechCommission(){
       (adjRows?adjRows+'<tr class="tot"><td></td><td></td><td class="r">Net payout</td><td></td><td class="r"><b>'+peso(round2(m.commission+adjSum))+'</b></td></tr>':'')+
       '</tbody></table>';
   }).join('') || '<p class="r">No mechanic commissions in this period.</p>';
-  var body=docHeader('Mechanic Commission Detail · '+esc(prodPeriodLabel()))+ blocks+
+  var body=docHeader('Mechanic Commission Detail · '+esc(prodPeriodLabel()))+metaRows([['Status', esc(payoutStatusText())]])+ blocks+
     '<div class="totbox"><div class="l2'+(grandAdj?'':' grand')+'"><span>Total mechanic commission</span><span>'+peso(grand)+'</span></div>'+
       (grandAdj?'<div class="l2"><span>Total adjustments</span><span>'+(grandAdj>0?'+':'')+peso(grandAdj)+'</span></div>'+
         '<div class="l2 grand"><span>Total net payout</span><span>'+peso(round2(grand+grandAdj))+'</span></div>':'')+'</div>'+
     '<div class="foot">Commission = the shop rate × the job’s labor (net of any labor discount), split evenly among the mechanics assigned. Includes only mechanics switched on for payout.</div>';
   return docShell('Mechanic commission detail', body);
 }
-function printMechCommission(){ var d=docMechCommission(); takeComebackDeductions(); printDoc(d); }
+function printMechCommission(){ printDoc(docMechCommission()); }
 
 /* ---- Daily Close report --------------------------------------------------- */
 /* Who ran this printout, for the footer stamp. */
@@ -7015,7 +7020,7 @@ if (typeof module!=='undefined' && module.exports){
     scheduleNextService:scheduleNextService, clearNextService:clearNextService, alertStrip:alertStrip,
     jobVehicleLabel:jobVehicleLabel, replyRecipients:replyRecipients, unreadMessages:unreadMessages, messageStrip:messageStrip, myStaffIds:myStaffIds, messageAcked:messageAcked,
     buildLogEntry:buildLogEntry, logEntryFor:logEntryFor, jobStatusPanel:jobStatusPanel, lastLogForLabel:lastLogForLabel,
-    jobDescriptionPanel:jobDescriptionPanel, jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fillVehicleBlanks:fillVehicleBlanks, openJobsForPlate:openJobsForPlate, correctPayment:correctPayment, overpaidJobs:overpaidJobs, paymentCorrections:paymentCorrections, billBaseline:billBaseline, trackBillChanges:trackBillChanges, billChanges:billChanges, discountRows:discountRows, discountReasonMissing:discountReasonMissing, cashExpected:cashExpected, cashCountRows:cashCountRows, paymentsMissingRef:paymentsMissingRef, releasedOwing:releasedOwing, docMoneyChecks:docMoneyChecks, moneyCheckData:moneyCheckData, voidedReceipts:voidedReceipts, cancelledJobs:cancelledJobs, voidsHoldingMoney:voidsHoldingMoney, docVoids:docVoids, addPayAdj:addPayAdj, payAdjInPeriod:payAdjInPeriod, accessLogHTML:accessLogHTML, comebackSetupWarning:comebackSetupWarning, takeComebackDeductions:takeComebackDeductions, comebackDeductionsInPeriod:comebackDeductionsInPeriod, netPayoutRows:netPayoutRows, docPayout:docPayout, docMechCommission:docMechCommission, setProdPeriod:function(p,f,t){ PROD_PERIOD=p; PROD_FROM=f||''; PROD_TO=t||''; }, paymentsDoc:paymentsDoc, pmsGateMissing:pmsGateMissing, jobsMissingInfo:jobsMissingInfo, partNetMissing:partNetMissing, lessVatApplied:lessVatApplied, lessVatStale:lessVatStale, markLessVat:markLessVat, syncLessVat:syncLessVat, discVat:discVat, discountReasonPicker:discountReasonPicker, jobPLSplit:jobPLSplit, plForRange:plForRange, opexForRange:opexForRange, docPL:docPL, discountExVat:discountExVat, discountAmount:discountAmount, discountedLabor:discountedLabor, readDiscountObj:function(d){ return d; }, discountEditor:discountEditor, pmsDefaultMechs:pmsDefaultMechs, pmsReadyToSubmit:pmsReadyToSubmit, PMS_TEMPLATE:function(){ return PMS_TEMPLATE; }, pmsSectionMissing:pmsSectionMissing, orSeriesInRange:orSeriesInRange, orRangeGaps:orRangeGaps, inRptRange:inRptRange, setRptRangeRaw:function(k,r){ RPT_RANGE[k]=r; }, docDiscounts:docDiscounts, warnIfPlateOnBoard:warnIfPlateOnBoard, plFor:plFor, opexFor:opexFor, payFor:payFor, monthlyPay:monthlyPay, addMonths:addMonths, syncCollections:syncCollections, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
+    jobDescriptionPanel:jobDescriptionPanel, jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fillVehicleBlanks:fillVehicleBlanks, openJobsForPlate:openJobsForPlate, correctPayment:correctPayment, overpaidJobs:overpaidJobs, paymentCorrections:paymentCorrections, billBaseline:billBaseline, trackBillChanges:trackBillChanges, billChanges:billChanges, discountRows:discountRows, discountReasonMissing:discountReasonMissing, cashExpected:cashExpected, cashCountRows:cashCountRows, paymentsMissingRef:paymentsMissingRef, releasedOwing:releasedOwing, docMoneyChecks:docMoneyChecks, moneyCheckData:moneyCheckData, voidedReceipts:voidedReceipts, cancelledJobs:cancelledJobs, voidsHoldingMoney:voidsHoldingMoney, docVoids:docVoids, addPayAdj:addPayAdj, payAdjInPeriod:payAdjInPeriod, accessLogHTML:accessLogHTML, comebackSetupWarning:comebackSetupWarning, comebackDeductions:comebackDeductions, finalizePayoutCore:finalizePayoutCore, finalizePayoutCheck:finalizePayoutCheck, voidPayoutCore:voidPayoutCore, undoComebackCore:undoComebackCore, payoutStatusText:payoutStatusText, comebackPendingNotCounted:comebackPendingNotCounted, comebackTakenNote:comebackTakenNote, comebackDeductionsInPeriod:comebackDeductionsInPeriod, netPayoutRows:netPayoutRows, docPayout:docPayout, docMechCommission:docMechCommission, setProdPeriod:function(p,f,t){ PROD_PERIOD=p; PROD_FROM=f||''; PROD_TO=t||''; }, paymentsDoc:paymentsDoc, pmsGateMissing:pmsGateMissing, jobsMissingInfo:jobsMissingInfo, partNetMissing:partNetMissing, lessVatApplied:lessVatApplied, lessVatStale:lessVatStale, markLessVat:markLessVat, syncLessVat:syncLessVat, discVat:discVat, discountReasonPicker:discountReasonPicker, jobPLSplit:jobPLSplit, plForRange:plForRange, opexForRange:opexForRange, docPL:docPL, discountExVat:discountExVat, discountAmount:discountAmount, discountedLabor:discountedLabor, readDiscountObj:function(d){ return d; }, discountEditor:discountEditor, pmsDefaultMechs:pmsDefaultMechs, pmsReadyToSubmit:pmsReadyToSubmit, PMS_TEMPLATE:function(){ return PMS_TEMPLATE; }, pmsSectionMissing:pmsSectionMissing, orSeriesInRange:orSeriesInRange, orRangeGaps:orRangeGaps, inRptRange:inRptRange, setRptRangeRaw:function(k,r){ RPT_RANGE[k]=r; }, docDiscounts:docDiscounts, warnIfPlateOnBoard:warnIfPlateOnBoard, plFor:plFor, opexFor:opexFor, payFor:payFor, monthlyPay:monthlyPay, addMonths:addMonths, syncCollections:syncCollections, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
     afterServiceMissing:afterServiceMissing, afterServiceDone:afterServiceDone, afterServiceStaff:afterServiceStaff,
     canWriteAfterService:canWriteAfterService, afterServiceSignerName:afterServiceSignerName, afterServiceBlock:afterServiceBlock,
     allocateSeriesNumber:allocateSeriesNumber, maxSeriesNo:maxSeriesNo, nextNo:nextNo,
@@ -7323,7 +7328,7 @@ function renderCloudLoading(){
    - Writes go through cloudPersist(): diff S vs last snapshot, upsert/delete.
    - Job photos are uploaded to Firebase Storage so docs stay under 1 MB.
    ========================================================================== */
-var COLLECTIONS = ['staff','bays','parts','labor','vehicles','estimates','jobs','appointments','purchaseOrders','cashcounts','commadj'];
+var COLLECTIONS = ['staff','bays','parts','labor','vehicles','estimates','jobs','appointments','purchaseOrders','cashcounts','commadj','payouts'];
 /* Finance data (expenses, base pay) is readable only by admins and the Secretary
    (firestore.rules). It is synced only for those users: for anyone else the
    listener would be denied and the load would fail. */
@@ -11223,71 +11228,198 @@ function canAdjustPayout(){ return (typeof isAdminOrSV==='function') ? isAdminOr
 
 /* Comeback deductions: when a job is marked a comeback with an at-fault
    mechanic, that mechanic gives back the commission they were paid on the
-   ORIGINAL job — one time, on whichever weekly payout is printed next.
-   A back job can come a month later, after that commission was already paid,
-   and every branch runs its own pay week, so this is NOT tied to dates:
-     • PENDING (no j.comebackPaid) — shown in every period and taken off the
-       next Payout sheet / Mechanic commissions print, whatever its dates.
-     • TAKEN — that print stamps j.comebackPaid = {from,to,at,byName}. From
-       then on it only appears again in that same payout (so a reprint still
-       matches); every later payout leaves it alone.
+   ORIGINAL job — one time, on the next weekly payout an admin FINALIZES.
+   A back job can come a month later and every branch runs its own pay week,
+   so it is NOT tied to dates:
+     • PENDING — on no finalized payout yet. Counted in the figures only on a
+       Custom range that can still be finalized (the payout being prepared);
+       Today / This month / All time list it but leave it out of the totals.
+     • TAKEN — "Finalize payout" (admin / Supervisor, Custom range only) writes
+       a `payouts` record that freezes who gave back how much. From then on it
+       counts in that payout, and in any report whose range holds the payout's
+       last day; no later payout takes it again. Printing never takes anything.
+   Keyed by the ORIGINAL job, so voiding or editing one back job can't make a
+   second comeback of the same job deduct again. `payouts` records are only
+   ever added (payout / undo / void), never edited, so a device saving a stale
+   copy of a job can't put a taken deduction back to pending.
+   Comebacks recorded before LEGACY_CB_CUTOFF were deducted by the old rule (in
+   the period they were recorded) and keep it; ones the interim build stamped
+   (j.comebackPaid) count as taken on that stamp's payout.
    Billing of the back job does not matter (a free warranty back job may never
-   be billed). A second comeback of the same original job deducts nothing more;
-   a voided or cancelled back job deducts nothing. Changing or clearing the
-   comeback clears the stamp (part4 saveComeback).
+   be billed); a voided or cancelled back job deducts nothing.
    It comes straight off the mechanic's Commission (not an adjustment line);
-   the P&L (part17) carries it on the commission bonuses & deductions line. */
-function comebackDeductions(){
+   the P&L (part17) carries it on the day it was recorded. */
+var LEGACY_CB_CUTOFF='2026-10-22T09:03:13.000Z';   // 00b289f went live: older comebacks used the date rule
+function cbWhen(j){ return String(j.comebackAt || j.dateIn || ''); }
+function cbLegacy(j){
+  if(!j.comebackAt) return true;   // every comeback saved since the date rule carries comebackAt
+  var t=new Date(j.comebackAt); return !isNaN(t) && t.toISOString()<LEGACY_CB_CUTOFF;
+}
+function payoutDocs(){ return (S.payouts||[]).filter(Boolean); }
+/* Finalized payouts not undone by a void record. */
+function livePayouts(){
+  var dead={}; payoutDocs().forEach(function(p){ if(p.kind==='void') dead[p.payoutId]=1; });
+  return payoutDocs().filter(function(p){ return p.kind==='payout' && !dead[p.id]; })
+    .sort(function(a,b){ return String(a.at).localeCompare(String(b.at)); });
+}
+/* origId -> { pay, item } for every deduction a live payout took (and was not put back). */
+function takenByOrig(){
+  var undone={}, m={};
+  payoutDocs().forEach(function(p){ if(p.kind==='undo') undone[p.payoutId+'|'+p.origId]=1; });
+  livePayouts().forEach(function(p){ (p.items||[]).forEach(function(it){
+    if(!undone[p.id+'|'+it.origId] && !m[it.origId]) m[it.origId]={ pay:p, item:it }; }); });
+  return m;
+}
+/* The comeback charge each original job carries right now (first valid back job). */
+function comebackCandidates(){
   var isBilled={}, first={};
   billedJobs().forEach(function(j){ isBilled[j.id]=1; });   // the original must have been paid out
-  var when=function(j){ return String(j.comebackAt || j.dateIn || ''); };
   (S.jobs||[]).forEach(function(j){
-    if(!j.comebackOf || !j.comebackMechId || !isBilled[j.comebackOf] || !localDay(when(j))) return;
+    if(!j.comebackOf || !j.comebackMechId || !isBilled[j.comebackOf] || !localDay(cbWhen(j))) return;
     if(jobVoided(j) || jobCancelled(j)) return;
     var f=first[j.comebackOf];
-    if(!f || when(j)<when(f)) first[j.comebackOf]=j;
+    if(!f || cbWhen(j)<cbWhen(f)) first[j.comebackOf]=j;
   });
   return Object.keys(first).map(function(oid){
     // Evaluation map: deducts even if the mechanic is switched off for payout.
     var cb=first[oid], orig=jobById(oid), amt=jobLaborCommissionMapAll(orig,S)[cb.comebackMechId]||0;
-    var paid=(cb.comebackPaid && cb.comebackPaid.at) ? cb.comebackPaid : null;
-    return { id:'cb-'+cb.id, auto:true, jobId:cb.id, staffId:cb.comebackMechId, cbNo:cb.no, origNo:orig.no, origPlate:orig.plate,
-      // P&L date: the day it was taken off a payout, else the day it was recorded.
-      date:paid ? localDay(paid.at) : localDay(when(cb)), recorded:localDay(when(cb)), paid:paid, type:COMEBACK_ADJ.k,
-      amount:round2(-amt), reason:'Comeback '+cb.no+' of '+orig.no+(cb.comebackReason?' — '+cb.comebackReason:''), byName:'Auto', at:when(cb) };
-  }).filter(function(d){ return d.amount<0; });
+    return { origId:oid, jobId:cb.id, staffId:cb.comebackMechId, cbNo:cb.no, origNo:orig.no, origPlate:orig.plate,
+      recorded:localDay(cbWhen(cb)), amount:round2(-amt), reason:'Comeback '+cb.no+' of '+orig.no+(cb.comebackReason?' — '+cb.comebackReason:''), cb:cb };
+  }).filter(function(c){ return c.amount<0; });
 }
-/* The deductions for the payout being looked at: every pending one, plus those
-   already taken by a payout with exactly these dates (a reprint). "All time"
-   shows everything. */
-function comebackDeductionsInPeriod(){
-  var r=prodRange(), all=(PROD_PERIOD==='all');
-  return comebackDeductions().filter(function(d){
-    return all || !d.paid || (d.paid.from===r.from && d.paid.to===r.to);
+/* What a payout record keeps of a deduction — so a reprint matches what was paid. */
+function cbFreeze(d){ return { origId:d.origId, jobId:d.jobId, staffId:d.staffId, cbNo:d.cbNo, origNo:d.origNo, origPlate:d.origPlate, recorded:d.recorded, amount:d.amount, reason:d.reason }; }
+function cbRow(c, status, paid){
+  return { id:'cb-'+c.origId, auto:true, origId:c.origId, jobId:c.jobId, staffId:c.staffId, cbNo:c.cbNo, origNo:c.origNo, origPlate:c.origPlate,
+    recorded:c.recorded, date:c.recorded, type:COMEBACK_ADJ.k, amount:c.amount, reason:c.reason, byName:'Auto', at:c.recorded, status:status, paid:paid };
+}
+/* Every back-job deduction: taken (frozen on its payout, or by an old rule) or pending. */
+function comebackDeductions(){
+  var taken=takenByOrig(), out=[];
+  Object.keys(taken).forEach(function(oid){ var t=taken[oid], p=t.pay;
+    out.push(cbRow(t.item, 'taken', { id:p.id, from:p.from, to:p.to, at:p.at, byName:p.byName||'', legacy:p.legacy?'stamp':'' })); });
+  comebackCandidates().forEach(function(c){
+    if(taken[c.origId]) return;
+    var cb=c.cb, st=cb.comebackPaid;
+    if(cbLegacy(cb)) out.push(cbRow(c, 'taken', { id:'', from:c.recorded, to:c.recorded, at:'', byName:'', legacy:'date' }));
+    else if(st && st.at && st.from && st.to) out.push(cbRow(c, 'taken', { id:'', from:st.from, to:st.to, at:st.at, byName:st.byName||'', legacy:'stamp' }));
+    else out.push(cbRow(c, 'pending', null));
   });
+  return out;
 }
-/* Called by the Payout sheet and Mechanic commissions prints: stamp every
-   pending deduction as taken by this payout, so no later payout takes it again.
-   "All time" is a report, not a payout, so it stamps nothing. */
-function takeComebackDeductions(){
-  if(PROD_PERIOD==='all') return 0;
-  var r=prodRange(), me=(typeof CURRENT_USER!=='undefined' && CURRENT_USER) ? CURRENT_USER : null, n=0;
+
+/* ---- Finalizing a payout --------------------------------------------------- */
+/* A payout is a Custom range: Today / This month / All time are reports. */
+function prodPayoutRange(){ return (PROD_PERIOD==='custom' && PROD_FROM && PROD_TO) ? { from:PROD_FROM, to:PROD_TO } : null; }
+function payoutsOverlapping(r){ return livePayouts().filter(function(p){ return !p.legacy && p.from<=r.to && p.to>=r.from; }); }
+/* The finalized payout with exactly the selected dates (a reprint), or null. */
+function finalizedPayout(){
+  var r=prodPayoutRange(); if(!r) return null;
+  return livePayouts().find(function(p){ return !p.legacy && p.from===r.from && p.to===r.to; }) || null;
+}
+/* The selected range is a payout still being prepared: pending deductions count. */
+function payoutOpen(){ var r=prodPayoutRange(); return !!r && r.from<=r.to && !payoutsOverlapping(r).length; }
+/* Why the selected range can't be finalized, or ''. */
+function finalizePayoutCheck(){
+  if(!canAdjustPayout()) return 'Only an admin or Supervisor can finalize a payout';
+  var r=prodPayoutRange(); if(!r) return 'Pick Custom and set the pay week’s dates first';
+  if(r.from>r.to) return 'The start date is after the end date';
+  if(r.to>todayISO()) return 'This pay week has not ended yet';
+  var o=payoutsOverlapping(r)[0];
+  if(o) return (o.from===r.from && o.to===r.to) ? 'This payout is already finalized' : 'Overlaps the payout already finalized for '+fmtDate(o.from)+' – '+fmtDate(o.to);
+  return '';
+}
+function payoutByName(){ var me=(typeof CURRENT_USER!=='undefined' && CURRENT_USER) ? CURRENT_USER : null; return (me&&(me.name||me.username||me.email))||''; }
+/* Testable core: freeze every pending deduction onto a new payout record. */
+function finalizePayoutCore(){
+  var err=finalizePayoutCheck(); if(err) return { ok:false, err:err };
+  if(!Array.isArray(S.payouts)) S.payouts=[];
+  adoptLegacyStamps();
+  var r=prodPayoutRange();
+  var rec={ id:uid('pay'), kind:'payout', from:r.from, to:r.to, at:new Date().toISOString(), byName:payoutByName(),
+    items:comebackDeductions().filter(function(d){ return d.status==='pending'; }).map(cbFreeze) };
+  S.payouts.push(rec);
+  return { ok:true, rec:rec };
+}
+/* The interim build kept "taken" as a stamp on the job, which a device saving a
+   stale copy of the job wipes. Copy each stamp into its own payout record (the
+   id is fixed per job, so doing it twice changes nothing). */
+function adoptLegacyStamps(){
+  var have={}; payoutDocs().forEach(function(p){ have[p.id]=1; });
   comebackDeductions().forEach(function(d){
-    if(d.paid) return;
-    var j=jobById(d.jobId); if(!j) return;
-    j.comebackPaid={ from:r.from, to:r.to, at:new Date().toISOString(), byName:(me&&(me.name||me.username||me.email))||'' };
-    n++;
+    if(d.status!=='taken' || d.paid.legacy!=='stamp' || d.paid.id) return;
+    var id='pay-legacy-'+d.jobId; if(have[id]) return;
+    S.payouts.push({ id:id, kind:'payout', legacy:true, from:d.paid.from, to:d.paid.to, at:d.paid.at, byName:d.paid.byName, items:[cbFreeze(d)] });
+    have[id]=1;
   });
-  if(n) persist();
-  return n;
 }
-/* Admin undo: put a taken deduction back to pending (e.g. a payout printed by mistake). */
-function undoComebackTaken(jobId){
+function finalizePayout(){
+  var err=finalizePayoutCheck(); if(err){ toast(err,'err'); return; }
+  var pend=comebackDeductions().filter(function(d){ return d.status==='pending'; });
+  var tot=round2(pend.reduce(function(t,d){ return t+d.amount; },0));
+  confirmModal('Finalize payout · '+prodPeriodLabel(),
+    'This locks in the payout for these dates. '+(pend.length ? pend.length+' pending back-job deduction'+(pend.length>1?'s':'')+' ('+peso(tot)+') will be taken on it and on no later payout.' : 'There are no pending back-job deductions.')+
+      ' Finalize after you have checked the sheet, before you hand out the pay.',
+    function(){ var r=finalizePayoutCore(); if(!r.ok){ toast(r.err,'err'); return; } persist(); toast('Payout finalized'); render(); }, 'Finalize payout');
+}
+/* Testable core: undo a whole finalized payout (finalized for the wrong dates). */
+function voidPayoutCore(payoutId){
+  if(!canAdjustPayout()) return { ok:false, err:'Only an admin or Supervisor can adjust payouts' };
+  if(!livePayouts().some(function(p){ return p.id===payoutId; })) return { ok:false, err:'Payout not found' };
+  S.payouts.push({ id:uid('payv'), kind:'void', payoutId:payoutId, at:new Date().toISOString(), byName:payoutByName() });
+  return { ok:true };
+}
+function voidPayout(payoutId){
+  confirmModal('Undo finalize',
+    'This payout goes back to not finalized: the back-job deductions it took are pending again and these dates can be finalized again.',
+    function(){ var r=voidPayoutCore(payoutId); if(!r.ok){ toast(r.err,'err'); return; } persist(); toast('Payout no longer finalized'); render(); }, 'Undo finalize', true);
+}
+/* Testable core: put one taken deduction back to pending (taken by mistake). */
+function undoComebackCore(origId){
+  if(!canAdjustPayout()) return { ok:false, err:'Only an admin or Supervisor can adjust payouts' };
+  var d=comebackDeductions().find(function(x){ return x.origId===origId && x.status==='taken'; });
+  if(!d || d.paid.legacy==='date') return { ok:false, err:'Nothing to put back' };
+  if(d.paid.id){ if(!Array.isArray(S.payouts)) S.payouts=[];
+    S.payouts.push({ id:uid('payu'), kind:'undo', payoutId:d.paid.id, origId:origId, at:new Date().toISOString(), byName:payoutByName() }); }
+  else { var j=jobById(d.jobId); if(j) j.comebackPaid=null; }   // interim stamp not copied to a record yet
+  return { ok:true };
+}
+function undoComebackTaken(origId){
   if(!canAdjustPayout()){ toast('Only an admin or Supervisor can adjust payouts','err'); return; }
-  var j=jobById(jobId); if(!j || !j.comebackPaid) return;
+  var d=comebackDeductions().find(function(x){ return x.origId===origId && x.status==='taken'; }); if(!d) return;
   confirmModal('Put back to pending',
-    'The back-job deduction on '+esc(j.no)+' will be taken off the next payout you print instead.',
-    function(){ j.comebackPaid=null; persist(); toast('Back to pending'); render(); }, 'Put back', true);
+    'The back-job deduction on '+d.cbNo+' will be taken on the next payout you finalize instead.',
+    function(){ var r=undoComebackCore(origId); if(!r.ok){ toast(r.err,'err'); return; } persist(); toast('Back to pending'); render(); }, 'Put back', true);
+}
+/* For the comeback modal: the deduction on this original job was already taken. */
+function comebackTakenNote(origId){
+  var d=origId && comebackDeductions().find(function(x){ return x.origId===origId && x.status==='taken'; });
+  return d ? 'The back-job deduction on '+d.origNo+' was already taken from '+staffName(d.staffId)+' ('+peso(d.amount)+'). Changing the comeback does not change that; add a payout adjustment if it was wrong.' : '';
+}
+
+/* The deductions counted in the period being looked at:
+     • a finalized payout's dates — exactly what it took (plus old-rule ones in range);
+     • a payout still being prepared — every pending one (plus old-rule ones in range);
+     • any other range — the taken ones whose payout ended in the range. */
+function comebackDeductionsInPeriod(){
+  var r=prodRange(), fp=finalizedPayout(), open=!fp && payoutOpen();
+  return comebackDeductions().filter(function(d){
+    if(d.status==='pending') return open;
+    if(fp && d.paid.id && !d.paid.legacy) return d.paid.id===fp.id;
+    return d.paid.to>=r.from && d.paid.to<=r.to;
+  });
+}
+/* Pending ones the period does NOT count (listed so they aren't forgotten). */
+function comebackPendingNotCounted(){
+  if(!finalizedPayout() && payoutOpen()) return [];
+  return comebackDeductions().filter(function(d){ return d.status==='pending'; });
+}
+/* One line for screens and printouts: a finalized payout, a draft, or a report. */
+function payoutStatusText(){
+  var fp=finalizedPayout();
+  if(fp) return 'Finalized '+fmtDate(localDay(fp.at))+(fp.byName?' by '+fp.byName:'');
+  if(payoutOpen()) return 'DRAFT — not finalized. Back-job deductions shown are pending until the payout is finalized.';
+  return 'Report — not a payout. Pending back-job deductions are not counted.';
 }
 /* Comeback deduction per staff for the period (negative amounts). */
 function comebackDeductionByStaff(){
@@ -11322,19 +11454,32 @@ function netPayoutRows(){
     .sort(function(a,b){ return kpiRoleRank(a.role)-kpiRoleRank(b.role) || String(a.name).localeCompare(String(b.name)); });
 }
 
-/* Back-job deductions on this payout: pending ones (taken on the next print)
-   and ones this payout already took. */
+/* Back-job deductions counted in this period, then any pending ones it leaves out. */
 function comebackListHTML(can){
-  var list=comebackDeductionsInPeriod(); if(!list.length) return '';
+  var list=comebackDeductionsInPeriod(), later=comebackPendingNotCounted();
+  if(!list.length && !later.length) return '';
+  function st(d){
+    if(d.status==='pending') return '<b class="st-warn-t">Pending</b> <span class="muted small">— taken when this payout is finalized</span>';
+    if(d.paid.legacy==='date') return 'Taken <span class="muted small">(old rule: in the period it was recorded)</span>';
+    return 'Taken'+(d.paid.at?' '+esc(fmtDate(localDay(d.paid.at))):'')+' <span class="muted small">(payout '+esc(fmtDate(d.paid.from))+' – '+esc(fmtDate(d.paid.to))+')</span>';
+  }
+  function rows(arr, counted){ return arr.map(function(d){
+    return '<tr><td><b>'+esc(staffName(d.staffId))+'</b></td><td>'+esc(d.cbNo)+' <span class="muted small">'+esc(fmtDate(d.recorded))+'</span></td><td>'+esc(d.origNo)+'</td>'+
+      '<td class="r'+(counted?' st-bad-t':' muted')+'">'+peso(d.amount)+'</td><td>'+(counted?st(d):'<b class="st-warn-t">Pending</b> <span class="muted small">— not counted here</span>')+'</td>'+
+      (can?'<td class="r">'+(d.status==='taken' && d.paid.legacy!=='date'?'<button class="btn sm ghost" onclick="undoComebackTaken(\''+d.origId+'\')">Put back</button>':'')+'</td>':'')+'</tr>';
+  }).join(''); }
+  var head='<thead><tr><th>Mechanic</th><th>Back job</th><th>Original</th><th class="r">Deducted</th><th>Status</th>'+(can?'<th></th>':'')+'</tr></thead>';
   return '<h3 class="mt8">Back-job deductions <span class="muted small">· '+list.length+'</span></h3>'+
-    '<div class="card pad0"><table class="tbl sm"><thead><tr><th>Mechanic</th><th>Back job</th><th>Original</th><th class="r">Deducted</th><th>Status</th>'+(can?'<th></th>':'')+'</tr></thead><tbody>'+
-    list.map(function(d){
-      var st=d.paid ? 'Taken '+esc(fmtDate(localDay(d.paid.at)))+' <span class="muted small">(payout '+esc(fmtDate(d.paid.from))+' – '+esc(fmtDate(d.paid.to))+')</span>'
-                    : '<b class="st-warn-t">Pending</b> <span class="muted small">— taken on the next payout you print</span>';
-      return '<tr><td><b>'+esc(staffName(d.staffId))+'</b></td><td>'+esc(d.cbNo)+' <span class="muted small">'+esc(fmtDate(d.recorded))+'</span></td><td>'+esc(d.origNo)+'</td>'+
-        '<td class="r st-bad-t">'+peso(d.amount)+'</td><td>'+st+'</td>'+
-        (can?'<td class="r">'+(d.paid?'<button class="btn sm ghost" onclick="undoComebackTaken(\''+d.jobId+'\')">Put back</button>':'')+'</td>':'')+'</tr>';
-    }).join('')+'</tbody></table></div>';
+    (list.length?'<div class="card pad0"><table class="tbl sm">'+head+'<tbody>'+rows(list,true)+'</tbody></table></div>':'<div class="muted small">None counted in this period.</div>')+
+    (later.length?'<p class="muted small mt8"><b>'+later.length+' pending</b> — taken on the next payout you finalize (pick Custom with that pay week’s dates). Not counted in this view.</p>'+
+      '<div class="card pad0"><table class="tbl sm">'+head+'<tbody>'+rows(later,false)+'</tbody></table></div>':'');
+}
+/* Finalized / draft / report line with the Finalize or Undo button. */
+function payoutStatusHTML(can){
+  var fp=finalizedPayout(), open=!fp && payoutOpen(), err=open?finalizePayoutCheck():'';
+  var btn = fp ? (can?' <button class="btn sm ghost" onclick="voidPayout(\''+fp.id+'\')">Undo finalize</button>':'')
+          : (open && can) ? ' <button class="btn sm primary" onclick="finalizePayout()"'+(err?' disabled title="'+attr(err)+'"':'')+'>Finalize payout</button>'+(err?' <span class="muted small">'+esc(err)+'</span>':'') : '';
+  return '<p class="small"><b'+(fp?'':' class="st-warn-t"')+'>'+esc(payoutStatusText())+'</b>'+btn+'</p>';
 }
 function payAdjCard(){
   var list=payAdjInPeriod(), rows=netPayoutRows(), can=canAdjustPayout();
@@ -11342,8 +11487,9 @@ function payAdjCard(){
   return '<div class="card"><div class="card-head"><h2>Payout adjustments &amp; net payout <span class="muted small">· '+esc(prodPeriodLabel())+'</span></h2>'+
       (can?'<button class="btn sm primary" onclick="openPayAdj()">＋ Add adjustment</button>':'')+'</div>'+
     '<p class="muted small">Cash advances, deductions and bonuses for this pay period. Net payout = commission (payout-on staff) + bonuses − advances and deductions. '+
-      'A <b>back job</b> with an at-fault mechanic takes that mechanic’s commission on the original job off their Commission — once, on the next payout you print. '+
-      'The Payout sheet and Mechanic commissions printouts include these.</p>'+
+      'A <b>back job</b> with an at-fault mechanic takes that mechanic’s commission on the original job off their Commission — once, on the next payout you <b>finalize</b>. '+
+      'To pay out: pick <b>Custom</b> with the pay week’s dates, print and check the Payout sheet, then <b>Finalize payout</b>. Printing alone takes nothing.</p>'+
+    payoutStatusHTML(can)+
     (rows.length ? '<div class="card pad0"><table class="tbl sm"><thead><tr><th>Staff</th><th class="r">Commission</th><th class="r">Adjustments</th><th class="r">Net payout</th></tr></thead><tbody>'+
       rows.map(function(r){ return '<tr><td><b>'+esc(r.name)+'</b> <span class="muted small">'+esc(roleLabel(r.role))+'</span></td>'+
         '<td class="r">'+peso(r.commission)+'</td><td class="r'+(r.adj<0?' st-bad-t':'')+'">'+(r.adj?(r.adj>0?'+':'')+peso(r.adj):'—')+'</td>'+
