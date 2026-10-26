@@ -670,7 +670,7 @@ var BRANCH = {"id":"commonwealth","slug":"commonwealth","name":"Basic by JMSI �
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-10-26 · ee3d325';
+var APP_VERSION = 'v1.3.0 · 2026-10-26 · 9589661';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -1291,7 +1291,7 @@ var NAV = [
     { id:'jobs', label:'Job Orders', icon:'▧' },
     { id:'estimates', label:'Estimates', icon:'✎', cap:'estimates' },
     { id:'pms', label:'PMS Queue', icon:'🔧' },
-    { id:'forms', label:'Forms', icon:'✍' }
+    { id:'forms', label:'Forms', icon:'✍', cap:'forms' }
   ]},
   { group:'ANALYTICS', items:[
     { id:'reports', label:'Reports', icon:'▣', adminOnly:true },
@@ -2767,7 +2767,7 @@ function jobPrintButtons(j){
   var btns='<button class="btn ghost" onclick="printJobOrder(\''+j.id+'\')">⎙ Job Order</button>';
   if (j.stage!=='Job Order') btns+='<button class="btn ghost" onclick="printPostJob(\''+j.id+'\')">⎙ Post Job Report</button>';
   if (j.stage==='Final Billing'||j.stage==='Released') btns+='<button class="btn ghost" onclick="printBilling(\''+j.id+'\')">⎙ Final Billing</button>';
-  if (typeof openForm==='function'){
+  if (typeof openForm==='function' && can('forms')){
     btns+='<button class="btn ghost" onclick="openForm(\'waiver\',\''+j.id+'\')">✍ Waiver</button>';
     if (j.stage==='Final Billing'||j.stage==='Released') btns+='<button class="btn ghost" onclick="openForm(\'release\',\''+j.id+'\')">✍ Release Form</button>';
   }
@@ -6293,8 +6293,10 @@ function printPostJob(id){ printDoc(docPostJob(jobById(id))); }
 /* ---- Final Billing: BIR VAT invoice --------------------------------------- */
 function docBilling(j){ return docShell('Billing '+(j.orNumber||j.no), billingBody(j)); }
 /* The receipt body only (no <html> shell) — reused by the customer portal so it
-   shows the exact same Final Billing document as the desktop printout. */
-function billingBody(j){
+   shows the exact same Final Billing document as the desktop printout.
+   rel = a Vehicle Release Form (part21): its release section and combined
+   signatures replace the receipt's own signature row, so one page does both. */
+function billingBody(j, rel){
   var sh=S.shop;
   return docHeader('FINAL BILLING RECEIPT · '+(j.orNumber||''))+
     metaCols(
@@ -6307,13 +6309,19 @@ function billingBody(j){
     pricedLinesTable(j,{sku:true})+ totalsBox(j,{discount:true})+
     paymentsDoc(j)+
     workAuthDoc(j)+
+    ((rel && typeof releaseSection==='function') ? releaseSection(j, rel) :
     '<div class="sig-grid"><div class="sigline">Approved for release by (Supervisor)<br>'+esc(staffNameIfRole(j.approvedReleaseBy,'SV'))+'</div>'+
       '<div class="sigline">Payment received by (Secretary)<br>'+esc(staffNameIfRole(j.paymentReceivedBy,'Secretary'))+'</div>'+
-      '<div class="sigline">Unit Received by (Customer)<br>'+esc(j.owner||'')+'</div></div>'+
+      '<div class="sigline">Unit Received by (Customer)<br>'+esc(j.owner||'')+'</div></div>')+
     '<div class="foot">THIS DOCUMENT IS NOT VALID FOR CLAIM OF INPUT TAX<br>'+
       esc(sh.name)+' · TIN '+esc(sh.tin)+' · '+esc(sh.address)+'</div>';
 }
-function printBilling(id){ printDoc(docBilling(jobById(id))); }
+/* Final Billing prints with the Vehicle Release Form behind it (part21). */
+function printBilling(id){
+  var j=jobById(id);
+  var rel=(typeof billingReleaseForm==='function') ? billingReleaseForm(j) : null;
+  printDoc(rel ? docBillingWithRelease(j, rel) : docBilling(j));
+}
 /* Payments on the Final Billing receipt — one line per payment, so an invoice
    paid partly in cash and partly by GCash / check shows each tender and its
    reference. Refunds print as negative lines. Then total paid and what is
@@ -7050,7 +7058,7 @@ if (typeof module!=='undefined' && module.exports){
     scheduleNextService:scheduleNextService, clearNextService:clearNextService, alertStrip:alertStrip,
     jobVehicleLabel:jobVehicleLabel, replyRecipients:replyRecipients, unreadMessages:unreadMessages, messageStrip:messageStrip, myStaffIds:myStaffIds, messageAcked:messageAcked,
     buildLogEntry:buildLogEntry, logEntryFor:logEntryFor, jobStatusPanel:jobStatusPanel, lastLogForLabel:lastLogForLabel,
-    jobDescriptionPanel:jobDescriptionPanel, jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fillVehicleBlanks:fillVehicleBlanks, openJobsForPlate:openJobsForPlate, correctPayment:correctPayment, overpaidJobs:overpaidJobs, paymentCorrections:paymentCorrections, billBaseline:billBaseline, trackBillChanges:trackBillChanges, billChanges:billChanges, discountRows:discountRows, discountReasonMissing:discountReasonMissing, cashExpected:cashExpected, cashCountRows:cashCountRows, paymentsMissingRef:paymentsMissingRef, releasedOwing:releasedOwing, docMoneyChecks:docMoneyChecks, moneyCheckData:moneyCheckData, voidedReceipts:voidedReceipts, cancelledJobs:cancelledJobs, voidsHoldingMoney:voidsHoldingMoney, docVoids:docVoids, addPayAdj:addPayAdj, payAdjInPeriod:payAdjInPeriod, accessLogHTML:accessLogHTML, docWaiver:docWaiver, issueWaiverCore:issueWaiverCore, issueReleaseCore:issueReleaseCore, updateReleaseCore:updateReleaseCore, docRelease:docRelease, formJobMatches:formJobMatches, jobBelongings:jobBelongings, finishRelease:finishRelease, updateWaiverCore:updateWaiverCore, fmtDateFil:fmtDateFil, waiverDefaultItems:waiverDefaultItems, issuedForms:issuedForms, deviceLockAtRisk:deviceLockAtRisk, deviceLockWarningHTML:deviceLockWarningHTML, comebackSetupWarning:comebackSetupWarning, comebackDeductions:comebackDeductions, finalizePayoutCore:finalizePayoutCore, finalizePayoutCheck:finalizePayoutCheck, voidPayoutCore:voidPayoutCore, undoComebackCore:undoComebackCore, payoutStatusText:payoutStatusText, comebackPendingNotCounted:comebackPendingNotCounted, comebackTakenNote:comebackTakenNote, comebackDeductionsInPeriod:comebackDeductionsInPeriod, netPayoutRows:netPayoutRows, docPayout:docPayout, docMechCommission:docMechCommission, setProdPeriod:function(p,f,t){ PROD_PERIOD=p; PROD_FROM=f||''; PROD_TO=t||''; }, paymentsDoc:paymentsDoc, pmsGateMissing:pmsGateMissing, jobsMissingInfo:jobsMissingInfo, partNetMissing:partNetMissing, lessVatApplied:lessVatApplied, lessVatStale:lessVatStale, markLessVat:markLessVat, syncLessVat:syncLessVat, discVat:discVat, discountReasonPicker:discountReasonPicker, jobPLSplit:jobPLSplit, plForRange:plForRange, opexForRange:opexForRange, docPL:docPL, discountExVat:discountExVat, discountAmount:discountAmount, discountedLabor:discountedLabor, readDiscountObj:function(d){ return d; }, discountEditor:discountEditor, pmsDefaultMechs:pmsDefaultMechs, pmsReadyToSubmit:pmsReadyToSubmit, PMS_TEMPLATE:function(){ return PMS_TEMPLATE; }, pmsSectionMissing:pmsSectionMissing, orSeriesInRange:orSeriesInRange, orRangeGaps:orRangeGaps, inRptRange:inRptRange, setRptRangeRaw:function(k,r){ RPT_RANGE[k]=r; }, docDiscounts:docDiscounts, warnIfPlateOnBoard:warnIfPlateOnBoard, plFor:plFor, opexFor:opexFor, payFor:payFor, monthlyPay:monthlyPay, addMonths:addMonths, syncCollections:syncCollections, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
+    jobDescriptionPanel:jobDescriptionPanel, jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fillVehicleBlanks:fillVehicleBlanks, openJobsForPlate:openJobsForPlate, correctPayment:correctPayment, overpaidJobs:overpaidJobs, paymentCorrections:paymentCorrections, billBaseline:billBaseline, trackBillChanges:trackBillChanges, billChanges:billChanges, discountRows:discountRows, discountReasonMissing:discountReasonMissing, cashExpected:cashExpected, cashCountRows:cashCountRows, paymentsMissingRef:paymentsMissingRef, releasedOwing:releasedOwing, docMoneyChecks:docMoneyChecks, moneyCheckData:moneyCheckData, voidedReceipts:voidedReceipts, cancelledJobs:cancelledJobs, voidsHoldingMoney:voidsHoldingMoney, docVoids:docVoids, addPayAdj:addPayAdj, payAdjInPeriod:payAdjInPeriod, accessLogHTML:accessLogHTML, docWaiver:docWaiver, issueWaiverCore:issueWaiverCore, issueReleaseCore:issueReleaseCore, updateReleaseCore:updateReleaseCore, docRelease:docRelease, billingReleaseForm:billingReleaseForm, docBillingWithRelease:docBillingWithRelease, formJobMatches:formJobMatches, jobBelongings:jobBelongings, finishRelease:finishRelease, updateWaiverCore:updateWaiverCore, fmtDateFil:fmtDateFil, waiverDefaultItems:waiverDefaultItems, issuedForms:issuedForms, deviceLockAtRisk:deviceLockAtRisk, deviceLockWarningHTML:deviceLockWarningHTML, comebackSetupWarning:comebackSetupWarning, comebackDeductions:comebackDeductions, finalizePayoutCore:finalizePayoutCore, finalizePayoutCheck:finalizePayoutCheck, voidPayoutCore:voidPayoutCore, undoComebackCore:undoComebackCore, payoutStatusText:payoutStatusText, comebackPendingNotCounted:comebackPendingNotCounted, comebackTakenNote:comebackTakenNote, comebackDeductionsInPeriod:comebackDeductionsInPeriod, netPayoutRows:netPayoutRows, docPayout:docPayout, docMechCommission:docMechCommission, setProdPeriod:function(p,f,t){ PROD_PERIOD=p; PROD_FROM=f||''; PROD_TO=t||''; }, paymentsDoc:paymentsDoc, pmsGateMissing:pmsGateMissing, jobsMissingInfo:jobsMissingInfo, partNetMissing:partNetMissing, lessVatApplied:lessVatApplied, lessVatStale:lessVatStale, markLessVat:markLessVat, syncLessVat:syncLessVat, discVat:discVat, discountReasonPicker:discountReasonPicker, jobPLSplit:jobPLSplit, plForRange:plForRange, opexForRange:opexForRange, docPL:docPL, discountExVat:discountExVat, discountAmount:discountAmount, discountedLabor:discountedLabor, readDiscountObj:function(d){ return d; }, discountEditor:discountEditor, pmsDefaultMechs:pmsDefaultMechs, pmsReadyToSubmit:pmsReadyToSubmit, PMS_TEMPLATE:function(){ return PMS_TEMPLATE; }, pmsSectionMissing:pmsSectionMissing, orSeriesInRange:orSeriesInRange, orRangeGaps:orRangeGaps, inRptRange:inRptRange, setRptRangeRaw:function(k,r){ RPT_RANGE[k]=r; }, docDiscounts:docDiscounts, warnIfPlateOnBoard:warnIfPlateOnBoard, plFor:plFor, opexFor:opexFor, payFor:payFor, monthlyPay:monthlyPay, addMonths:addMonths, syncCollections:syncCollections, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
     afterServiceMissing:afterServiceMissing, afterServiceDone:afterServiceDone, afterServiceStaff:afterServiceStaff,
     canWriteAfterService:canWriteAfterService, afterServiceSignerName:afterServiceSignerName, afterServiceBlock:afterServiceBlock,
     allocateSeriesNumber:allocateSeriesNumber, maxSeriesNo:maxSeriesNo, nextNo:nextNo,
@@ -8287,6 +8295,7 @@ var CAPS = [
   { key:'parts_manage', label:'Parts / Labor / PO' },
   { key:'staff_manage', label:'Staff & accounts' },
   { key:'settings',     label:'Settings' },
+  { key:'forms',        label:'Forms (waivers, release forms)' },
   { key:'delete',       label:'Delete / clear data' }
 ];
 
@@ -8296,15 +8305,29 @@ var CAPS = [
    deliberately not granted there. */
 var DEFAULT_PERMS = {
   SV:               { appointments:1, estimates:1, prices:1, part_cost:1, discounts:1, billing:1, billing_edit:1, refunds:1, receivables:1, dailyclose:1, parts_manage:1 },
-  SA:               { appointments:1, estimates:1, prices:1, billing:1, receivables:1 },
+  SA:               { appointments:1, estimates:1, prices:1, billing:1, receivables:1, forms:1 },
   SM:               { estimates:1, prices:1 },
   Mechanic:         {},
   'Parts Salesman': { prices:1, parts_manage:1 },
-  Secretary:        { appointments:1, prices:1, billing:1, refunds:1, receivables:1 }
+  Secretary:        { appointments:1, prices:1, billing:1, refunds:1, receivables:1, forms:1 }
 };
 
+/* Capabilities added after a shop may already have saved its own matrix. Until
+   an admin saves the matrix again (which records every cap it was saved with in
+   _caps), each role gets the default for them — so adding Forms does not take
+   it away from the Service Adviser and Secretary of a customised shop. */
+var LATER_CAPS = ['forms'];
 function permsMatrix(){
-  return (S && S.shop && S.shop.permissions) ? S.shop.permissions : DEFAULT_PERMS;
+  var m = (S && S.shop && S.shop.permissions) || null;
+  if (!m) return DEFAULT_PERMS;
+  var seen = m._caps || [];
+  var missing = LATER_CAPS.filter(function(c){ return seen.indexOf(c)<0; });
+  if (!missing.length) return m;
+  var out = JSON.parse(JSON.stringify(m));
+  ROLE_LIST.forEach(function(role){ missing.forEach(function(c){
+    if ((DEFAULT_PERMS[role]||{})[c]){ out[role]=out[role]||{}; out[role][c]=1; }
+  }); });
+  return out;
 }
 function isAdminUser(){ return !!(CURRENT_USER && CURRENT_USER.isAdmin); }
 /* Admin or Supervisor (SV). Local / pre-auth (dev build, mini-PC) returns true,
@@ -8627,7 +8650,7 @@ function deleteAccountConfirm(uid){
 var PERM_EDIT=false, PERM_DRAFT=null;
 function permEditOn(){ PERM_EDIT=true; PERM_DRAFT=JSON.parse(JSON.stringify(permsMatrix())); render(); }
 function permCancel(){ PERM_EDIT=false; PERM_DRAFT=null; render(); }
-function permSave(){ if(PERM_DRAFT) S.shop.permissions=PERM_DRAFT; persist(); PERM_EDIT=false; PERM_DRAFT=null; toast('Permissions saved'); render(); }
+function permSave(){ if(PERM_DRAFT){ PERM_DRAFT._caps=CAPS.map(function(c){ return c.key; }); S.shop.permissions=PERM_DRAFT; } persist(); PERM_EDIT=false; PERM_DRAFT=null; toast('Permissions saved'); render(); }
 function permDraftToggle(role, cap, on){
   if(!PERM_DRAFT) return;
   if(!PERM_DRAFT[role]) PERM_DRAFT[role]={};
@@ -8697,7 +8720,7 @@ var VIEW_CAP = {
   appointments:'appointments', estimates:'estimates', estimate:'estimates',
   dailyclose:'dailyclose', productivity:'productivity', receivables:'receivables',
   parts:'parts_manage', labor:'parts_manage', purchaseorders:'parts_manage', po:'parts_manage',
-  staff:'staff_manage', accounts:'staff_manage', settings:'settings'
+  staff:'staff_manage', accounts:'staff_manage', settings:'settings', forms:'forms'
 };
 function routeAllowed(view){
   if (view==='reports') return canSeeReports();   // Reports & Analytics: admins only
@@ -11778,6 +11801,7 @@ function _advisers(){ return (S.staff||[]).filter(function(s){ return s.role==='
 
 /* Open a form: kind, the job (optional) and, to edit, the saved form's id. */
 function openForm(kind, jobId, formId){
+  if (typeof can==='function' && !can('forms')){ toast('Forms are for Service Advisers, the Secretary and admins','err'); return; }
   var ed = formId ? _findForm(jobId, formId) : null;
   if (formId && !ed){ toast('Form not found','err'); return; }
   var j = jobId ? jobById(jobId) : null;
@@ -11970,7 +11994,7 @@ function releaseFormHTML(j, ed){
   var head = '<input type="hidden" id="fmKind" value="release">'+_formHead('release', j, ed);
   if (!j) return head;
   var items = jobBelongings(j);
-  var back = ed ? (ed.returned||[]) : items;
+  var back = (ed && !ed.byHand) ? (ed.returned||[]) : items;   // a form started at billing: everything ticked to begin with
   var belong = items.length
     ? items.map(function(k){ return '<label class="row gap small" style="align-items:center;margin:2px 0"><input type="checkbox" data-belong="'+attr(k)+'"'+(back.indexOf(k)>=0?' checked':'')+'> '+esc(k)+'</label>'; }).join('')
     : '<div class="muted small">No belongings were listed at intake.</div>';
@@ -11994,7 +12018,7 @@ function _releaseFields(j, data){
   if(!(j.stage==='Final Billing' || j.stage==='Released')) return { msg:'Bill the job order first — a release form is for a billed job' };
   var clean=function(a){ return (a||[]).map(function(s){ return String(s||'').trim(); }).filter(Boolean); };
   return { customer:customer, odo:Number(String(data.odo||'').replace(/[^0-9.]/g,''))||0, remarks:String(data.remarks||'').trim(),
-    returned:clean(data.returned), notReturned:clean(data.notReturned),
+    returned:clean(data.returned), notReturned:clean(data.notReturned), byHand:false,
     adviserId:data.adviserId||'', releasedById:data.releasedById||'', lang:(data.lang==='fil'?'fil':'en') };
 }
 /* Testable: record a release form on its job. data = { customer, odo, remarks,
@@ -12024,7 +12048,11 @@ var RELEASE_TEXT = {
       'Any concern about the work done must be reported to the shop as soon as possible. The shop is not responsible for damage caused by accident, misuse, or work done elsewhere after release, '+
         'nor for any repair the customer declined in a waiver signed for this job order.',
       'I sign this release voluntarily on <b>'+when+'</b>'+(place?' at '+place:'')+'.' ]; },
-    sigCustomer:'Customer — received by (signature over printed name)', sigBy:'Released by (Supervisor)'
+    sigCustomer:'Customer — received by (signature over printed name)', sigBy:'Released by (Supervisor)',
+    sigPay:'Payment received by (Secretary)',
+    short:function(name, shop, when){ return 'I, <b>'+name+'</b>, received the vehicle above from <b>'+shop+'</b> in good order and condition, with the work listed done to my satisfaction and my belongings returned as checked. '+
+      'Any concern about the work must be reported to the shop promptly. The shop is not responsible for damage from accident, misuse or work done elsewhere after release, nor for repairs I declined in a waiver for this job order. '+
+      'Signed on <b>'+when+'</b>.'; }
   },
   fil: {
     title:'Vehicle Release Form · Katibayan ng Pagtanggap ng Sasakyan', or:'OR #', relOdo:'Odometer sa paglabas', relDate:'Petsa ng paglabas',
@@ -12038,7 +12066,11 @@ var RELEASE_TEXT = {
       'Anumang reklamo tungkol sa gawaing isinagawa ay dapat ipaalam agad sa shop. Hindi mananagot ang shop sa pinsalang dulot ng aksidente, maling paggamit, o gawaing isinagawa sa ibang lugar matapos ilabas ang sasakyan, '+
         'gayundin sa anumang pagkukumpuning tinanggihan ng customer sa waiver na nilagdaan para sa job order na ito.',
       'Kusang-loob kong nilagdaan ang release na ito ngayong <b>'+when+'</b>'+(place?' sa '+place:'')+'.' ]; },
-    sigCustomer:'Customer — tumanggap (lagda sa ibabaw ng pangalan)', sigBy:'Inilabas ni (Supervisor)'
+    sigCustomer:'Customer — tumanggap (lagda sa ibabaw ng pangalan)', sigBy:'Inilabas ni (Supervisor)',
+    sigPay:'Tumanggap ng bayad (Sekretarya)',
+    short:function(name, shop, when){ return 'Ako, si <b>'+name+'</b>, ay tumanggap ng sasakyang nakalarawan sa itaas mula sa <b>'+shop+'</b> sa maayos na kalagayan, tapos ang mga gawaing nakalista ayon sa aking kasiyahan, at naibalik ang aking mga gamit ayon sa may tsek. '+
+      'Anumang reklamo sa gawain ay dapat ipaalam agad sa shop. Hindi mananagot ang shop sa pinsalang dulot ng aksidente, maling paggamit o gawaing isinagawa sa ibang lugar matapos ilabas ang sasakyan, gayundin sa mga pagkukumpuning aking tinanggihan sa waiver para sa job order na ito. '+
+      'Nilagdaan ngayong <b>'+when+'</b>.'; }
   }
 };
 /* Payment status as of printing. */
@@ -12048,20 +12080,91 @@ function _releasePayLine(T, j){
   if (bal<=0.001) return T.paid;
   return j.charge ? T.onCharge(peso(bal)) : T.owing(peso(bal));
 }
-function docRelease(j, f){
+/* Final Billing and the Vehicle Release Form print together. The job's latest
+   release form is used; with none yet, one is started from the job and saved (so
+   it is under Issued forms and can be edited). What is not known at billing —
+   the belongings handed back, the release odometer, the dates — prints blank to
+   be filled in by hand at handover (byHand). null when no form can be made. */
+function billingReleaseForm(j){
+  if(!j || !(j.stage==='Final Billing' || j.stage==='Released')) return null;
+  var have=(j.forms||[]).filter(function(f){ return f.kind==='release'; });
+  if(have.length) return have[have.length-1];
+  var wv=(j.forms||[]).filter(function(f){ return f.kind==='waiver'; }).pop();   // same language as the job's waiver
+  var r=issueReleaseCore(j.id, { customer:j.contactPerson||j.owner||'', odo:j.releasedAt?(j.lastServiceOdo||''):'',
+    adviserId:j.saId||'', releasedById:j.approvedReleaseBy||'', lang:(wv&&wv.lang)||'en' });
+  if(!r.ok) return null;
+  r.rec.byHand=true;
+  if(typeof persist==='function') persist();
+  return r.rec;
+}
+/* Final Billing and the release on ONE page, to save paper: the receipt's lines
+   and payments already show the work done and that it is paid, so the release
+   adds only a short section at the bottom. Two copies — the customer keeps the
+   receipt, the shop keeps the signed release. */
+function docBillingWithRelease(j, f){
+  var L=FORM_LABELS[f.lang==='fil'?'fil':'en'];
+  return docShell('Billing '+(j.orNumber||j.no), BILLREL_CSS+
+    '<div class="pagebreak cmp"><div class="copy-tag">'+L.customerCopy+'</div>'+billingBody(j, f)+'</div>'+
+    '<div class="cmp"><div class="copy-tag">'+L.shopCopy+'</div>'+billingBody(j, f)+'</div>');
+}
+/* Tighter spacing so a copy of billing + release fits one page. */
+var BILLREL_CSS='<style>@page{margin:10mm}'+
+  '.cmp .dhead{padding-bottom:8px;margin-bottom:8px}.cmp .dhead img{width:42px;height:42px}.cmp .dhead .nm{font-size:17px}.cmp .dhead .sub{font-size:11px;line-height:1.4}'+
+  '.cmp .dtitle{margin:4px 0 8px}.cmp .meta{font-size:11.5px;gap:2px 20px;margin-bottom:6px}'+
+  '.cmp table{font-size:11.5px;margin:4px 0}.cmp th,.cmp td{padding:3px 6px}'+
+  '.cmp .totbox{font-size:12px}.cmp .totbox .l2{padding:1px 0}.cmp .totbox .grand{font-size:13.5px}'+
+  '.cmp .sig-grid{margin-top:8px}.cmp .sigline{margin-top:30px}.cmp .foot{margin-top:6px}'+
+  '.cmp .rel{page-break-inside:avoid}</style>';
+/* The release section at the foot of the Final Billing. */
+function releaseSection(j, f){
   var lang=f.lang==='fil'?'fil':'en', T=RELEASE_TEXT[lang], L=FORM_LABELS[lang];
   var sh=S.shop||{}, shop=esc(sh.legal||sh.name||'the shop');
-  var when=L.date_of(f.at), relDate=L.date_of(j.releasedAt||f.at);
+  var d=_releaseDates(j, f, L);
+  var odo=f.odo ? num(f.odo)+' km' : '__________ km';
+  var belong=_releaseBelongings(j, f, T, ' &nbsp; ');
+  var waivers=(j.forms||[]).filter(function(x){ return x.kind==='waiver'; });
+  return '<div class="rel"><div class="dtitle" style="font-size:12px;margin:10px 0 4px;border-top:1px solid #E5E5EA;padding-top:6px">'+T.title+'</div>'+
+    '<div style="font-size:11.5px;line-height:1.5">'+
+      '<b>'+T.relOdo+':</b> '+odo+' &nbsp;·&nbsp; <b>'+T.relDate+':</b> '+(d.rel||'____________________')+'<br>'+
+      '<b>'+T.belong+':</b> '+(belong||esc(T.noBelong))+
+      waivers.map(function(w){ return '<br>'+esc(T.waiverRef(w.id, L.date_of(w.at))); }).join('')+
+      (f.remarks?'<br><b>'+T.remarks+':</b> '+esc(f.remarks):'')+
+    '</div>'+
+    '<p style="font-size:11.5px;line-height:1.45;margin:6px 0 0">'+T.short(esc(f.customer), shop, esc(d.signed))+'</p>'+
+    _sigGrid([[T.sigCustomer,'<b>'+esc(f.customer)+'</b>'],
+              [T.sigPay, esc(staffNameIfRole(j.paymentReceivedBy,'Secretary'))],
+              [T.sigBy, _staffSig(f.releasedById) || esc(staffNameIfRole(j.approvedReleaseBy,'SV'))]])+
+    '<div class="foot" style="margin-top:6px">'+esc(formKindTitle('release'))+' '+esc(f.id)+(f.editedAt?' · edited '+esc(fmtDateTime(f.editedAt)):'')+'</div></div>';
+}
+/* The two dates a release form prints. A form started at billing (byHand) for a
+   car not yet released leaves both blank to be written in at handover. */
+function _releaseDates(j, f, L){
+  var pending=f.byHand && !j.releasedAt, blank='____________________';
+  return { signed: pending ? blank : L.date_of(f.at),
+           rel: j.releasedAt ? L.date_of(j.releasedAt) : (pending ? '' : L.date_of(f.at)) };
+}
+/* Belongings: blank boxes to tick by hand (byHand), or what was recorded. */
+function _releaseBelongings(j, f, T, sep){
+  var a = f.byHand
+    ? jobBelongings(j).map(function(k){ return '☐ '+esc(k); })
+    : (f.returned||[]).map(function(k){ return '☑ '+esc(k); }).concat(
+      (f.notReturned||[]).map(function(k){ return '☐ '+esc(k)+' <i>('+T.notBack+')</i>'; }));
+  return a.join(sep);
+}
+function docRelease(j, f){ return docShell('Release '+j.no, releaseBody(j, f)); }
+function releaseBody(j, f){
+  var lang=f.lang==='fil'?'fil':'en', T=RELEASE_TEXT[lang], L=FORM_LABELS[lang];
+  var sh=S.shop||{}, shop=esc(sh.legal||sh.name||'the shop');
+  var dd=_releaseDates(j, f, L), when=dd.signed, relDate=dd.rel;
   var waivers=(j.forms||[]).filter(function(x){ return x.kind==='waiver'; });
   var work='<table><thead><tr><th style="width:36px">#</th><th style="width:70px">'+T.type+'</th><th>'+T.desc+'</th><th class="r">'+T.qty+'</th></tr></thead><tbody>'+
     (j.lines||[]).map(function(l,i){ return '<tr><td>'+(i+1)+'</td><td>'+(l.type==='part'?T.part:T.labor)+'</td><td>'+esc(l.desc)+'</td><td class="r">'+num(l.qty)+'</td></tr>'; }).join('')+
     '</tbody></table>';
-  var belongings=(f.returned||[]).map(function(k){ return '<div>☑ '+esc(k)+'</div>'; }).join('')+
-    (f.notReturned||[]).map(function(k){ return '<div>☐ '+esc(k)+' <i>('+T.notBack+')</i></div>'; }).join('');
+  var belongings=_releaseBelongings(j, f, T, '</div><div>'); if(belongings) belongings='<div>'+belongings+'</div>';
   function copy(tag){
     return '<div class="copy-tag">'+tag+'</div>'+docHeader(T.title)+
       metaCols(
-        [[L.plate, esc(j.plate)],[L.vehicle, esc(_vehLabel(j))],[L.chassis, esc(j.chassis)],[T.relOdo, f.odo?num(f.odo)+' km':'']],
+        [[L.plate, esc(j.plate)],[L.vehicle, esc(_vehLabel(j))],[L.chassis, esc(j.chassis)],[T.relOdo, f.odo?num(f.odo)+' km':(f.byHand?'__________ km':'')]],
         [[L.jo, esc(j.no)],[T.or, esc(j.orNumber||'')],[T.relDate, esc(relDate)],[L.owner, esc(j.owner)],[L.contact, esc(j.contactNumber)]])+
       '<div class="dtitle" style="font-size:12px;margin-top:10px">'+T.work+'</div>'+work+
       '<div class="dtitle" style="font-size:12px;margin-top:10px">'+T.belong+'</div>'+
@@ -12075,7 +12178,7 @@ function docRelease(j, f){
       _sigGrid([[T.sigCustomer,'<b>'+esc(f.customer)+'</b>'],[L.sigAdv,_staffSig(f.adviserId)],[T.sigBy,_staffSig(f.releasedById)]])+
       _formFoot(L, j, f);
   }
-  return docShell('Release '+j.no, '<div class="pagebreak">'+copy(L.customerCopy)+'</div>'+copy(L.shopCopy));
+  return '<div class="pagebreak">'+copy(L.customerCopy)+'</div>'+copy(L.shopCopy);
 }
 
 </script>
