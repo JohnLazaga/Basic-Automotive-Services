@@ -670,7 +670,7 @@ var BRANCH = {"id":"main","slug":"fairview","name":"Basic by JMSI — Fairview (
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-10-26 · 5446bd3';
+var APP_VERSION = 'v1.3.0 · 2026-10-26 · efe76a0';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -7077,6 +7077,8 @@ if (typeof module!=='undefined' && module.exports){
     deviceSupported:function(){ return deviceSupported(); },
     devicePlatformAvailable:function(){ return devicePlatformAvailable(); },
     devicesCard:function(){ return devicesCard(); },
+    premSessionArgs:_premSessionArgs, premRememberDevice:_premRememberDevice,
+    browserDeviceKey:browserDeviceKey, setBrowserDeviceKey:setBrowserDeviceKey,
     devErr:function(e){ return _devErr(e); },
     setDevices:function(list){ DEVICES=list; },
     setPremNet:function(n){ PREM_NET=n; },
@@ -9817,11 +9819,14 @@ function _premCall(name, payload){
   return firebase.functions().httpsCallable(name)(payload || {});
 }
 /* startShopSession's payload: the branch, plus the registered device this one
-   remembers being (part 16) so the access log can tell it from a phone. */
+   remembers being (part 16) so the access log can tell it from a phone, and
+   this PC's browser key if it was enrolled with one. */
 function _premSessionArgs(extra){
   var p = { branchId: branchId() };
   var hint = (typeof rememberedDeviceId==='function') ? rememberedDeviceId() : '';
   if (hint) p.deviceHint = hint;
+  var key = (typeof browserDeviceKey==='function') ? browserDeviceKey() : '';
+  if (key) p.deviceKey = key;
   for (var k in (extra||{})) p[k] = extra[k];
   return p;
 }
@@ -9829,6 +9834,8 @@ function _premSessionArgs(extra){
    (never enrolled, or removed). Older servers leave it out: change nothing. */
 function _premRememberDevice(d){
   if (d && typeof d.deviceId==='string' && typeof rememberDevice==='function') rememberDevice(d.deviceId);
+  /* The server replaced this PC's browser key (once a day): keep the new one. */
+  if (d && d.newKey && typeof setBrowserDeviceKey==='function') setBrowserDeviceKey(d.newKey);
 }
 
 /* ---- the gate ------------------------------------------------------------
@@ -10188,6 +10195,11 @@ afterRender = function(){
    This file is the client half: turn the server's challenge into a Face ID
    prompt, send the signature back, and give admins the enrolment controls in
    Settings. The decisions are all made in device-auth.js.
+
+   PCs where Windows Hello is not available enrol with a BROWSER KEY instead: a
+   random secret the server hands out once and Chrome keeps (browserDeviceKey).
+   Weaker — it can be copied out of the browser — so it leans on the session
+   binds, a daily key change, and the Shop network lock (shop-common.js).
    ========================================================================== */
 
 var DEVICES = null;               /* cached device list for the Settings card */
@@ -10243,6 +10255,17 @@ function rememberedDeviceId(){
 }
 function rememberDevice(id){
   try { if (id) localStorage.setItem(_devKey(), String(id)); else localStorage.removeItem(_devKey()); } catch(e){}
+}
+/* A PC enrolled by browser key (no Windows Hello) keeps the server's secret
+   here and sends it with every session check. Unlike the hint above, this one
+   does let the PC in — which is why clearing Chrome's site data means
+   enrolling again. The server replaces it daily (newKey). */
+function _devSecretName(){ return 'basic.shopKey.'+branchId(); }
+function browserDeviceKey(){
+  try { return localStorage.getItem(_devSecretName()) || ''; } catch(e){ return ''; }
+}
+function setBrowserDeviceKey(k){
+  try { if (k) localStorage.setItem(_devSecretName(), String(k)); else localStorage.removeItem(_devSecretName()); } catch(e){}
 }
 
 /* ---- base64url <-> ArrayBuffer ------------------------------------------
@@ -10355,6 +10378,7 @@ function loadDeviceList(){
     DEVICES = snap.docs.map(function(d){
       var v = d.data()||{};
       return { id:d.id, label:v.label||'Shop device', active:v.active!==false,
+               kind:v.kind==='key'?'key':'passkey',
                backedUp:!!v.backedUp, deviceType:v.deviceType||'',
                reason:v.deactivatedReason||'' };
     });
@@ -10375,7 +10399,8 @@ function devicesCard(){
   var rows = DEVICES.length
     ? DEVICES.map(function(d){
         var warn = !d.active ? ' · <b>stopped</b>'+(d.reason==='synced-passkey'?' (iCloud sync)':'') : '';
-        return '<span class="tagx">'+esc(d.label)+warn+
+        var kind = d.kind==='key' ? ' <span class="muted small" title="Enrolled without Windows Hello: a key kept in this browser">· browser key</span>' : '';
+        return '<span class="tagx">'+esc(d.label)+kind+warn+
           '<button title="Remove" onclick="forgetShopDevice(\''+esc(d.id)+'\')">✕</button></span>';
       }).join('')
     : '<span class="muted small">No device enrolled yet.</span>';
@@ -10393,43 +10418,70 @@ function devicesCard(){
       '<button class="btn ghost" onclick="toggleDeviceEnforce('+(on?'false':'true')+')">'+
         (on?'Turn enforcement OFF':'Turn enforcement ON')+'</button>'+
     '</div>'+
-    '<p class="muted small mt8">Do this <b>on the device itself</b>, with it in your hands. '+
-    'It asks for Face ID (or the Windows PIN) and stores a key inside that device that cannot be copied off it. '+
-    'Unlike a password, there is nothing here a worker can read, write down or take home.</p>'+
-    '<p class="muted small">The iPad must <b>not</b> be signed into a personal Apple ID — iCloud would sync the key to that '+
+    '<p class="muted small mt8">Do this <b>on the device itself</b>, in Google Chrome. A shop PC gets a '+
+    '<b>browser key</b>: one click, no PIN. Chrome keeps it, so never clear Chrome’s browsing data on a shop PC — '+
+    'that removes the key and the PC has to be enrolled again. Keep the <b>Shop network</b> lock on too: '+
+    'a browser key copied off a PC is then useless away from the shop.</p>'+
+    '<p class="muted small">An iPad can use Face ID instead, which stores a key that cannot be copied at all. '+
+    'The iPad must <b>not</b> be signed into a personal Apple ID — iCloud would sync the key to that '+
     'person\'s own iPhone. Enrolment is refused when it detects this, and stops a device that starts syncing later. '+
     'Administrators are always exempt, so you keep working from home.</p></div>';
 }
 
+/* Two ways in. A browser key works on any PC — the shop's PCs are on a domain
+   where Windows Hello is off, and switching it on PC by PC is a chore — so it
+   is the default. Face ID / Windows Hello stays for iPads and PCs that have it. */
 function enrollThisDevice(){
   if(!isAdminUser()){ toast('Admins only','err'); return; }
-  if(!deviceSupported()){
-    toast('This device is too old for the hardware check — an iPad needs iPadOS 14 or newer.','err'); return;
-  }
   devicePlatformAvailable().then(function(available){
-    /* Not a refusal — see devicePlatformAvailable. Warn, and let the admin try:
-       the enrolment itself is the honest test, and it costs one tap. */
-    var warn = available ? '' :
-      '<div class="lg-msg err" style="margin:0 0 10px">This device says it has no built-in Face ID / Touch ID / Windows Hello. '+
-      'Enrolling will probably fail. Check <b>Settings → General → About → Software Version</b> is iPadOS 14 or newer, '+
-      'and that a passcode and Touch&nbsp;ID are switched on. You can still try.</div>';
     openModal('Enrol this device',
-      warn+
-      '<p class="muted">Name it so you can recognise it later — “Fairview front desk iPad”, “Bay 2 tablet”.</p>'+
-      '<div class="f"><label>Device name</label><input id="devLabel" maxlength="60" placeholder="Shop iPad"/></div>'+
-      '<p class="muted small">You will be asked for Face ID / Touch ID / the Windows PIN. That is the device proving it is itself.</p>',
+      '<p class="muted">Name it so you can recognise it later — “Fairview front desk PC”, “Bay 2 tablet”.</p>'+
+      '<div class="f"><label>Device name</label><input id="devLabel" maxlength="60" placeholder="Shop PC"/></div>'+
+      '<div class="f"><label>How it proves itself</label>'+
+        '<label class="chk"><input type="radio" name="devHow" value="key" checked> '+
+          '<b>Browser key</b> — one click, no PIN. Works on any PC. Kept in this Chrome: never clear its browsing data.</label>'+
+        '<label class="chk"><input type="radio" name="devHow" value="passkey"'+(available?'':' disabled')+'> '+
+          '<b>Face ID / Windows Hello</b> — stronger, the key can’t be copied. Asks for Face ID or the Windows PIN.'+
+          (available?'':' <span class="muted small">(not set up on this device)</span>')+'</label>'+
+      '</div>',
       { footer:'<button class="btn ghost" onclick="closeModal()">Cancel</button>'+
-               '<button class="btn primary" id="devGo">'+(available?'Enrol':'Try anyway')+'</button>',
+               '<button class="btn primary" id="devGo">Enrol</button>',
         after:function(){
           var b=document.getElementById('devGo');
-          if(b) b.onclick=function(){ enrollThisDeviceGo(val('devLabel')); };
+          if(b) b.onclick=function(){
+            var how=document.querySelector('input[name="devHow"]:checked');
+            if (how && how.value==='passkey') enrollThisDeviceGo(val('devLabel'));
+            else enrollBrowserKeyGo(val('devLabel'));
+          };
         }});
   });
+}
+
+async function enrollBrowserKeyGo(label){
+  label = String(label||'').trim() || 'Shop PC';
+  if (typeof closeModal==='function') closeModal();
+  try {
+    var res = await _devCall('enrollBrowserKey', { branchId: branchId(), label: label });
+    var r = (res && res.data) || {};
+    if (!r.key) throw new Error('Could not enrol this device.');
+    setBrowserDeviceKey(r.key);
+    rememberDevice(r.deviceId);
+    DEVICES = (r.devices||[]).map(function(x){
+      return { id:x.id, label:x.label, active:x.active, kind:x.kind, backedUp:x.backedUp, deviceType:x.deviceType, reason:'' };
+    });
+    toast('Enrolled · '+label);
+    render();
+  } catch(e){
+    toast(_devErr(e),'err');
+  }
 }
 
 async function enrollThisDeviceGo(label){
   label = String(label||'').trim() || 'Shop device';
   if (typeof closeModal==='function') closeModal();
+  if (!deviceSupported()){
+    toast('This device is too old for the hardware check — use a browser key instead.','err'); return;
+  }
   toast('Ask the device to identify itself…');
   try {
     var begun = await _devCall('beginDeviceEnroll', { branchId: branchId(), label: label });
@@ -10438,7 +10490,7 @@ async function enrollThisDeviceGo(label){
     var done = await _devCall('finishDeviceEnroll',
       { branchId: branchId(), deviceId: d.deviceId, label: label, response: attestation });
     DEVICES = ((done && done.data && done.data.devices) || []).map(function(x){
-      return { id:x.id, label:x.label, active:x.active, backedUp:x.backedUp,
+      return { id:x.id, label:x.label, active:x.active, kind:x.kind, backedUp:x.backedUp,
                deviceType:x.deviceType, reason:'' };
     });
     rememberDevice(d.deviceId);
@@ -10461,6 +10513,7 @@ function forgetShopDevice(id){
       _devCall('forgetDevice', { branchId: branchId(), deviceId: id }).then(function(res){
         var r=(res&&res.data)||{};
         DEVICES = (r.devices||[]);
+        if (id===rememberedDeviceId()){ rememberDevice(''); setBrowserDeviceKey(''); }
         if (PREM_NET && r.deviceEnforce===false) PREM_NET.deviceEnforce = false;
         toast('Device removed'); render();
       }).catch(function(e){ toast(_devErr(e),'err'); });
@@ -10483,7 +10536,7 @@ function toggleDeviceEnforce(on){
     var ask = function(list){
       confirmModal('Lock BASIC to shop devices?',
         (list ? deviceLockWarningHTML(list) : '<div class="lg-msg err" style="margin:0 0 10px">Could not load the access log to check who this would lock out.</div>')+
-        'From now on staff can only open BASIC on the devices enrolled here. A worker signing in from her own '+
+        'From now on staff can only open BASIC on the devices enrolled here. A worker signing in from their own '+
         'computer will be refused, even with the correct password. Enrol every device your staff actually use '+
         'before turning this on. You and other administrators are not affected.', go, 'Turn on');
     };
