@@ -670,7 +670,7 @@ var BRANCH = {"id":"sandbox","slug":"sandbox","name":"Basic by JMSI — Sandbox 
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-10-26 · ac74225';
+var APP_VERSION = 'v1.3.0 · 2026-10-26 · 4fbe178';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -1290,7 +1290,8 @@ var NAV = [
     { id:'appointments', label:'Appointments', icon:'▤', cap:'appointments' },
     { id:'jobs', label:'Job Orders', icon:'▧' },
     { id:'estimates', label:'Estimates', icon:'✎', cap:'estimates' },
-    { id:'pms', label:'PMS Queue', icon:'🔧' }
+    { id:'pms', label:'PMS Queue', icon:'🔧' },
+    { id:'forms', label:'Forms', icon:'✍' }
   ]},
   { group:'ANALYTICS', items:[
     { id:'reports', label:'Reports', icon:'▣', adminOnly:true },
@@ -7044,7 +7045,7 @@ if (typeof module!=='undefined' && module.exports){
     scheduleNextService:scheduleNextService, clearNextService:clearNextService, alertStrip:alertStrip,
     jobVehicleLabel:jobVehicleLabel, replyRecipients:replyRecipients, unreadMessages:unreadMessages, messageStrip:messageStrip, myStaffIds:myStaffIds, messageAcked:messageAcked,
     buildLogEntry:buildLogEntry, logEntryFor:logEntryFor, jobStatusPanel:jobStatusPanel, lastLogForLabel:lastLogForLabel,
-    jobDescriptionPanel:jobDescriptionPanel, jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fillVehicleBlanks:fillVehicleBlanks, openJobsForPlate:openJobsForPlate, correctPayment:correctPayment, overpaidJobs:overpaidJobs, paymentCorrections:paymentCorrections, billBaseline:billBaseline, trackBillChanges:trackBillChanges, billChanges:billChanges, discountRows:discountRows, discountReasonMissing:discountReasonMissing, cashExpected:cashExpected, cashCountRows:cashCountRows, paymentsMissingRef:paymentsMissingRef, releasedOwing:releasedOwing, docMoneyChecks:docMoneyChecks, moneyCheckData:moneyCheckData, voidedReceipts:voidedReceipts, cancelledJobs:cancelledJobs, voidsHoldingMoney:voidsHoldingMoney, docVoids:docVoids, addPayAdj:addPayAdj, payAdjInPeriod:payAdjInPeriod, accessLogHTML:accessLogHTML, deviceLockAtRisk:deviceLockAtRisk, deviceLockWarningHTML:deviceLockWarningHTML, comebackSetupWarning:comebackSetupWarning, comebackDeductions:comebackDeductions, finalizePayoutCore:finalizePayoutCore, finalizePayoutCheck:finalizePayoutCheck, voidPayoutCore:voidPayoutCore, undoComebackCore:undoComebackCore, payoutStatusText:payoutStatusText, comebackPendingNotCounted:comebackPendingNotCounted, comebackTakenNote:comebackTakenNote, comebackDeductionsInPeriod:comebackDeductionsInPeriod, netPayoutRows:netPayoutRows, docPayout:docPayout, docMechCommission:docMechCommission, setProdPeriod:function(p,f,t){ PROD_PERIOD=p; PROD_FROM=f||''; PROD_TO=t||''; }, paymentsDoc:paymentsDoc, pmsGateMissing:pmsGateMissing, jobsMissingInfo:jobsMissingInfo, partNetMissing:partNetMissing, lessVatApplied:lessVatApplied, lessVatStale:lessVatStale, markLessVat:markLessVat, syncLessVat:syncLessVat, discVat:discVat, discountReasonPicker:discountReasonPicker, jobPLSplit:jobPLSplit, plForRange:plForRange, opexForRange:opexForRange, docPL:docPL, discountExVat:discountExVat, discountAmount:discountAmount, discountedLabor:discountedLabor, readDiscountObj:function(d){ return d; }, discountEditor:discountEditor, pmsDefaultMechs:pmsDefaultMechs, pmsReadyToSubmit:pmsReadyToSubmit, PMS_TEMPLATE:function(){ return PMS_TEMPLATE; }, pmsSectionMissing:pmsSectionMissing, orSeriesInRange:orSeriesInRange, orRangeGaps:orRangeGaps, inRptRange:inRptRange, setRptRangeRaw:function(k,r){ RPT_RANGE[k]=r; }, docDiscounts:docDiscounts, warnIfPlateOnBoard:warnIfPlateOnBoard, plFor:plFor, opexFor:opexFor, payFor:payFor, monthlyPay:monthlyPay, addMonths:addMonths, syncCollections:syncCollections, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
+    jobDescriptionPanel:jobDescriptionPanel, jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fillVehicleBlanks:fillVehicleBlanks, openJobsForPlate:openJobsForPlate, correctPayment:correctPayment, overpaidJobs:overpaidJobs, paymentCorrections:paymentCorrections, billBaseline:billBaseline, trackBillChanges:trackBillChanges, billChanges:billChanges, discountRows:discountRows, discountReasonMissing:discountReasonMissing, cashExpected:cashExpected, cashCountRows:cashCountRows, paymentsMissingRef:paymentsMissingRef, releasedOwing:releasedOwing, docMoneyChecks:docMoneyChecks, moneyCheckData:moneyCheckData, voidedReceipts:voidedReceipts, cancelledJobs:cancelledJobs, voidsHoldingMoney:voidsHoldingMoney, docVoids:docVoids, addPayAdj:addPayAdj, payAdjInPeriod:payAdjInPeriod, accessLogHTML:accessLogHTML, docWaiver:docWaiver, issueWaiverCore:issueWaiverCore, waiverDefaultItems:waiverDefaultItems, issuedForms:issuedForms, deviceLockAtRisk:deviceLockAtRisk, deviceLockWarningHTML:deviceLockWarningHTML, comebackSetupWarning:comebackSetupWarning, comebackDeductions:comebackDeductions, finalizePayoutCore:finalizePayoutCore, finalizePayoutCheck:finalizePayoutCheck, voidPayoutCore:voidPayoutCore, undoComebackCore:undoComebackCore, payoutStatusText:payoutStatusText, comebackPendingNotCounted:comebackPendingNotCounted, comebackTakenNote:comebackTakenNote, comebackDeductionsInPeriod:comebackDeductionsInPeriod, netPayoutRows:netPayoutRows, docPayout:docPayout, docMechCommission:docMechCommission, setProdPeriod:function(p,f,t){ PROD_PERIOD=p; PROD_FROM=f||''; PROD_TO=t||''; }, paymentsDoc:paymentsDoc, pmsGateMissing:pmsGateMissing, jobsMissingInfo:jobsMissingInfo, partNetMissing:partNetMissing, lessVatApplied:lessVatApplied, lessVatStale:lessVatStale, markLessVat:markLessVat, syncLessVat:syncLessVat, discVat:discVat, discountReasonPicker:discountReasonPicker, jobPLSplit:jobPLSplit, plForRange:plForRange, opexForRange:opexForRange, docPL:docPL, discountExVat:discountExVat, discountAmount:discountAmount, discountedLabor:discountedLabor, readDiscountObj:function(d){ return d; }, discountEditor:discountEditor, pmsDefaultMechs:pmsDefaultMechs, pmsReadyToSubmit:pmsReadyToSubmit, PMS_TEMPLATE:function(){ return PMS_TEMPLATE; }, pmsSectionMissing:pmsSectionMissing, orSeriesInRange:orSeriesInRange, orRangeGaps:orRangeGaps, inRptRange:inRptRange, setRptRangeRaw:function(k,r){ RPT_RANGE[k]=r; }, docDiscounts:docDiscounts, warnIfPlateOnBoard:warnIfPlateOnBoard, plFor:plFor, opexFor:opexFor, payFor:payFor, monthlyPay:monthlyPay, addMonths:addMonths, syncCollections:syncCollections, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
     afterServiceMissing:afterServiceMissing, afterServiceDone:afterServiceDone, afterServiceStaff:afterServiceStaff,
     canWriteAfterService:canWriteAfterService, afterServiceSignerName:afterServiceSignerName, afterServiceBlock:afterServiceBlock,
     allocateSeriesNumber:allocateSeriesNumber, maxSeriesNo:maxSeriesNo, nextNo:nextNo,
@@ -11656,6 +11657,176 @@ function deletePayAdj(id){
     'Remove the '+esc(payAdjType(a.type).label.toLowerCase())+' of '+peso(Math.abs(a.amount))+' for '+esc(staffName(a.staffId))+' ('+esc(fmtDate(a.date))+')?',
     function(){ S.commadj=(S.commadj||[]).filter(function(x){ return x.id!==id; }); persist(); toast('Adjustment removed'); render(); },
     'Remove', true);
+}
+
+
+/* ===== */
+
+/* ============================================================================
+   PART 21 — Forms: printouts the shop has a customer sign
+
+   A home for the shop's standard forms. Each one fills itself in from a job
+   order (vehicle, owner, adviser), prints on the shop letterhead with signature
+   lines, and is kept on its job (j.forms) so it can be found and reprinted.
+   The signed paper is the real record; the copy kept here shows what was on it.
+
+   First form: Quitclaim & Release Waiver — the shop recommended repairs or
+   parts and the customer declined them. Signed by the customer, the Secretary
+   and the Service Adviser, it records that the customer was told what was found
+   and what could follow, chose not to have it done, and releases the shop from
+   responsibility for the consequences.
+   ========================================================================== */
+
+var FORM_KINDS = [
+  { id:'waiver', title:'Quitclaim & Release Waiver',
+    sub:'Repairs or parts the customer declined — releases the shop from responsibility for them.' }
+];
+function formKindTitle(kind){ var k=FORM_KINDS.filter(function(x){ return x.id===kind; })[0]; return k ? k.title : 'Form'; }
+
+/* Every form issued, newest first: { job, form }. */
+function issuedForms(){
+  var out=[];
+  (S.jobs||[]).forEach(function(j){ (j.forms||[]).forEach(function(f){ out.push({ job:j, form:f }); }); });
+  return out.sort(function(a,b){ return String(b.form.at||'').localeCompare(String(a.form.at||'')); });
+}
+
+VIEWS.forms = function(){
+  var cards = FORM_KINDS.map(function(k){
+    return '<div class="card"><h2>'+esc(k.title)+'</h2><p class="muted small">'+esc(k.sub)+'</p>'+
+      '<button class="btn primary" onclick="openWaiver()">Fill out &amp; print</button></div>';
+  }).join('');
+  var list = issuedForms();
+  var rows = list.slice(0,200).map(function(x){
+    var j=x.job, f=x.form;
+    return '<tr><td>'+esc(fmtDateTime(f.at))+'</td><td>'+esc(formKindTitle(f.kind))+'</td>'+
+      '<td><a href="#" onclick="go(\'job\',\''+j.id+'\');return false">'+esc(j.no)+'</a></td><td><b>'+esc(j.plate)+'</b></td>'+
+      '<td>'+esc(f.customer||j.owner||'')+'</td><td class="r">'+((f.items||[]).length)+'</td>'+
+      '<td class="r"><button class="btn sm ghost" onclick="printIssuedForm(\''+j.id+'\',\''+f.id+'\')">⎙ Reprint</button></td></tr>';
+  }).join('');
+  return '<div class="page"><div class="page-head"><h1>Forms</h1></div>'+
+    '<div class="grid2cards">'+cards+'</div>'+
+    '<div class="card pad0"><div class="card-head" style="padding:12px 14px 0"><h2>Issued forms</h2></div>'+
+      (rows ? '<table class="tbl"><thead><tr><th>Issued</th><th>Form</th><th>JO</th><th>Plate</th><th>Customer</th><th class="r">Items</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>'
+            : emptyState('No forms issued yet.'))+
+    '</div></div>';
+};
+
+/* ---- Quitclaim & Release Waiver ------------------------------------------ */
+/* Starting list of declined items: what the PMS inspection flagged, if any.
+   The adviser edits it down to what the customer actually declined. */
+function waiverDefaultItems(j){
+  var r = (typeof pmsReport==='function') ? pmsReport(j) : null;
+  if (!r || typeof pmsFlagged!=='function') return [];
+  return pmsFlagged(r).map(function(f){
+    return f.label+(f.n?' — '+f.n:'')+' ('+(f.s==='replace'?'needs replacement':'requires attention')+')';
+  });
+}
+function _waiverJobs(){
+  return (S.jobs||[]).filter(function(j){ return typeof jobCancelled!=='function' || !jobCancelled(j); })
+    .slice().sort(function(a,b){ return String(b.dateIn||'').localeCompare(String(a.dateIn||'')); }).slice(0,300);
+}
+function _staffOpts(list, sel){
+  return '<option value="">—</option>'+list.map(function(s){
+    return '<option value="'+attr(s.id)+'"'+(s.id===sel?' selected':'')+'>'+esc(s.name)+'</option>'; }).join('');
+}
+function waiverFormHTML(jobId){
+  var j = jobId ? jobById(jobId) : null;
+  var jobOpts = '<option value="">— pick the job order —</option>'+_waiverJobs().map(function(x){
+    return '<option value="'+attr(x.id)+'"'+(j&&x.id===j.id?' selected':'')+'>'+esc(x.no+' · '+(x.plate||'')+' · '+(x.owner||''))+'</option>'; }).join('');
+  var head = field('Job order','<select id="wvJob" onchange="openWaiver(this.value)">'+jobOpts+'</select>',
+    'The vehicle and customer details come from the job order.');
+  if (!j) return head;
+  var veh = ((j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:'')).trim();
+  var secs = staffByRole('Secretary');
+  var advs = (S.staff||[]).filter(function(s){ return s.role==='SA' || s.role==='SV'; });
+  var secSel = secs.length===1 ? secs[0].id : '';
+  return head+
+    '<div class="notes small" style="margin:0 0 10px"><b>'+esc(j.plate)+'</b> · '+esc(veh||'—')+
+      (j.chassis?' · Chassis '+esc(j.chassis):'')+' · '+esc(num(j.odometer))+' km<br>'+
+      esc(j.owner||'—')+(j.contactNumber?' · '+esc(j.contactNumber):'')+'</div>'+
+    field('Customer signing','<input id="wvCustomer" value="'+attr(j.contactPerson||j.owner||'')+'">',
+      'The person who signs — the registered owner or the owner’s representative.')+
+    field('Declined repairs / parts','<textarea id="wvItems" rows="6" placeholder="One per line — e.g. Front brake pads worn to 2mm, replacement declined">'+
+      esc(waiverDefaultItems(j).join('\n'))+'</textarea>', 'One item per line. Filled from the PMS findings when there are any — keep only what the customer declined.')+
+    field('Findings and risks explained (optional)','<textarea id="wvFindings" rows="3" placeholder="What was found and what could happen if not done"></textarea>')+
+    '<div class="grid2">'+
+      field('Secretary','<select id="wvSec">'+_staffOpts(secs, secSel)+'</select>')+
+      field('Service Adviser','<select id="wvAdv">'+_staffOpts(advs, j.saId)+'</select>')+
+    '</div>';
+}
+function openWaiver(jobId){
+  var footer='<button class="btn ghost" onclick="closeModal()">Cancel</button><span style="flex:1"></span>'+
+    '<button class="btn primary" onclick="saveWaiver()">Save &amp; print</button>';
+  var body=document.querySelector('#modalRoot .modal-body');
+  if (body && document.getElementById('wvJob')){ body.innerHTML=waiverFormHTML(jobId); return; }   // switching job: keep the dialog
+  openModal('Quitclaim & Release Waiver', waiverFormHTML(jobId), { width:'640px', footer:footer });
+}
+/* Testable: record a waiver on its job. data = { customer, items[], findings,
+   secretaryId, adviserId }. Returns { ok, rec } or { ok:false, msg }. */
+function issueWaiverCore(jobId, data){
+  var j=jobById(jobId); if(!j) return { ok:false, msg:'Pick the job order' };
+  data=data||{};
+  var items=(data.items||[]).map(function(s){ return String(s||'').trim(); }).filter(Boolean);
+  var customer=String(data.customer||'').trim();
+  if(!customer) return { ok:false, msg:'Enter the name of the customer signing' };
+  if(!items.length) return { ok:false, msg:'List at least one declined repair or part' };
+  var me=(typeof CURRENT_USER!=='undefined') ? CURRENT_USER : null;
+  var rec={ id:uid('fm'), kind:'waiver', at:new Date().toISOString(),
+    byName:(me&&(me.name||me.username||me.email))||'',
+    customer:customer, items:items, findings:String(data.findings||'').trim(),
+    secretaryId:data.secretaryId||'', adviserId:data.adviserId||'' };
+  j.forms=j.forms||[]; j.forms.push(rec);
+  return { ok:true, rec:rec };
+}
+function saveWaiver(){
+  var jobId=val('wvJob');
+  var res=issueWaiverCore(jobId, {
+    customer:val('wvCustomer'), items:String(val('wvItems')||'').split(/\r?\n/), findings:val('wvFindings'),
+    secretaryId:val('wvSec'), adviserId:val('wvAdv') });
+  if(!res.ok){ toast(res.msg,'err'); return; }
+  persist(); closeModal();
+  printDoc(docWaiver(jobById(jobId), res.rec));
+  toast('Waiver saved · '+formKindTitle('waiver'));
+  render();
+}
+function printIssuedForm(jobId, formId){
+  var j=jobById(jobId); var f=j && (j.forms||[]).filter(function(x){ return x.id===formId; })[0];
+  if(!f){ toast('Form not found','err'); return; }
+  printDoc(docWaiver(j, f));
+}
+
+/* The printout: Customer Copy and Shop Copy. */
+function docWaiver(j, f){
+  var sh=S.shop||{}, shop=esc(sh.legal||sh.name||'the shop');
+  var veh=((j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:'')).trim();
+  var when=fmtDate(f.at);
+  function copy(tag){
+    return '<div class="copy-tag">'+tag+'</div>'+docHeader('Quitclaim & Release Waiver · Declined Repairs')+
+      metaCols(
+        [['Plate', esc(j.plate)],['Vehicle', esc(veh)],['Chassis #', esc(j.chassis)],['Odometer', num(j.odometer)+' km']],
+        [['Job Order', esc(j.no)],['Date', esc(when)],['Registered owner', esc(j.owner)],['Contact #', esc(j.contactNumber)],['Address', esc(j.address)]])+
+      '<p style="font-size:12.5px;line-height:1.55">I, <b>'+esc(f.customer)+'</b>, of legal age, as the registered owner or the owner’s authorized representative of the vehicle described above, '+
+        'acknowledge that <b>'+shop+'</b> inspected the vehicle and recommended the following repairs and/or parts replacement:</p>'+
+      '<table><thead><tr><th style="width:36px">#</th><th>Recommended repair / part — DECLINED by the customer</th></tr></thead><tbody>'+
+        (f.items||[]).map(function(it,i){ return '<tr><td>'+(i+1)+'</td><td>'+esc(it)+'</td></tr>'; }).join('')+
+      '</tbody></table>'+
+      (f.findings?'<div class="notes"><b>Findings and risks explained:</b> '+esc(f.findings)+'</div>':'')+
+      '<div style="font-size:12.5px;line-height:1.55">'+
+        '<p>The condition found and the possible consequences of not having this work done — including further damage to the vehicle, breakdown, and risk to the safety of its occupants and others — were explained to me. '+
+          'Of my own free will, I <b>DECLINED</b> to have the work listed above done at this time.</p>'+
+        '<p>I therefore <b>RELEASE, WAIVE, DISCHARGE and forever QUITCLAIM</b> '+shop+', its owners, officers, employees and mechanics from any and all liability, claims, demands, damages and causes of action of whatever nature '+
+          'arising from or connected with the declined work, including any damage, loss, injury or expense that results from it not being performed.</p>'+
+        '<p>I understand that any warranty on the work the shop did perform does not cover failures caused by, or related to, the declined items.</p>'+
+        '<p>I have read and understood this Quitclaim and Release Waiver and I sign it voluntarily on <b>'+esc(when)+'</b>'+(sh.address?' at '+esc(sh.address):'')+'.</p>'+
+      '</div>'+
+      '<div class="sig-grid">'+
+        '<div class="sigline">Customer — signature over printed name<br><b>'+esc(f.customer)+'</b></div>'+
+        '<div class="sigline">Secretary<br>'+(f.secretaryId?esc(staffName(f.secretaryId)):'')+'</div>'+
+        '<div class="sigline">Service Adviser<br>'+(f.adviserId?esc(staffName(f.adviserId)):'')+'</div>'+
+      '</div>'+
+      '<div class="foot">Waiver '+esc(f.id)+' · Job Order '+esc(j.no)+' · Plate '+esc(j.plate)+'</div>';
+  }
+  return docShell('Waiver '+j.no, '<div class="pagebreak">'+copy('Customer Copy')+'</div>'+copy('Shop Copy'));
 }
 
 </script>
