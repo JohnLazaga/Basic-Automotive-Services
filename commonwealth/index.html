@@ -670,7 +670,7 @@ var BRANCH = {"id":"commonwealth","slug":"commonwealth","name":"Basic by JMSI �
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-10-26 · 9589661';
+var APP_VERSION = 'v1.3.0 · 2026-10-26 · 52c6622';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -2768,8 +2768,7 @@ function jobPrintButtons(j){
   if (j.stage!=='Job Order') btns+='<button class="btn ghost" onclick="printPostJob(\''+j.id+'\')">⎙ Post Job Report</button>';
   if (j.stage==='Final Billing'||j.stage==='Released') btns+='<button class="btn ghost" onclick="printBilling(\''+j.id+'\')">⎙ Final Billing</button>';
   if (typeof openForm==='function' && can('forms')){
-    btns+='<button class="btn ghost" onclick="openForm(\'waiver\',\''+j.id+'\')">✍ Waiver</button>';
-    if (j.stage==='Final Billing'||j.stage==='Released') btns+='<button class="btn ghost" onclick="openForm(\'release\',\''+j.id+'\')">✍ Release Form</button>';
+    btns+='<button class="btn ghost" onclick="openFormPicker(\''+j.id+'\')">✍ Forms</button>';
   }
   return btns;
 }
@@ -3431,6 +3430,7 @@ function jobInspectionPanel(j){
     '<div class="grid2 ksmall">'+
       kv('Ingress odometer', odo(insp.odometer||j.odometer))+ kv('Fuel level', fmtFuel(insp.fuel))+
       kv('Dash lights / DTC', insp.lights||'None')+ kv('Condition', insp.condition||'—')+
+      kv('Road test', insp.roadTest?'Authorized by customer':'Not authorized')+
     '</div>'+
     (cl.created? '<div class="checklist"><div class="cl-title">Items left in vehicle '+(cl.leaveUnit?'':'(unit not left)')+'</div>'+
       '<div class="cl-items">'+items+'</div>'+
@@ -3448,6 +3448,7 @@ function editInspection(id){
     field('Fuel level %','<input id="isFuel" type="number" min="0" max="100" value="'+attr(isFinite(insp.fuel)?insp.fuel:'')+'" placeholder="e.g. 50">')+
     field('Dash lights / DTC','<input id="isLights" value="'+attr(insp.lights||'')+'">')+
     field('General condition','<input id="isCond" value="'+attr(insp.condition||'')+'">')+'</div>'+
+    '<label class="chk"><input type="checkbox" id="isRoadTest" '+(insp.roadTest?'checked':'')+'> Customer authorizes a road test (printed on the Job Order for the customer to sign)</label>'+
     '<label class="chk"><input type="checkbox" id="isLeave" '+(cl.leaveUnit?'checked':'')+'> Customer is leaving the unit (create items checklist)</label>'+
     '<div class="cl-title">Items left in vehicle</div><div class="cl-items">'+items+'</div>'+
     field('Body condition notes','<textarea id="isBody" rows="2">'+esc(cl.bodyNotes||'')+'</textarea>'),
@@ -3458,7 +3459,7 @@ var isCtx=null;
 function saveInspection(){
   var j=jobById(isCtx);
   var isOdo=Number(val('isOdo'))||0;
-  j.inspection={ odometer:isOdo, fuel:(val('isFuel')===''?'':Number(val('isFuel'))||0), lights:val('isLights'), condition:val('isCond'), testDrive:j.inspection&&j.inspection.testDrive||'' };
+  j.inspection={ odometer:isOdo, fuel:(val('isFuel')===''?'':Number(val('isFuel'))||0), lights:val('isLights'), condition:val('isCond'), testDrive:j.inspection&&j.inspection.testDrive||'', roadTest:checked('isRoadTest') };
   if(isOdo>0) j.odometer=isOdo;   // check-in "Ingress odometer" is the same reading — keep j.odometer in sync
   var leave=checked('isLeave'); var items={};
   CHECKLIST_ITEMS.forEach(function(it){ items[it]=checked('ck_'+btoa(it).replace(/=/g,'')); });
@@ -6178,6 +6179,9 @@ function docJobOrder(j){
       lines+
       (j.notes?'<div class="notes"><b>Service notes:</b> '+esc(j.notes)+'</div>':'')+
       '<div class="notes"><b>Inspection:</b> Fuel '+esc(fmtFuel((j.inspection||{}).fuel))+' · Lights '+esc((j.inspection||{}).lights||'None')+' · '+esc((j.inspection||{}).condition||'')+'</div>'+
+      '<div class="notes"><b>Road test:</b> '+((j.inspection||{}).roadTest
+        ? '☑ I authorize the shop’s mechanic to drive this vehicle on public roads to diagnose it and to confirm the repairs. The shop is not responsible for failures of the vehicle itself that occur during the road test.'
+        : '☐ Not authorized — the vehicle will not be driven outside the shop.')+'</div>'+
       cl+
       '<div class="sig-grid"><div class="sigline">Assessed by (Senior Mechanic)<br>'+esc(staffName(j.assessedBy))+'</div>'+
         '<div class="sigline">Service Adviser<br>'+esc(staffName(j.saId))+'</div>'+
@@ -7058,7 +7062,7 @@ if (typeof module!=='undefined' && module.exports){
     scheduleNextService:scheduleNextService, clearNextService:clearNextService, alertStrip:alertStrip,
     jobVehicleLabel:jobVehicleLabel, replyRecipients:replyRecipients, unreadMessages:unreadMessages, messageStrip:messageStrip, myStaffIds:myStaffIds, messageAcked:messageAcked,
     buildLogEntry:buildLogEntry, logEntryFor:logEntryFor, jobStatusPanel:jobStatusPanel, lastLogForLabel:lastLogForLabel,
-    jobDescriptionPanel:jobDescriptionPanel, jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fillVehicleBlanks:fillVehicleBlanks, openJobsForPlate:openJobsForPlate, correctPayment:correctPayment, overpaidJobs:overpaidJobs, paymentCorrections:paymentCorrections, billBaseline:billBaseline, trackBillChanges:trackBillChanges, billChanges:billChanges, discountRows:discountRows, discountReasonMissing:discountReasonMissing, cashExpected:cashExpected, cashCountRows:cashCountRows, paymentsMissingRef:paymentsMissingRef, releasedOwing:releasedOwing, docMoneyChecks:docMoneyChecks, moneyCheckData:moneyCheckData, voidedReceipts:voidedReceipts, cancelledJobs:cancelledJobs, voidsHoldingMoney:voidsHoldingMoney, docVoids:docVoids, addPayAdj:addPayAdj, payAdjInPeriod:payAdjInPeriod, accessLogHTML:accessLogHTML, docWaiver:docWaiver, issueWaiverCore:issueWaiverCore, issueReleaseCore:issueReleaseCore, updateReleaseCore:updateReleaseCore, docRelease:docRelease, billingReleaseForm:billingReleaseForm, docBillingWithRelease:docBillingWithRelease, formJobMatches:formJobMatches, jobBelongings:jobBelongings, finishRelease:finishRelease, updateWaiverCore:updateWaiverCore, fmtDateFil:fmtDateFil, waiverDefaultItems:waiverDefaultItems, issuedForms:issuedForms, deviceLockAtRisk:deviceLockAtRisk, deviceLockWarningHTML:deviceLockWarningHTML, comebackSetupWarning:comebackSetupWarning, comebackDeductions:comebackDeductions, finalizePayoutCore:finalizePayoutCore, finalizePayoutCheck:finalizePayoutCheck, voidPayoutCore:voidPayoutCore, undoComebackCore:undoComebackCore, payoutStatusText:payoutStatusText, comebackPendingNotCounted:comebackPendingNotCounted, comebackTakenNote:comebackTakenNote, comebackDeductionsInPeriod:comebackDeductionsInPeriod, netPayoutRows:netPayoutRows, docPayout:docPayout, docMechCommission:docMechCommission, setProdPeriod:function(p,f,t){ PROD_PERIOD=p; PROD_FROM=f||''; PROD_TO=t||''; }, paymentsDoc:paymentsDoc, pmsGateMissing:pmsGateMissing, jobsMissingInfo:jobsMissingInfo, partNetMissing:partNetMissing, lessVatApplied:lessVatApplied, lessVatStale:lessVatStale, markLessVat:markLessVat, syncLessVat:syncLessVat, discVat:discVat, discountReasonPicker:discountReasonPicker, jobPLSplit:jobPLSplit, plForRange:plForRange, opexForRange:opexForRange, docPL:docPL, discountExVat:discountExVat, discountAmount:discountAmount, discountedLabor:discountedLabor, readDiscountObj:function(d){ return d; }, discountEditor:discountEditor, pmsDefaultMechs:pmsDefaultMechs, pmsReadyToSubmit:pmsReadyToSubmit, PMS_TEMPLATE:function(){ return PMS_TEMPLATE; }, pmsSectionMissing:pmsSectionMissing, orSeriesInRange:orSeriesInRange, orRangeGaps:orRangeGaps, inRptRange:inRptRange, setRptRangeRaw:function(k,r){ RPT_RANGE[k]=r; }, docDiscounts:docDiscounts, warnIfPlateOnBoard:warnIfPlateOnBoard, plFor:plFor, opexFor:opexFor, payFor:payFor, monthlyPay:monthlyPay, addMonths:addMonths, syncCollections:syncCollections, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
+    jobDescriptionPanel:jobDescriptionPanel, jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fillVehicleBlanks:fillVehicleBlanks, openJobsForPlate:openJobsForPlate, correctPayment:correctPayment, overpaidJobs:overpaidJobs, paymentCorrections:paymentCorrections, billBaseline:billBaseline, trackBillChanges:trackBillChanges, billChanges:billChanges, discountRows:discountRows, discountReasonMissing:discountReasonMissing, cashExpected:cashExpected, cashCountRows:cashCountRows, paymentsMissingRef:paymentsMissingRef, releasedOwing:releasedOwing, docMoneyChecks:docMoneyChecks, moneyCheckData:moneyCheckData, voidedReceipts:voidedReceipts, cancelledJobs:cancelledJobs, voidsHoldingMoney:voidsHoldingMoney, docVoids:docVoids, addPayAdj:addPayAdj, payAdjInPeriod:payAdjInPeriod, accessLogHTML:accessLogHTML, docWaiver:docWaiver, issueWaiverCore:issueWaiverCore, issueReleaseCore:issueReleaseCore, updateReleaseCore:updateReleaseCore, docRelease:docRelease, issueFormCore:issueFormCore, updateFormCore:updateFormCore, docGenericForm:docGenericForm, genericFormHTML:genericFormHTML, formMenu:formMenu, formWho:formWho, FORM_DEFS:function(){ return FORM_DEFS; }, FORM_DEF_ORDER:function(){ return FORM_DEF_ORDER; }, billingReleaseForm:billingReleaseForm, docBillingWithRelease:docBillingWithRelease, formJobMatches:formJobMatches, jobBelongings:jobBelongings, finishRelease:finishRelease, updateWaiverCore:updateWaiverCore, fmtDateFil:fmtDateFil, waiverDefaultItems:waiverDefaultItems, issuedForms:issuedForms, deviceLockAtRisk:deviceLockAtRisk, deviceLockWarningHTML:deviceLockWarningHTML, comebackSetupWarning:comebackSetupWarning, comebackDeductions:comebackDeductions, finalizePayoutCore:finalizePayoutCore, finalizePayoutCheck:finalizePayoutCheck, voidPayoutCore:voidPayoutCore, undoComebackCore:undoComebackCore, payoutStatusText:payoutStatusText, comebackPendingNotCounted:comebackPendingNotCounted, comebackTakenNote:comebackTakenNote, comebackDeductionsInPeriod:comebackDeductionsInPeriod, netPayoutRows:netPayoutRows, docPayout:docPayout, docMechCommission:docMechCommission, setProdPeriod:function(p,f,t){ PROD_PERIOD=p; PROD_FROM=f||''; PROD_TO=t||''; }, paymentsDoc:paymentsDoc, pmsGateMissing:pmsGateMissing, jobsMissingInfo:jobsMissingInfo, partNetMissing:partNetMissing, lessVatApplied:lessVatApplied, lessVatStale:lessVatStale, markLessVat:markLessVat, syncLessVat:syncLessVat, discVat:discVat, discountReasonPicker:discountReasonPicker, jobPLSplit:jobPLSplit, plForRange:plForRange, opexForRange:opexForRange, docPL:docPL, discountExVat:discountExVat, discountAmount:discountAmount, discountedLabor:discountedLabor, readDiscountObj:function(d){ return d; }, discountEditor:discountEditor, pmsDefaultMechs:pmsDefaultMechs, pmsReadyToSubmit:pmsReadyToSubmit, PMS_TEMPLATE:function(){ return PMS_TEMPLATE; }, pmsSectionMissing:pmsSectionMissing, orSeriesInRange:orSeriesInRange, orRangeGaps:orRangeGaps, inRptRange:inRptRange, setRptRangeRaw:function(k,r){ RPT_RANGE[k]=r; }, docDiscounts:docDiscounts, warnIfPlateOnBoard:warnIfPlateOnBoard, plFor:plFor, opexFor:opexFor, payFor:payFor, monthlyPay:monthlyPay, addMonths:addMonths, syncCollections:syncCollections, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
     afterServiceMissing:afterServiceMissing, afterServiceDone:afterServiceDone, afterServiceStaff:afterServiceStaff,
     canWriteAfterService:canWriteAfterService, afterServiceSignerName:afterServiceSignerName, afterServiceBlock:afterServiceBlock,
     allocateSeriesNumber:allocateSeriesNumber, maxSeriesNo:maxSeriesNo, nextNo:nextNo,
@@ -11708,10 +11712,31 @@ function deletePayAdj(id){
 var FORM_KINDS = [
   { id:'waiver', title:'Quitclaim & Release Waiver',
     sub:'Repairs or parts the customer declined — releases the shop from responsibility for them.' },
-  { id:'release', title:'Vehicle Release Form',
+  /* Printed with the Final Billing (part9 printBilling), not offered on the Forms tab. */
+  { id:'release', title:'Vehicle Release Form', hidden:true,
     sub:'The customer received the vehicle in good order, with the work done and belongings returned.' }
 ];
-function formKindTitle(kind){ var k=FORM_KINDS.filter(function(x){ return x.id===kind; })[0]; return k ? k.title : 'Form'; }
+function formKindTitle(kind){
+  var k=FORM_KINDS.filter(function(x){ return x.id===kind; })[0];
+  if(k) return k.title;
+  return (typeof FORM_DEFS!=='undefined' && FORM_DEFS[kind]) ? FORM_DEFS[kind].title : 'Form';
+}
+/* The forms the Forms tab offers, in order: the waiver, then part22's. */
+function formMenu(){
+  var out=FORM_KINDS.filter(function(k){ return !k.hidden; });
+  if(typeof FORM_DEF_ORDER!=='undefined') FORM_DEF_ORDER.forEach(function(id){ out.push({ id:id, title:FORM_DEFS[id].title, sub:FORM_DEFS[id].sub }); });
+  return out;
+}
+function _billedOnly(kind){ return kind==='release' || !!(typeof FORM_DEFS!=='undefined' && FORM_DEFS[kind] && FORM_DEFS[kind].billedOnly); }
+/* Job page: pick a form for this job. */
+function openFormPicker(jobId){
+  var j=jobById(jobId); if(!j) return;
+  openModal('Forms · '+j.no, formMenu().map(function(k){
+    var off=_billedOnly(k.id) && !(j.stage==='Final Billing' || j.stage==='Released');
+    return '<button type="button" class="btn ghost full" style="justify-content:flex-start;text-align:left;margin:3px 0"'+(off?' disabled title="For a billed job"':'')+
+      ' onclick="closeModal();openForm(\''+k.id+'\',\''+j.id+'\')"><b>'+esc(k.title)+'</b>&nbsp;<span class="muted small">'+esc(k.sub)+'</span></button>';
+  }).join(''), { width:'620px', footer:'<button class="btn ghost" onclick="closeModal()">Close</button>' });
+}
 
 /* Every form issued, newest first: { job, form }. */
 function issuedForms(){
@@ -11726,15 +11751,15 @@ function _meName(){ var me=(typeof CURRENT_USER!=='undefined') ? CURRENT_USER : 
 function _vehLabel(j){ return ((j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:'')).trim(); }
 
 VIEWS.forms = function(){
-  var cards = FORM_KINDS.map(function(k){
+  var cards = formMenu().map(function(k){
     return '<div class="card"><h2>'+esc(k.title)+'</h2><p class="muted small">'+esc(k.sub)+'</p>'+
       '<button class="btn primary" onclick="openForm(\''+k.id+'\')">Fill out &amp; print</button></div>';
   }).join('');
-  var rows = issuedForms().slice(0,200).map(function(x){
+  var rows = issuedForms().filter(function(x){ return x.form.kind!=='release'; }).slice(0,200).map(function(x){
     var j=x.job, f=x.form;
     return '<tr><td>'+esc(fmtDateTime(f.at))+'</td><td>'+esc(formKindTitle(f.kind))+'</td>'+
       '<td><a href="#" onclick="go(\'job\',\''+j.id+'\');return false">'+esc(j.no)+'</a></td><td><b>'+esc(j.plate)+'</b></td>'+
-      '<td>'+esc(f.customer||j.owner||'')+'</td><td>'+(f.lang==='fil'?'Filipino':'English')+(f.editedAt?' <span class="muted small">· edited</span>':'')+'</td>'+
+      '<td>'+esc(f.customer||formWho(f)||j.owner||'')+'</td><td>'+(f.lang==='fil'?'Filipino':'English')+(f.editedAt?' <span class="muted small">· edited</span>':'')+'</td>'+
       '<td class="r"><button class="btn sm ghost" onclick="openForm(\''+esc(f.kind)+'\',\''+j.id+'\',\''+f.id+'\')">✎ Edit</button>'+
         '<button class="btn sm ghost" onclick="printIssuedForm(\''+j.id+'\',\''+f.id+'\')">⎙ Reprint</button></td></tr>';
   }).join('');
@@ -11754,7 +11779,7 @@ function formJobMatches(q, kind){
   var qs=squash(q);
   var list=(S.jobs||[]).filter(function(j){
     if (typeof jobCancelled==='function' && jobCancelled(j)) return false;
-    if (kind==='release' && !(j.stage==='Final Billing' || j.stage==='Released')) return false;
+    if (_billedOnly(kind) && !(j.stage==='Final Billing' || j.stage==='Released')) return false;
     if (!q) return true;
     return squash(j.no).indexOf(qs)>=0 || squash(j.plate).indexOf(qs)>=0 ||
       String(j.owner||'').toLowerCase().indexOf(q)>=0 || String(j.contactPerson||'').toLowerCase().indexOf(q)>=0;
@@ -11764,7 +11789,7 @@ function formJobMatches(q, kind){
 function _formHitsHTML(kind, q){
   var hits=formJobMatches(q, kind);
   if(!hits.length) return '<div class="muted small" style="padding:6px 2px">'+
-    (kind==='release' ? 'No billed job order matches. A release form is for a billed or released job.' : 'No job order matches.')+'</div>';
+    (_billedOnly(kind) ? 'No billed job order matches. This form is for a billed or released job.' : 'No job order matches.')+'</div>';
   return hits.map(function(j){
     return '<button type="button" class="btn ghost full" style="justify-content:flex-start;text-align:left;margin:2px 0" onclick="openForm(\''+kind+'\',\''+j.id+'\')">'+
       '<b>'+esc(j.no)+'</b>&nbsp;· '+esc(j.plate||'')+' · '+esc(j.owner||'—')+' <span class="muted small">&nbsp;'+esc(j.stage||'')+'</span></button>';
@@ -11806,7 +11831,7 @@ function openForm(kind, jobId, formId){
   if (formId && !ed){ toast('Form not found','err'); return; }
   var j = jobId ? jobById(jobId) : null;
   if (document.getElementById('fmLang')) _formLang = val('fmLang') || _formLang;   // keep the language while picking
-  var html = kind==='release' ? releaseFormHTML(j, ed) : waiverFormHTML(j, ed);
+  var html = kind==='release' ? releaseFormHTML(j, ed) : kind==='waiver' ? waiverFormHTML(j, ed) : genericFormHTML(kind, j, ed);
   var footer='<button class="btn ghost" onclick="closeModal()">Cancel</button><span style="flex:1"></span>'+
     '<button class="btn primary" onclick="saveForm(\''+kind+'\')">'+(ed?'Save changes &amp; print':'Save &amp; print')+'</button>';
   var body=document.querySelector('#modalRoot .modal-body');
@@ -11829,6 +11854,9 @@ function saveForm(kind){
     Array.prototype.forEach.call(document.querySelectorAll('#modalRoot input[data-belong]'), function(cb){
       (cb.checked ? data.returned : data.notReturned).push(cb.getAttribute('data-belong')); });
     res = formId ? updateReleaseCore(jobId, formId, data) : issueReleaseCore(jobId, data);
+  } else if (kind!=='waiver'){
+    var raw=readGenericForm(kind);
+    res = formId ? updateFormCore(kind, jobId, formId, raw, lang) : issueFormCore(kind, jobId, raw, lang);
   } else {
     var d={ customer:val('wvCustomer'), items:String(val('wvItems')||'').split(/\r?\n/), findings:val('wvFindings'),
       secretaryId:val('wvSec'), adviserId:val('wvAdv'), lang:lang };
@@ -11840,7 +11868,7 @@ function saveForm(kind){
   toast(formKindTitle(kind)+(formId?' updated':' saved'));
   render();
 }
-function docForm(j, f){ return f.kind==='release' ? docRelease(j, f) : docWaiver(j, f); }
+function docForm(j, f){ return f.kind==='release' ? docRelease(j, f) : f.kind==='waiver' ? docWaiver(j, f) : docGenericForm(j, f); }
 function printIssuedForm(jobId, formId){
   var f=_findForm(jobId, formId);
   if(!f){ toast('Form not found','err'); return; }
@@ -12050,6 +12078,7 @@ var RELEASE_TEXT = {
       'I sign this release voluntarily on <b>'+when+'</b>'+(place?' at '+place:'')+'.' ]; },
     sigCustomer:'Customer — received by (signature over printed name)', sigBy:'Released by (Supervisor)',
     sigPay:'Payment received by (Secretary)',
+    oldParts:'Old / replaced parts', opTaken:'Taken by the customer', opDispose:'Left with the shop for disposal',
     short:function(name, shop, when){ return 'I, <b>'+name+'</b>, received the vehicle above from <b>'+shop+'</b> in good order and condition, with the work listed done to my satisfaction and my belongings returned as checked. '+
       'Any concern about the work must be reported to the shop promptly. The shop is not responsible for damage from accident, misuse or work done elsewhere after release, nor for repairs I declined in a waiver for this job order. '+
       'Signed on <b>'+when+'</b>.'; }
@@ -12068,6 +12097,7 @@ var RELEASE_TEXT = {
       'Kusang-loob kong nilagdaan ang release na ito ngayong <b>'+when+'</b>'+(place?' sa '+place:'')+'.' ]; },
     sigCustomer:'Customer — tumanggap (lagda sa ibabaw ng pangalan)', sigBy:'Inilabas ni (Supervisor)',
     sigPay:'Tumanggap ng bayad (Sekretarya)',
+    oldParts:'Luma / pinalitang piyesa', opTaken:'Kinuha ng customer', opDispose:'Iniwan sa shop para itapon',
     short:function(name, shop, when){ return 'Ako, si <b>'+name+'</b>, ay tumanggap ng sasakyang nakalarawan sa itaas mula sa <b>'+shop+'</b> sa maayos na kalagayan, tapos ang mga gawaing nakalista ayon sa aking kasiyahan, at naibalik ang aking mga gamit ayon sa may tsek. '+
       'Anumang reklamo sa gawain ay dapat ipaalam agad sa shop. Hindi mananagot ang shop sa pinsalang dulot ng aksidente, maling paggamit o gawaing isinagawa sa ibang lugar matapos ilabas ang sasakyan, gayundin sa mga pagkukumpuning aking tinanggihan sa waiver para sa job order na ito. '+
       'Nilagdaan ngayong <b>'+when+'</b>.'; }
@@ -12129,6 +12159,7 @@ function releaseSection(j, f){
       '<b>'+T.belong+':</b> '+(belong||esc(T.noBelong))+
       waivers.map(function(w){ return '<br>'+esc(T.waiverRef(w.id, L.date_of(w.at))); }).join('')+
       (f.remarks?'<br><b>'+T.remarks+':</b> '+esc(f.remarks):'')+
+      ((j.lines||[]).some(function(l){ return l.type==='part'; }) ? '<br><b>'+T.oldParts+':</b> ☐ '+T.opTaken+' &nbsp; ☐ '+T.opDispose : '')+
     '</div>'+
     '<p style="font-size:11.5px;line-height:1.45;margin:6px 0 0">'+T.short(esc(f.customer), shop, esc(d.signed))+'</p>'+
     _sigGrid([[T.sigCustomer,'<b>'+esc(f.customer)+'</b>'],
@@ -12179,6 +12210,422 @@ function releaseBody(j, f){
       _formFoot(L, j, f);
   }
   return '<div class="pagebreak">'+copy(L.customerCopy)+'</div>'+copy(L.shopCopy);
+}
+
+
+/* ===== */
+
+/* ============================================================================
+   PART 22 — More forms, described as data
+
+   Each form below is a definition, not a page of code: its fields (what the
+   dialog asks, with defaults taken from the job), the wording in English and
+   Filipino, and its signature lines. One engine draws the dialog, checks the
+   required fields, keeps the form on its job (j.forms, data in f.data) and
+   prints it — the same Find-the-job / Language / Customer & Shop copy / edit &
+   reprint behaviour the waiver has (part21).
+
+   Field types: text, textarea, number, date, lines (one item per line, kept as
+   an array), select (opts), staff (roles). def(j, prev) gives the default —
+   prev is the data of the last form of this kind, so standing terms (warranty
+   period, storage fee) are typed once and then carried forward.
+
+   Wording: every value reaches the text already escaped (c.e / c.list), so the
+   strings may hold markup.
+   ========================================================================== */
+
+var FORM_DEFS = {};
+
+/* ---- shared bits ---- */
+function _fdAdviser(label){ return { key:'adviserId', type:'staff', roles:['SA','SV'], label:label||'Service Adviser', def:function(j){ return j.saId||''; } }; }
+function _fdSupervisor(label){ return { key:'supervisorId', type:'staff', roles:['SV'], label:label||'Supervisor', def:function(j){ return j.approvedReleaseBy||''; } }; }
+function _fdCustomer(label){ return { key:'customer', type:'text', label:label||'Customer signing', req:true, def:function(j){ return j.contactPerson||j.owner||''; } }; }
+function _fdDays(iso, n){ var d=new Date(iso||Date.now()); return new Date(d.getTime()+(Number(n)||0)*86400000).toISOString(); }
+var _FD_SIG = { en:'signature over printed name', fil:'lagda sa ibabaw ng pangalan' };
+
+/* 1. Authorization to Release to a Representative --------------------------- */
+FORM_DEFS.rep = {
+  title:'Authorization to Release to a Representative',
+  sub:'The owner lets someone else pick up the vehicle — with the representative’s ID.',
+  who:'owner',
+  fields:[
+    { key:'owner', type:'text', label:'Owner (authorizing)', req:true, def:function(j){ return j.owner||''; } },
+    { key:'rep', type:'text', label:'Representative’s name', req:true },
+    { key:'repId', type:'text', label:'Representative’s ID (type and number)', req:true, hint:'e.g. Driver’s license N01-23-456789' },
+    { key:'repContact', type:'text', label:'Representative’s contact #' },
+    { key:'relation', type:'text', label:'Relation to owner', hint:'e.g. company driver, son' },
+    _fdAdviser()
+  ],
+  text:{
+    en:{ title:'Authorization to Release Vehicle to a Representative',
+      body:function(c){ return '<p>I, <b>'+c.e('owner')+'</b>, the registered owner of the vehicle described above, authorize <b>'+c.e('rep')+'</b>'+
+          (c.d.relation?' ('+c.e('relation')+')':'')+', presenting <b>'+c.e('repId')+'</b>'+(c.d.repContact?', contact '+c.e('repContact'):'')+
+          ', to receive the vehicle from <b>'+c.shop+'</b> on my behalf, to sign the release documents, and to pay any balance due.</p>'+
+        '<p>Once the vehicle is released to my representative I hold '+c.shop+', its owners and employees free from any liability for the vehicle and its contents.</p>'+
+        '<p class="small"><i>Attach a photocopy of a valid ID of the owner and of the representative.</i></p>'+
+        '<p>Signed on <b>'+c.when+'</b>.</p>'; },
+      sigs:function(c){ return [['Owner — '+_FD_SIG.en, '<b>'+c.e('owner')+'</b>'],['Representative — '+_FD_SIG.en, '<b>'+c.e('rep')+'</b>'],['Service Adviser', c.staff('adviserId')]]; } },
+    fil:{ title:'Awtorisasyon na Ilabas ang Sasakyan sa Kinatawan',
+      body:function(c){ return '<p>Ako, si <b>'+c.e('owner')+'</b>, rehistradong may-ari ng sasakyang nakalarawan sa itaas, ay nagbibigay ng awtoridad kay <b>'+c.e('rep')+'</b>'+
+          (c.d.relation?' ('+c.e('relation')+')':'')+', na may <b>'+c.e('repId')+'</b>'+(c.d.repContact?', contact '+c.e('repContact'):'')+
+          ', na tanggapin ang sasakyan mula sa <b>'+c.shop+'</b> para sa akin, lumagda sa mga dokumento ng paglabas, at magbayad ng anumang natitirang balanse.</p>'+
+        '<p>Kapag nailabas na ang sasakyan sa aking kinatawan, pinawawalang-pananagutan ko ang '+c.shop+', ang mga may-ari at empleyado nito sa sasakyan at sa mga laman nito.</p>'+
+        '<p class="small"><i>Ilakip ang photocopy ng valid ID ng may-ari at ng kinatawan.</i></p>'+
+        '<p>Nilagdaan ngayong <b>'+c.when+'</b>.</p>'; },
+      sigs:function(c){ return [['May-ari — '+_FD_SIG.fil, '<b>'+c.e('owner')+'</b>'],['Kinatawan — '+_FD_SIG.fil, '<b>'+c.e('rep')+'</b>'],['Service Adviser', c.staff('adviserId')]]; } }
+  }
+};
+
+/* 2. Promissory Note -------------------------------------------------------- */
+FORM_DEFS.promissory = {
+  title:'Promissory Note',
+  sub:'The customer promises to pay the balance by a set date — for a vehicle released on charge.',
+  who:'customer', billedOnly:true,
+  fields:[
+    _fdCustomer('Customer promising to pay'),
+    { key:'amount', type:'number', label:'Amount (₱)', req:true, def:function(j){ var b=(typeof jobBalance==='function')?jobBalance(j):0; return b>0?b:''; } },
+    { key:'due', type:'date', label:'Pay on or before', req:true },
+    { key:'terms', type:'textarea', label:'Terms (optional)', hint:'e.g. two payments: ₱5,000 on Nov 15 and the rest on Nov 30',
+      def:function(j){ return (j.charge&&j.charge.reason)||''; } },
+    _fdAdviser('Witness (Service Adviser)'),
+    _fdSupervisor('Approved by (Supervisor)')
+  ],
+  text:{
+    en:{ title:'Promissory Note',
+      body:function(c){ return '<p style="font-size:15px"><b>'+c.peso('amount')+'</b></p>'+
+        '<p>For value received — the repair and service of the vehicle described above under Job Order <b>'+esc(c.j.no)+'</b>'+(c.j.orNumber?', OR <b>'+esc(c.j.orNumber)+'</b>':'')+
+          ' — I, <b>'+c.e('customer')+'</b>, promise to pay <b>'+c.shop+'</b> the sum of <b>'+c.peso('amount')+'</b> on or before <b>'+c.date('due')+'</b>.</p>'+
+        (c.d.terms?'<p><b>Terms:</b> '+c.e('terms')+'</p>':'')+
+        '<p>If this amount is not paid when due, the whole unpaid amount becomes immediately payable, and '+c.shop+' may collect it by any lawful means.</p>'+
+        '<p>Signed on <b>'+c.when+'</b>'+(c.place?' at '+c.place:'')+'.</p>'; },
+      sigs:function(c){ return [['Customer — '+_FD_SIG.en, '<b>'+c.e('customer')+'</b>'],['Witness (Service Adviser)', c.staff('adviserId')],['Approved by (Supervisor)', c.staff('supervisorId')]]; } },
+    fil:{ title:'Promissory Note (Pangakong Pagbabayad)',
+      body:function(c){ return '<p style="font-size:15px"><b>'+c.peso('amount')+'</b></p>'+
+        '<p>Bilang kapalit ng serbisyong natanggap — ang pagkukumpuni at serbisyo sa sasakyang nakalarawan sa itaas sa ilalim ng Job Order <b>'+esc(c.j.no)+'</b>'+(c.j.orNumber?', OR <b>'+esc(c.j.orNumber)+'</b>':'')+
+          ' — ako, si <b>'+c.e('customer')+'</b>, ay nangangakong babayaran ang <b>'+c.shop+'</b> ng halagang <b>'+c.peso('amount')+'</b> sa o bago ang <b>'+c.date('due')+'</b>.</p>'+
+        (c.d.terms?'<p><b>Kasunduan:</b> '+c.e('terms')+'</p>':'')+
+        '<p>Kung hindi mabayaran sa takdang araw, ang buong natitirang halaga ay agad nang babayaran, at maaari itong singilin ng '+c.shop+' sa anumang paraang naaayon sa batas.</p>'+
+        '<p>Nilagdaan ngayong <b>'+c.when+'</b>'+(c.place?' sa '+c.place:'')+'.</p>'; },
+      sigs:function(c){ return [['Customer — '+_FD_SIG.fil, '<b>'+c.e('customer')+'</b>'],['Saksi (Service Adviser)', c.staff('adviserId')],['Inaprubahan ni (Supervisor)', c.staff('supervisorId')]]; } }
+  }
+};
+
+/* 3. Customer-Supplied Parts Waiver ---------------------------------------- */
+FORM_DEFS.ownparts = {
+  title:'Customer-Supplied Parts Waiver',
+  sub:'The customer brought their own parts — no warranty on them from the shop.',
+  who:'customer',
+  fields:[
+    _fdCustomer(),
+    { key:'items', type:'lines', label:'Parts supplied by the customer', req:true, hint:'One per line — e.g. Brake pads (front), brand X, customer-bought' },
+    _fdAdviser()
+  ],
+  text:{
+    en:{ title:'Customer-Supplied Parts Waiver',
+      body:function(c){ return '<p>I, <b>'+c.e('customer')+'</b>, supplied the following parts myself and asked <b>'+c.shop+'</b> to install them on the vehicle described above:</p>'+
+        c.list('items','Part supplied by the customer')+
+        '<p>I understand that the shop did not supply these parts and cannot vouch for their quality, fit or authenticity. The shop gives <b>no warranty</b> on them, and is not responsible for their failure, poor fit or performance, or any damage that results from them.</p>'+
+        '<p>The shop’s labor is charged as quoted. Extra labor needed because a part is wrong, incomplete or defective — including removing it again — will be charged.</p>'+
+        '<p>Signed on <b>'+c.when+'</b>.</p>'; },
+      sigs:function(c){ return [['Customer — '+_FD_SIG.en, '<b>'+c.e('customer')+'</b>'],['Service Adviser', c.staff('adviserId')]]; } },
+    fil:{ title:'Waiver para sa Piyesang Dala ng Customer',
+      body:function(c){ return '<p>Ako, si <b>'+c.e('customer')+'</b>, ang nagdala ng mga sumusunod na piyesa at nagpakabit nito sa <b>'+c.shop+'</b> sa sasakyang nakalarawan sa itaas:</p>'+
+        c.list('items','Piyesang dala ng customer')+
+        '<p>Nauunawaan ko na hindi galing sa shop ang mga piyesang ito at hindi nito masisiguro ang kalidad, pagkakasya o pagiging orihinal ng mga ito. <b>Walang warranty</b> ang shop sa mga ito, at hindi ito mananagot sa pagkasira, hindi pagkakasya o hindi maayos na pagganap ng mga ito, o sa anumang pinsalang idudulot nito.</p>'+
+        '<p>Sisingilin ang labor ng shop ayon sa napag-usapan. Ang dagdag na labor dahil mali, kulang o sira ang piyesa — kasama ang muling pagtanggal nito — ay sisingilin.</p>'+
+        '<p>Nilagdaan ngayong <b>'+c.when+'</b>.</p>'; },
+      sigs:function(c){ return [['Customer — '+_FD_SIG.fil, '<b>'+c.e('customer')+'</b>'],['Service Adviser', c.staff('adviserId')]]; } }
+  }
+};
+
+/* 4. Pull-out Without Repair ----------------------------------------------- */
+FORM_DEFS.pullout = {
+  title:'Pull-out Without Repair',
+  sub:'The customer takes the vehicle out before the work is done, or after diagnosis only.',
+  who:'customer',
+  fields:[
+    _fdCustomer(),
+    { key:'findings', type:'textarea', label:'Condition of the vehicle / findings', req:true },
+    { key:'notDone', type:'lines', label:'Work recommended but not done', req:true, hint:'One per line' },
+    { key:'fee', type:'number', label:'Diagnosis / labor charge (₱)', hint:'0 if none' },
+    _fdAdviser(),
+    _fdSupervisor('Released by (Supervisor)')
+  ],
+  text:{
+    en:{ title:'Pull-out Without Repair',
+      body:function(c){ return '<p>I, <b>'+c.e('customer')+'</b>, of my own decision am taking the vehicle described above out of <b>'+c.shop+'</b> without the recommended repair being completed.</p>'+
+        '<div class="notes"><b>Condition / findings:</b> '+c.e('findings')+'</div>'+
+        c.list('notDone','Recommended work — NOT done')+
+        '<p>It was explained to me that the vehicle may be unsafe to drive or may break down, and that its condition may get worse. I accept the vehicle in its present condition and release '+c.shop+', its owners, employees and mechanics from any responsibility for its condition and for anything that results from the work not being done.</p>'+
+        (Number(c.d.fee)>0?'<p>Diagnosis / labor charge: <b>'+c.peso('fee')+'</b>.</p>':'')+
+        '<p>Signed on <b>'+c.when+'</b>.</p>'; },
+      sigs:function(c){ return [['Customer — '+_FD_SIG.en, '<b>'+c.e('customer')+'</b>'],['Service Adviser', c.staff('adviserId')],['Released by (Supervisor)', c.staff('supervisorId')]]; } },
+    fil:{ title:'Paglabas ng Sasakyan nang Hindi Naayos',
+      body:function(c){ return '<p>Ako, si <b>'+c.e('customer')+'</b>, sa sarili kong pasya, ay ilalabas ang sasakyang nakalarawan sa itaas mula sa <b>'+c.shop+'</b> nang hindi natatapos ang inirekomendang pagkukumpuni.</p>'+
+        '<div class="notes"><b>Kalagayan / natuklasan:</b> '+c.e('findings')+'</div>'+
+        c.list('notDone','Inirekomendang gawain — HINDI ginawa')+
+        '<p>Ipinaliwanag sa akin na maaaring hindi ligtas gamitin ang sasakyan o maaari itong masira sa daan, at maaaring lumala ang kalagayan nito. Tinatanggap ko ang sasakyan sa kasalukuyang kalagayan nito at pinawawalang-pananagutan ko ang '+c.shop+', ang mga may-ari, empleyado at mekaniko nito sa kalagayan nito at sa anumang idudulot ng hindi paggawa ng mga gawain.</p>'+
+        (Number(c.d.fee)>0?'<p>Singil sa diagnosis / labor: <b>'+c.peso('fee')+'</b>.</p>':'')+
+        '<p>Nilagdaan ngayong <b>'+c.when+'</b>.</p>'; },
+      sigs:function(c){ return [['Customer — '+_FD_SIG.fil, '<b>'+c.e('customer')+'</b>'],['Service Adviser', c.staff('adviserId')],['Inilabas ni (Supervisor)', c.staff('supervisorId')]]; } }
+  }
+};
+
+/* 5. Warranty Certificate --------------------------------------------------- */
+var _FD_EXCL_EN='Wear items (brake pads, wiper blades, bulbs, fluids, filters) beyond normal use; damage from accident, misuse, overloading, flooding or poor fuel; work or parts done by others; parts supplied by the customer; and repairs the customer declined.';
+FORM_DEFS.warranty = {
+  title:'Warranty Certificate',
+  sub:'Warranty on the parts and labor of a job — period and terms carry over from the last one.',
+  who:'customer', billedOnly:true,
+  fields:[
+    _fdCustomer('Customer'),
+    { key:'days', type:'number', label:'Warranty — days', req:true, def:function(j, p){ return (p&&p.days)||30; } },
+    { key:'km', type:'number', label:'Warranty — km', req:true, def:function(j, p){ return (p&&p.km)||1000; } },
+    { key:'exclusions', type:'textarea', label:'Not covered', def:function(j, p){ return (p&&p.exclusions)||_FD_EXCL_EN; } },
+    _fdAdviser(),
+    _fdSupervisor('Issued by (Supervisor)')
+  ],
+  text:{
+    en:{ title:'Warranty Certificate',
+      body:function(c){ var w=_fdWarrantyEnd(c);
+        return '<p><b>'+c.shop+'</b> warrants the parts it supplied and the labor it performed on the vehicle described above under Job Order <b>'+esc(c.j.no)+'</b>'+(c.j.orNumber?' / OR <b>'+esc(c.j.orNumber)+'</b>':'')+
+          ', listed below, against defects in materials and workmanship for <b>'+num(c.d.days)+' days or '+num(c.d.km)+' km</b> from release, whichever comes first — until <b>'+w.date+'</b> or <b>'+w.odo+'</b>.</p>'+
+        _fdWorkTable(c, 'Covered work and parts')+
+        '<p><b>To claim:</b> bring the vehicle and this certificate to the shop within the warranty period. The shop will inspect it and repair or replace a covered part or redo covered work at no charge.</p>'+
+        '<p><b>Not covered:</b> '+c.e('exclusions')+'</p>'; },
+      sigs:function(c){ return [['Service Adviser', c.staff('adviserId')],['Issued by (Supervisor)', c.staff('supervisorId')],['Customer — '+_FD_SIG.en, '<b>'+c.e('customer')+'</b>']]; } },
+    fil:{ title:'Sertipiko ng Warranty',
+      body:function(c){ var w=_fdWarrantyEnd(c);
+        return '<p>Ginagarantiyahan ng <b>'+c.shop+'</b> ang mga piyesang ibinigay nito at ang labor na isinagawa nito sa sasakyang nakalarawan sa itaas sa ilalim ng Job Order <b>'+esc(c.j.no)+'</b>'+(c.j.orNumber?' / OR <b>'+esc(c.j.orNumber)+'</b>':'')+
+          ', na nakalista sa ibaba, laban sa depekto sa materyales at pagkakagawa sa loob ng <b>'+num(c.d.days)+' araw o '+num(c.d.km)+' km</b> mula sa paglabas, alinman ang mauna — hanggang <b>'+w.date+'</b> o <b>'+w.odo+'</b>.</p>'+
+        _fdWorkTable(c, 'Saklaw na gawain at piyesa')+
+        '<p><b>Paano mag-claim:</b> dalhin ang sasakyan at ang sertipikong ito sa shop sa loob ng panahon ng warranty. Susuriin ito ng shop at aayusin o papalitan nang libre ang saklaw na piyesa o gawain.</p>'+
+        '<p><b>Hindi saklaw:</b> '+c.e('exclusions')+'</p>'; },
+      sigs:function(c){ return [['Service Adviser', c.staff('adviserId')],['Nag-isyu (Supervisor)', c.staff('supervisorId')],['Customer — '+_FD_SIG.fil, '<b>'+c.e('customer')+'</b>']]; } }
+  }
+};
+/* Warranty end: the release date (or the issue date) + days; release odometer + km. */
+function _fdWarrantyEnd(c){
+  var from=c.j.releasedAt||c.f.at, start=Number(c.j.lastServiceOdo||c.j.odometer)||0;
+  return { date:c.L.date_of(_fdDays(from, c.d.days)), odo:start ? num(start+(Number(c.d.km)||0))+' km' : num(c.d.km)+' km '+(c.lang==='fil'?'mula sa paglabas':'after release') };
+}
+function _fdWorkTable(c, head){
+  return '<table><thead><tr><th style="width:36px">#</th><th>'+head+'</th><th class="r">Qty</th></tr></thead><tbody>'+
+    (c.j.lines||[]).map(function(l,i){
+      return '<tr><td>'+(i+1)+'</td><td>'+esc(l.desc)+'</td><td class="r">'+num(l.qty)+'</td></tr>'; }).join('')+
+    '</tbody></table>';
+}
+
+/* 6. Storage Fee Notice ----------------------------------------------------- */
+FORM_DEFS.storage = {
+  title:'Storage Fee Notice',
+  sub:'The work is done but the vehicle is not picked up — storage is charged after a grace period.',
+  who:'customer',
+  fields:[
+    _fdCustomer('Customer'),
+    { key:'completed', type:'date', label:'Work completed on', req:true, def:function(){ return todayISO(); } },
+    { key:'grace', type:'number', label:'Free days to claim', req:true, def:function(j, p){ return (p&&p.grace)||3; } },
+    { key:'fee', type:'number', label:'Storage fee per day (₱)', req:true, def:function(j, p){ return (p&&p.fee)||300; } },
+    { key:'abandon', type:'number', label:'Days after which the shop is no longer responsible', req:true, def:function(j, p){ return (p&&p.abandon)||30; } },
+    _fdAdviser(),
+    _fdSupervisor()
+  ],
+  text:{
+    en:{ title:'Notice to Claim Vehicle · Storage Fee',
+      body:function(c){ return '<p>Dear <b>'+c.e('customer')+'</b>,</p>'+
+        '<p>The work on the vehicle described above was completed on <b>'+c.date('completed')+'</b>. Please claim it within <b>'+num(c.d.grace)+' days</b>, on or before <b>'+c.L.date_of(_fdDays(c.d.completed, c.d.grace))+'</b>.</p>'+
+        '<p>After that, a storage fee of <b>'+c.peso('fee')+' per day</b> is charged until the vehicle is claimed, and must be paid together with any balance before the vehicle is released.</p>'+
+        '<p>If the vehicle is not claimed within <b>'+num(c.d.abandon)+' days</b> of completion, the shop will no longer be responsible for loss or deterioration of the vehicle, and may pursue the remedies the law allows to recover the unpaid charges and storage fees.</p>'+
+        '<p>Received and understood on <b>'+c.when+'</b>.</p>'; },
+      sigs:function(c){ return [['Service Adviser', c.staff('adviserId')],['Supervisor', c.staff('supervisorId')],['Customer — '+_FD_SIG.en, '<b>'+c.e('customer')+'</b>']]; } },
+    fil:{ title:'Abiso na Kunin ang Sasakyan · Bayad sa Storage',
+      body:function(c){ return '<p>G./Gng. <b>'+c.e('customer')+'</b>,</p>'+
+        '<p>Natapos ang gawain sa sasakyang nakalarawan sa itaas noong <b>'+c.date('completed')+'</b>. Pakikuha ito sa loob ng <b>'+num(c.d.grace)+' araw</b>, sa o bago ang <b>'+c.L.date_of(_fdDays(c.d.completed, c.d.grace))+'</b>.</p>'+
+        '<p>Pagkatapos nito, sisingilin ang storage fee na <b>'+c.peso('fee')+' bawat araw</b> hanggang makuha ang sasakyan, at dapat itong bayaran kasama ng anumang balanse bago ilabas ang sasakyan.</p>'+
+        '<p>Kung hindi makuha ang sasakyan sa loob ng <b>'+num(c.d.abandon)+' araw</b> mula nang matapos, hindi na mananagot ang shop sa pagkawala o pagkasira ng sasakyan, at maaari nitong gamitin ang mga remedyong pinahihintulutan ng batas upang mabawi ang hindi nabayarang singil at storage fee.</p>'+
+        '<p>Natanggap at naunawaan ngayong <b>'+c.when+'</b>.</p>'; },
+      sigs:function(c){ return [['Service Adviser', c.staff('adviserId')],['Supervisor', c.staff('supervisorId')],['Customer — '+_FD_SIG.fil, '<b>'+c.e('customer')+'</b>']]; } }
+  }
+};
+
+/* 7. Comeback / Warranty Claim --------------------------------------------- */
+FORM_DEFS.claim = {
+  title:'Comeback / Warranty Claim',
+  sub:'A vehicle came back with a problem — what failed, the original job, and the warranty decision.',
+  who:'customer',
+  fields:[
+    _fdCustomer(),
+    { key:'origJo', type:'text', label:'Original Job Order #', def:function(j){ var o=j.comebackOf&&jobById(j.comebackOf); return o?o.no:''; } },
+    { key:'complaint', type:'textarea', label:'Customer’s complaint', req:true, def:function(j){ return j.comebackReason||''; } },
+    { key:'findings', type:'textarea', label:'Shop findings' },
+    { key:'decision', type:'select', label:'Warranty decision', req:true, opts:[['assess','To be assessed'],['covered','Covered by warranty'],['not','Not covered']],
+      def:function(j){ return j.warranty?'covered':'assess'; } },
+    { key:'reason', type:'textarea', label:'Reason for the decision' },
+    { key:'action', type:'textarea', label:'Action to be taken' },
+    _fdAdviser(),
+    _fdSupervisor()
+  ],
+  text:{
+    en:{ title:'Comeback / Warranty Claim',
+      body:function(c){ var dec={assess:'To be assessed',covered:'COVERED by warranty',not:'NOT covered'}[c.d.decision]||'—';
+        return (c.d.origJo?'<p>Original Job Order: <b>'+c.e('origJo')+'</b></p>':'')+
+        '<div class="notes"><b>Customer’s complaint:</b> '+c.e('complaint')+'</div>'+
+        (c.d.findings?'<div class="notes"><b>Shop findings:</b> '+c.e('findings')+'</div>':'')+
+        '<p><b>Warranty decision:</b> '+dec+(c.d.reason?' — '+c.e('reason'):'')+'</p>'+
+        (c.d.action?'<p><b>Action:</b> '+c.e('action')+'</p>':'')+
+        '<p class="small">This form records the claim and the shop’s decision. Until a decision is made it is not an admission of liability.</p>'+
+        '<p>Signed on <b>'+c.when+'</b>.</p>'; },
+      sigs:function(c){ return [['Customer — '+_FD_SIG.en, '<b>'+c.e('customer')+'</b>'],['Service Adviser', c.staff('adviserId')],['Supervisor', c.staff('supervisorId')]]; } },
+    fil:{ title:'Comeback / Claim sa Warranty',
+      body:function(c){ var dec={assess:'Susuriin pa',covered:'SAKLAW ng warranty',not:'HINDI saklaw'}[c.d.decision]||'—';
+        return (c.d.origJo?'<p>Orihinal na Job Order: <b>'+c.e('origJo')+'</b></p>':'')+
+        '<div class="notes"><b>Reklamo ng customer:</b> '+c.e('complaint')+'</div>'+
+        (c.d.findings?'<div class="notes"><b>Natuklasan ng shop:</b> '+c.e('findings')+'</div>':'')+
+        '<p><b>Pasya sa warranty:</b> '+dec+(c.d.reason?' — '+c.e('reason'):'')+'</p>'+
+        (c.d.action?'<p><b>Gagawin:</b> '+c.e('action')+'</p>':'')+
+        '<p class="small">Itinatala ng form na ito ang claim at ang pasya ng shop. Hangga’t walang pasya, hindi ito pag-amin ng pananagutan.</p>'+
+        '<p>Nilagdaan ngayong <b>'+c.when+'</b>.</p>'; },
+      sigs:function(c){ return [['Customer — '+_FD_SIG.fil, '<b>'+c.e('customer')+'</b>'],['Service Adviser', c.staff('adviserId')],['Supervisor', c.staff('supervisorId')]]; } }
+  }
+};
+
+/* 8. Damage / Incident Report (internal) ----------------------------------- */
+FORM_DEFS.incident = {
+  title:'Damage / Incident Report',
+  sub:'Internal: something was damaged or happened while the vehicle was at the shop.',
+  who:'reportedBy', copies:['shop'],
+  fields:[
+    { key:'when', type:'text', label:'When it happened', req:true, def:function(){ return fmtDateTime(new Date().toISOString()); } },
+    { key:'what', type:'textarea', label:'What happened', req:true },
+    { key:'damage', type:'textarea', label:'Damage to the vehicle / property' },
+    { key:'involved', type:'text', label:'Staff involved' },
+    { key:'action', type:'textarea', label:'Action taken / to be taken' },
+    { key:'informed', type:'select', label:'Customer informed?', opts:[['no','Not yet'],['yes','Yes']] },
+    { key:'reportedBy', type:'staff', roles:null, label:'Reported by', req:true },
+    _fdSupervisor()
+  ],
+  text:{
+    en:{ title:'Damage / Incident Report',
+      body:function(c){ return '<p><b>When:</b> '+c.e('when')+' &nbsp;·&nbsp; <b>Customer informed:</b> '+(c.d.informed==='yes'?'Yes':'Not yet')+'</p>'+
+        '<div class="notes"><b>What happened:</b> '+c.e('what')+'</div>'+
+        (c.d.damage?'<div class="notes"><b>Damage:</b> '+c.e('damage')+'</div>':'')+
+        (c.d.involved?'<p><b>Staff involved:</b> '+c.e('involved')+'</p>':'')+
+        (c.d.action?'<p><b>Action:</b> '+c.e('action')+'</p>':'')+
+        '<p class="small">Photos: attach, or see the job’s photos.</p>'; },
+      sigs:function(c){ return [['Reported by', c.staff('reportedBy')],['Supervisor', c.staff('supervisorId')],['Customer (if informed)', '']]; } },
+    fil:{ title:'Ulat ng Pinsala / Insidente',
+      body:function(c){ return '<p><b>Kailan:</b> '+c.e('when')+' &nbsp;·&nbsp; <b>Naipaalam sa customer:</b> '+(c.d.informed==='yes'?'Oo':'Hindi pa')+'</p>'+
+        '<div class="notes"><b>Ang nangyari:</b> '+c.e('what')+'</div>'+
+        (c.d.damage?'<div class="notes"><b>Pinsala:</b> '+c.e('damage')+'</div>':'')+
+        (c.d.involved?'<p><b>Mga sangkot na empleyado:</b> '+c.e('involved')+'</p>':'')+
+        (c.d.action?'<p><b>Ginawa / gagawin:</b> '+c.e('action')+'</p>':'')+
+        '<p class="small">Mga larawan: ilakip, o tingnan ang mga larawan ng job.</p>'; },
+      sigs:function(c){ return [['Nag-ulat', c.staff('reportedBy')],['Supervisor', c.staff('supervisorId')],['Customer (kung naipaalam)', '']]; } }
+  }
+};
+
+/* ============================ the engine =================================== */
+var FORM_DEF_ORDER = ['rep','promissory','ownparts','pullout','warranty','storage','claim','incident'];
+
+/* Data of the last form of this kind anywhere — standing terms carry forward. */
+function _fdPrev(kind){
+  var x=issuedForms().filter(function(r){ return r.form.kind===kind; })[0];
+  return x ? (x.form.data||{}) : null;
+}
+function _fdDefault(fd, j, prev){ return fd.def ? fd.def(j, prev) : ''; }
+function _fdStaffList(fd){
+  return (S.staff||[]).filter(function(s){ return !fd.roles || fd.roles.indexOf(s.role)>=0; });
+}
+function _fdId(k){ return 'ff_'+k; }
+
+function genericFormHTML(kind, j, ed){
+  var def=FORM_DEFS[kind];
+  var head='<input type="hidden" id="fmKind" value="'+attr(kind)+'">'+_formHead(kind, j, ed);
+  if(!j) return head;
+  var prev=ed ? null : _fdPrev(kind), data=ed ? (ed.data||{}) : null;
+  var get=function(fd){ return data ? data[fd.key] : _fdDefault(fd, j, prev); };
+  return head+def.fields.map(function(fd){
+    var v=get(fd), id=_fdId(fd.key), lab=fd.label+(fd.req?'':'');
+    var ctl;
+    if(fd.type==='textarea') ctl='<textarea id="'+id+'" rows="3">'+esc(v||'')+'</textarea>';
+    else if(fd.type==='lines') ctl='<textarea id="'+id+'" rows="4">'+esc(Array.isArray(v) ? v.join('\n') : (v||''))+'</textarea>';
+    else if(fd.type==='select') ctl='<select id="'+id+'">'+fd.opts.map(function(o){ return '<option value="'+attr(o[0])+'"'+(o[0]===v?' selected':'')+'>'+esc(o[1])+'</option>'; }).join('')+'</select>';
+    else if(fd.type==='staff') ctl='<select id="'+id+'">'+_staffOpts(_fdStaffList(fd), v)+'</select>';
+    else if(fd.type==='date') ctl='<input id="'+id+'" type="date" value="'+attr(v||'')+'">';
+    else if(fd.type==='number') ctl='<input id="'+id+'" type="text" inputmode="decimal" value="'+attr(v===0||v?v:'')+'">';
+    else ctl='<input id="'+id+'" value="'+attr(v||'')+'">';
+    return field(lab+(fd.req?' *':''), ctl, fd.hint||'');
+  }).join('');
+}
+/* Read the dialog into plain data. */
+function readGenericForm(kind){
+  var out={};
+  FORM_DEFS[kind].fields.forEach(function(fd){ out[fd.key]=val(_fdId(fd.key)); });
+  return out;
+}
+/* Clean and check data against the definition: { data } or { msg }. */
+function _fdClean(kind, j, raw){
+  var def=FORM_DEFS[kind]; raw=raw||{};
+  if(def.billedOnly && !(j.stage==='Final Billing' || j.stage==='Released')) return { msg:'Bill the job order first — this form is for a billed job' };
+  var data={}, miss='';
+  def.fields.forEach(function(fd){
+    var v=raw[fd.key];
+    if(fd.type==='lines') v=(Array.isArray(v)?v:String(v||'').split(/\r?\n/)).map(function(s){ return String(s||'').trim(); }).filter(Boolean);
+    else if(fd.type==='number') v=(v===''||v==null) ? '' : (Number(String(v).replace(/[^0-9.\-]/g,''))||0);
+    else v=String(v==null?'':v).trim();
+    var empty = fd.type==='lines' ? !v.length : (v==='' || (fd.type==='number' && !(Number(v)>0)));
+    if(fd.req && empty && !miss) miss=fd.label;
+    data[fd.key]=v;
+  });
+  if(miss) return { msg:'Fill in: '+miss };
+  return { data:data };
+}
+/* Testable: record / change a form of any defined kind. */
+function issueFormCore(kind, jobId, raw, lang){
+  if(!FORM_DEFS[kind]) return { ok:false, msg:'Unknown form' };
+  var j=jobById(jobId); if(!j) return { ok:false, msg:'Pick the job order' };
+  var v=_fdClean(kind, j, raw); if(v.msg) return { ok:false, msg:v.msg };
+  var rec={ id:uid('fm'), kind:kind, at:new Date().toISOString(), byName:_meName(), lang:(lang==='fil'?'fil':'en'), data:v.data };
+  j.forms=j.forms||[]; j.forms.push(rec);
+  return { ok:true, rec:rec };
+}
+function updateFormCore(kind, jobId, formId, raw, lang){
+  var j=jobById(jobId); var f=_findForm(jobId, formId);
+  if(!j || !f || f.kind!==kind) return { ok:false, msg:'Form not found' };
+  var v=_fdClean(kind, j, raw); if(v.msg) return { ok:false, msg:v.msg };
+  f.data=v.data; f.lang=(lang==='fil'?'fil':'en'); f.editedAt=new Date().toISOString(); f.editedBy=_meName();
+  return { ok:true, rec:f };
+}
+/* Who the form is about, for the Issued forms list. */
+function formWho(f){
+  var def=FORM_DEFS[f.kind]; if(!def) return f.customer||'';
+  var v=(f.data||{})[def.who]||'';
+  return (def.fields.filter(function(x){ return x.key===def.who; })[0]||{}).type==='staff' ? (v?staffName(v):'') : v;
+}
+
+/* The printout. */
+function docGenericForm(j, f){
+  var def=FORM_DEFS[f.kind], lang=f.lang==='fil'?'fil':'en', T=def.text[lang], L=FORM_LABELS[lang];
+  var sh=S.shop||{}, d=f.data||{};
+  var c={ j:j, f:f, d:d, L:L, lang:lang, shop:esc(sh.legal||sh.name||'the shop'), place:sh.address?esc(sh.address):'',
+    when:esc(L.date_of(f.at)),
+    e:function(k){ return esc(d[k]==null?'':d[k]); },
+    peso:function(k){ return esc(peso(d[k])); },
+    date:function(k){ return d[k] ? esc(L.date_of(d[k]+'T04:00:00.000Z')) : '—'; },
+    staff:function(k){ return d[k] ? esc(staffName(d[k])) : ''; },
+    list:function(k, head){ return '<table><thead><tr><th style="width:36px">#</th><th>'+esc(head)+'</th></tr></thead><tbody>'+
+      (d[k]||[]).map(function(it,i){ return '<tr><td>'+(i+1)+'</td><td>'+esc(it)+'</td></tr>'; }).join('')+'</tbody></table>'; } };
+  function copy(tag){
+    return '<div class="copy-tag">'+tag+'</div>'+docHeader(T.title)+
+      metaCols(
+        [[L.plate, esc(j.plate)],[L.vehicle, esc(_vehLabel(j))],[L.chassis, esc(j.chassis)],[L.odo, num(j.odometer)+' km']],
+        [[L.jo, esc(j.no)],[L.date, c.when],[L.owner, esc(j.owner)],[L.contact, esc(j.contactNumber)]])+
+      '<div style="font-size:12.5px;line-height:1.55">'+T.body(c)+'</div>'+
+      _sigGrid(T.sigs(c))+
+      _formFoot(L, j, f);
+  }
+  var copies=(def.copies||['customer','shop']).map(function(k){ return copy(k==='shop'?L.shopCopy:L.customerCopy); });
+  return docShell(def.title+' '+j.no, copies.map(function(h,i){ return i<copies.length-1 ? '<div class="pagebreak">'+h+'</div>' : h; }).join(''));
 }
 
 </script>
