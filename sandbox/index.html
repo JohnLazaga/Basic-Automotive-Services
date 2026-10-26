@@ -670,7 +670,7 @@ var BRANCH = {"id":"sandbox","slug":"sandbox","name":"Basic by JMSI — Sandbox 
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-10-26 · b8cc847';
+var APP_VERSION = 'v1.3.0 · 2026-10-26 · ee3d325';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -2767,6 +2767,10 @@ function jobPrintButtons(j){
   var btns='<button class="btn ghost" onclick="printJobOrder(\''+j.id+'\')">⎙ Job Order</button>';
   if (j.stage!=='Job Order') btns+='<button class="btn ghost" onclick="printPostJob(\''+j.id+'\')">⎙ Post Job Report</button>';
   if (j.stage==='Final Billing'||j.stage==='Released') btns+='<button class="btn ghost" onclick="printBilling(\''+j.id+'\')">⎙ Final Billing</button>';
+  if (typeof openForm==='function'){
+    btns+='<button class="btn ghost" onclick="openForm(\'waiver\',\''+j.id+'\')">✍ Waiver</button>';
+    if (j.stage==='Final Billing'||j.stage==='Released') btns+='<button class="btn ghost" onclick="openForm(\'release\',\''+j.id+'\')">✍ Release Form</button>';
+  }
   return btns;
 }
 
@@ -4231,6 +4235,7 @@ function chargeNoteHTML(j){
 function finishRelease(j, lso){
   if(lso) j.lastServiceOdo=lso;   // odometer reading at release
   j.stage='Released';
+  if(!j.releasedAt) j.releasedAt=new Date().toISOString();   // printed on the Vehicle Release Form
   // record the last service odometer on the vehicle and schedule next service
   var v=vehicleById(j.vehicleId); if(v){ var reading=Number(j.lastServiceOdo)||(j.inspection&&j.inspection.odometer)||j.odometer||0;
     v.odometer=Math.max(v.odometer||0, reading);
@@ -7045,7 +7050,7 @@ if (typeof module!=='undefined' && module.exports){
     scheduleNextService:scheduleNextService, clearNextService:clearNextService, alertStrip:alertStrip,
     jobVehicleLabel:jobVehicleLabel, replyRecipients:replyRecipients, unreadMessages:unreadMessages, messageStrip:messageStrip, myStaffIds:myStaffIds, messageAcked:messageAcked,
     buildLogEntry:buildLogEntry, logEntryFor:logEntryFor, jobStatusPanel:jobStatusPanel, lastLogForLabel:lastLogForLabel,
-    jobDescriptionPanel:jobDescriptionPanel, jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fillVehicleBlanks:fillVehicleBlanks, openJobsForPlate:openJobsForPlate, correctPayment:correctPayment, overpaidJobs:overpaidJobs, paymentCorrections:paymentCorrections, billBaseline:billBaseline, trackBillChanges:trackBillChanges, billChanges:billChanges, discountRows:discountRows, discountReasonMissing:discountReasonMissing, cashExpected:cashExpected, cashCountRows:cashCountRows, paymentsMissingRef:paymentsMissingRef, releasedOwing:releasedOwing, docMoneyChecks:docMoneyChecks, moneyCheckData:moneyCheckData, voidedReceipts:voidedReceipts, cancelledJobs:cancelledJobs, voidsHoldingMoney:voidsHoldingMoney, docVoids:docVoids, addPayAdj:addPayAdj, payAdjInPeriod:payAdjInPeriod, accessLogHTML:accessLogHTML, docWaiver:docWaiver, issueWaiverCore:issueWaiverCore, updateWaiverCore:updateWaiverCore, fmtDateFil:fmtDateFil, waiverDefaultItems:waiverDefaultItems, issuedForms:issuedForms, deviceLockAtRisk:deviceLockAtRisk, deviceLockWarningHTML:deviceLockWarningHTML, comebackSetupWarning:comebackSetupWarning, comebackDeductions:comebackDeductions, finalizePayoutCore:finalizePayoutCore, finalizePayoutCheck:finalizePayoutCheck, voidPayoutCore:voidPayoutCore, undoComebackCore:undoComebackCore, payoutStatusText:payoutStatusText, comebackPendingNotCounted:comebackPendingNotCounted, comebackTakenNote:comebackTakenNote, comebackDeductionsInPeriod:comebackDeductionsInPeriod, netPayoutRows:netPayoutRows, docPayout:docPayout, docMechCommission:docMechCommission, setProdPeriod:function(p,f,t){ PROD_PERIOD=p; PROD_FROM=f||''; PROD_TO=t||''; }, paymentsDoc:paymentsDoc, pmsGateMissing:pmsGateMissing, jobsMissingInfo:jobsMissingInfo, partNetMissing:partNetMissing, lessVatApplied:lessVatApplied, lessVatStale:lessVatStale, markLessVat:markLessVat, syncLessVat:syncLessVat, discVat:discVat, discountReasonPicker:discountReasonPicker, jobPLSplit:jobPLSplit, plForRange:plForRange, opexForRange:opexForRange, docPL:docPL, discountExVat:discountExVat, discountAmount:discountAmount, discountedLabor:discountedLabor, readDiscountObj:function(d){ return d; }, discountEditor:discountEditor, pmsDefaultMechs:pmsDefaultMechs, pmsReadyToSubmit:pmsReadyToSubmit, PMS_TEMPLATE:function(){ return PMS_TEMPLATE; }, pmsSectionMissing:pmsSectionMissing, orSeriesInRange:orSeriesInRange, orRangeGaps:orRangeGaps, inRptRange:inRptRange, setRptRangeRaw:function(k,r){ RPT_RANGE[k]=r; }, docDiscounts:docDiscounts, warnIfPlateOnBoard:warnIfPlateOnBoard, plFor:plFor, opexFor:opexFor, payFor:payFor, monthlyPay:monthlyPay, addMonths:addMonths, syncCollections:syncCollections, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
+    jobDescriptionPanel:jobDescriptionPanel, jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fillVehicleBlanks:fillVehicleBlanks, openJobsForPlate:openJobsForPlate, correctPayment:correctPayment, overpaidJobs:overpaidJobs, paymentCorrections:paymentCorrections, billBaseline:billBaseline, trackBillChanges:trackBillChanges, billChanges:billChanges, discountRows:discountRows, discountReasonMissing:discountReasonMissing, cashExpected:cashExpected, cashCountRows:cashCountRows, paymentsMissingRef:paymentsMissingRef, releasedOwing:releasedOwing, docMoneyChecks:docMoneyChecks, moneyCheckData:moneyCheckData, voidedReceipts:voidedReceipts, cancelledJobs:cancelledJobs, voidsHoldingMoney:voidsHoldingMoney, docVoids:docVoids, addPayAdj:addPayAdj, payAdjInPeriod:payAdjInPeriod, accessLogHTML:accessLogHTML, docWaiver:docWaiver, issueWaiverCore:issueWaiverCore, issueReleaseCore:issueReleaseCore, updateReleaseCore:updateReleaseCore, docRelease:docRelease, formJobMatches:formJobMatches, jobBelongings:jobBelongings, finishRelease:finishRelease, updateWaiverCore:updateWaiverCore, fmtDateFil:fmtDateFil, waiverDefaultItems:waiverDefaultItems, issuedForms:issuedForms, deviceLockAtRisk:deviceLockAtRisk, deviceLockWarningHTML:deviceLockWarningHTML, comebackSetupWarning:comebackSetupWarning, comebackDeductions:comebackDeductions, finalizePayoutCore:finalizePayoutCore, finalizePayoutCheck:finalizePayoutCheck, voidPayoutCore:voidPayoutCore, undoComebackCore:undoComebackCore, payoutStatusText:payoutStatusText, comebackPendingNotCounted:comebackPendingNotCounted, comebackTakenNote:comebackTakenNote, comebackDeductionsInPeriod:comebackDeductionsInPeriod, netPayoutRows:netPayoutRows, docPayout:docPayout, docMechCommission:docMechCommission, setProdPeriod:function(p,f,t){ PROD_PERIOD=p; PROD_FROM=f||''; PROD_TO=t||''; }, paymentsDoc:paymentsDoc, pmsGateMissing:pmsGateMissing, jobsMissingInfo:jobsMissingInfo, partNetMissing:partNetMissing, lessVatApplied:lessVatApplied, lessVatStale:lessVatStale, markLessVat:markLessVat, syncLessVat:syncLessVat, discVat:discVat, discountReasonPicker:discountReasonPicker, jobPLSplit:jobPLSplit, plForRange:plForRange, opexForRange:opexForRange, docPL:docPL, discountExVat:discountExVat, discountAmount:discountAmount, discountedLabor:discountedLabor, readDiscountObj:function(d){ return d; }, discountEditor:discountEditor, pmsDefaultMechs:pmsDefaultMechs, pmsReadyToSubmit:pmsReadyToSubmit, PMS_TEMPLATE:function(){ return PMS_TEMPLATE; }, pmsSectionMissing:pmsSectionMissing, orSeriesInRange:orSeriesInRange, orRangeGaps:orRangeGaps, inRptRange:inRptRange, setRptRangeRaw:function(k,r){ RPT_RANGE[k]=r; }, docDiscounts:docDiscounts, warnIfPlateOnBoard:warnIfPlateOnBoard, plFor:plFor, opexFor:opexFor, payFor:payFor, monthlyPay:monthlyPay, addMonths:addMonths, syncCollections:syncCollections, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
     afterServiceMissing:afterServiceMissing, afterServiceDone:afterServiceDone, afterServiceStaff:afterServiceStaff,
     canWriteAfterService:canWriteAfterService, afterServiceSignerName:afterServiceSignerName, afterServiceBlock:afterServiceBlock,
     allocateSeriesNumber:allocateSeriesNumber, maxSeriesNo:maxSeriesNo, nextNo:nextNo,
@@ -11667,19 +11672,21 @@ function deletePayAdj(id){
 
    A home for the shop's standard forms. Each one fills itself in from a job
    order (vehicle, owner, adviser), prints on the shop letterhead with signature
-   lines, and is kept on its job (j.forms) so it can be found and reprinted.
-   The signed paper is the real record; the copy kept here shows what was on it.
+   lines, in English or Filipino, and is kept on its job (j.forms) so it can be
+   found, edited and reprinted. The signed paper is the real record; the copy
+   kept here shows what was on it.
 
-   First form: Quitclaim & Release Waiver — the shop recommended repairs or
-   parts and the customer declined them. Signed by the customer, the Secretary
-   and the Service Adviser, it records that the customer was told what was found
-   and what could follow, chose not to have it done, and releases the shop from
-   responsibility for the consequences.
+     Quitclaim & Release Waiver — the shop recommended repairs or parts and the
+       customer declined them; releases the shop from what follows from that.
+     Vehicle Release Form — the customer received the car back in good order,
+       with the work done and belongings returned.
    ========================================================================== */
 
 var FORM_KINDS = [
   { id:'waiver', title:'Quitclaim & Release Waiver',
-    sub:'Repairs or parts the customer declined — releases the shop from responsibility for them.' }
+    sub:'Repairs or parts the customer declined — releases the shop from responsibility for them.' },
+  { id:'release', title:'Vehicle Release Form',
+    sub:'The customer received the vehicle in good order, with the work done and belongings returned.' }
 ];
 function formKindTitle(kind){ var k=FORM_KINDS.filter(function(x){ return x.id===kind; })[0]; return k ? k.title : 'Form'; }
 
@@ -11689,31 +11696,134 @@ function issuedForms(){
   (S.jobs||[]).forEach(function(j){ (j.forms||[]).forEach(function(f){ out.push({ job:j, form:f }); }); });
   return out.sort(function(a,b){ return String(b.form.at||'').localeCompare(String(a.form.at||'')); });
 }
+function _findForm(jobId, formId){
+  var j=jobById(jobId); return (j && (j.forms||[]).filter(function(x){ return x.id===formId; })[0]) || null;
+}
+function _meName(){ var me=(typeof CURRENT_USER!=='undefined') ? CURRENT_USER : null; return (me&&(me.name||me.username||me.email))||''; }
+function _vehLabel(j){ return ((j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:'')).trim(); }
 
 VIEWS.forms = function(){
   var cards = FORM_KINDS.map(function(k){
     return '<div class="card"><h2>'+esc(k.title)+'</h2><p class="muted small">'+esc(k.sub)+'</p>'+
-      '<button class="btn primary" onclick="openWaiver()">Fill out &amp; print</button></div>';
+      '<button class="btn primary" onclick="openForm(\''+k.id+'\')">Fill out &amp; print</button></div>';
   }).join('');
-  var list = issuedForms();
-  var rows = list.slice(0,200).map(function(x){
+  var rows = issuedForms().slice(0,200).map(function(x){
     var j=x.job, f=x.form;
     return '<tr><td>'+esc(fmtDateTime(f.at))+'</td><td>'+esc(formKindTitle(f.kind))+'</td>'+
       '<td><a href="#" onclick="go(\'job\',\''+j.id+'\');return false">'+esc(j.no)+'</a></td><td><b>'+esc(j.plate)+'</b></td>'+
       '<td>'+esc(f.customer||j.owner||'')+'</td><td>'+(f.lang==='fil'?'Filipino':'English')+(f.editedAt?' <span class="muted small">· edited</span>':'')+'</td>'+
-      '<td class="r">'+((f.items||[]).length)+'</td>'+
-      '<td class="r"><button class="btn sm ghost" onclick="openWaiver(\''+j.id+'\',\''+f.id+'\')">✎ Edit</button>'+
+      '<td class="r"><button class="btn sm ghost" onclick="openForm(\''+esc(f.kind)+'\',\''+j.id+'\',\''+f.id+'\')">✎ Edit</button>'+
         '<button class="btn sm ghost" onclick="printIssuedForm(\''+j.id+'\',\''+f.id+'\')">⎙ Reprint</button></td></tr>';
   }).join('');
   return '<div class="page"><div class="page-head"><h1>Forms</h1></div>'+
     '<div class="grid2cards">'+cards+'</div>'+
     '<div class="card pad0"><div class="card-head" style="padding:12px 14px 0"><h2>Issued forms</h2></div>'+
-      (rows ? '<table class="tbl"><thead><tr><th>Issued</th><th>Form</th><th>JO</th><th>Plate</th><th>Customer</th><th>Language</th><th class="r">Items</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>'
+      (rows ? '<table class="tbl"><thead><tr><th>Issued</th><th>Form</th><th>JO</th><th>Plate</th><th>Customer</th><th>Language</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>'
             : emptyState('No forms issued yet.'))+
     '</div></div>';
 };
 
-/* ---- Quitclaim & Release Waiver ------------------------------------------ */
+/* ---- Finding the job order ------------------------------------------------
+   Type a JO number, plate or owner; the matches list under the box. */
+function formJobMatches(q, kind){
+  q=String(q||'').trim().toLowerCase().replace(/\s+/g,' ');
+  var squash=function(s){ return String(s||'').toLowerCase().replace(/[\s-]/g,''); };
+  var qs=squash(q);
+  var list=(S.jobs||[]).filter(function(j){
+    if (typeof jobCancelled==='function' && jobCancelled(j)) return false;
+    if (kind==='release' && !(j.stage==='Final Billing' || j.stage==='Released')) return false;
+    if (!q) return true;
+    return squash(j.no).indexOf(qs)>=0 || squash(j.plate).indexOf(qs)>=0 ||
+      String(j.owner||'').toLowerCase().indexOf(q)>=0 || String(j.contactPerson||'').toLowerCase().indexOf(q)>=0;
+  });
+  return list.sort(function(a,b){ return String(b.dateIn||'').localeCompare(String(a.dateIn||'')); }).slice(0,8);
+}
+function _formHitsHTML(kind, q){
+  var hits=formJobMatches(q, kind);
+  if(!hits.length) return '<div class="muted small" style="padding:6px 2px">'+
+    (kind==='release' ? 'No billed job order matches. A release form is for a billed or released job.' : 'No job order matches.')+'</div>';
+  return hits.map(function(j){
+    return '<button type="button" class="btn ghost full" style="justify-content:flex-start;text-align:left;margin:2px 0" onclick="openForm(\''+kind+'\',\''+j.id+'\')">'+
+      '<b>'+esc(j.no)+'</b>&nbsp;· '+esc(j.plate||'')+' · '+esc(j.owner||'—')+' <span class="muted small">&nbsp;'+esc(j.stage||'')+'</span></button>';
+  }).join('');
+}
+function formJobSearch(kind, q){ var el=document.getElementById('fmHits'); if(el) el.innerHTML=_formHitsHTML(kind, q); }
+
+/* Top of every form dialog: language (always visible), then the job — a search
+   box until one is picked, its summary after. Editing a saved form keeps its job. */
+var _formLang='en';
+function _formHead(kind, j, ed){
+  var lang=(ed && ed.lang) || _formLang || 'en';
+  var langSel=field('Language','<select id="fmLang" onchange="_formLang=this.value"><option value="en"'+(lang==='en'?' selected':'')+'>English</option>'+
+    '<option value="fil"'+(lang==='fil'?' selected':'')+'>Filipino (Tagalog)</option></select>', 'The whole printout is in this language.');
+  var hidden='<input type="hidden" id="fmJob" value="'+attr(j?j.id:'')+'"><input type="hidden" id="fmEdit" value="'+attr(ed?ed.id:'')+'">';
+  if (ed) return hidden+'<div class="muted small" style="margin:0 0 8px">Editing the form issued '+esc(fmtDateTime(ed.at))+' on '+esc(j?j.no:'')+
+    '. Reprint it and have it signed again if the signed copy no longer matches.</div>'+langSel+_jobSummary(j);
+  if (!j) return hidden+langSel+
+    field('Find the job order','<input id="fmQ" placeholder="Type JO #, plate or owner…" oninput="formJobSearch(\''+kind+'\',this.value)" autocomplete="off">')+
+    '<div id="fmHits">'+_formHitsHTML(kind,'')+'</div>';
+  return hidden+langSel+_jobSummary(j, kind);
+}
+function _jobSummary(j, kind){
+  return '<div class="notes small" style="margin:0 0 10px"><b>'+esc(j.no)+' · '+esc(j.plate)+'</b> · '+esc(_vehLabel(j)||'—')+
+    (j.chassis?' · Chassis '+esc(j.chassis):'')+' · '+esc(num(j.odometer))+' km<br>'+
+    esc(j.owner||'—')+(j.contactNumber?' · '+esc(j.contactNumber):'')+
+    (kind?' &nbsp;<a href="#" onclick="openForm(\''+kind+'\');return false">Change</a>':'')+'</div>';
+}
+function _staffOpts(list, sel){
+  return '<option value="">—</option>'+list.map(function(s){
+    return '<option value="'+attr(s.id)+'"'+(s.id===sel?' selected':'')+'>'+esc(s.name)+'</option>'; }).join('');
+}
+function _advisers(){ return (S.staff||[]).filter(function(s){ return s.role==='SA' || s.role==='SV'; }); }
+
+/* Open a form: kind, the job (optional) and, to edit, the saved form's id. */
+function openForm(kind, jobId, formId){
+  var ed = formId ? _findForm(jobId, formId) : null;
+  if (formId && !ed){ toast('Form not found','err'); return; }
+  var j = jobId ? jobById(jobId) : null;
+  if (document.getElementById('fmLang')) _formLang = val('fmLang') || _formLang;   // keep the language while picking
+  var html = kind==='release' ? releaseFormHTML(j, ed) : waiverFormHTML(j, ed);
+  var footer='<button class="btn ghost" onclick="closeModal()">Cancel</button><span style="flex:1"></span>'+
+    '<button class="btn primary" onclick="saveForm(\''+kind+'\')">'+(ed?'Save changes &amp; print':'Save &amp; print')+'</button>';
+  var body=document.querySelector('#modalRoot .modal-body');
+  if (!ed && body && document.getElementById('fmJob') && !val('fmEdit') && document.getElementById('fmKind') && val('fmKind')===kind){
+    body.innerHTML=html; if(!j) _focusSoon('fmQ'); return; }                  // picking a job: keep the dialog
+  openModal((ed?'Edit · ':'')+formKindTitle(kind), html, { width:'660px', footer:footer });
+  if(!j) _focusSoon('fmQ');
+}
+function _focusSoon(id){ setTimeout(function(){ var e=document.getElementById(id); if(e&&e.focus) e.focus(); }, 30); }
+/* Back-compat names (job page buttons, older calls). */
+function openWaiver(jobId, formId){ openForm('waiver', jobId, formId); }
+function openReleaseForm(jobId, formId){ openForm('release', jobId, formId); }
+
+function saveForm(kind){
+  var jobId=val('fmJob'), formId=val('fmEdit'), lang=val('fmLang');
+  var res;
+  if (kind==='release'){
+    var data={ customer:val('rlCustomer'), odo:val('rlOdo'), remarks:val('rlRemarks'), adviserId:val('rlAdv'), releasedById:val('rlBy'), lang:lang,
+      returned:[], notReturned:[] };
+    Array.prototype.forEach.call(document.querySelectorAll('#modalRoot input[data-belong]'), function(cb){
+      (cb.checked ? data.returned : data.notReturned).push(cb.getAttribute('data-belong')); });
+    res = formId ? updateReleaseCore(jobId, formId, data) : issueReleaseCore(jobId, data);
+  } else {
+    var d={ customer:val('wvCustomer'), items:String(val('wvItems')||'').split(/\r?\n/), findings:val('wvFindings'),
+      secretaryId:val('wvSec'), adviserId:val('wvAdv'), lang:lang };
+    res = formId ? updateWaiverCore(jobId, formId, d) : issueWaiverCore(jobId, d);
+  }
+  if(!res.ok){ toast(res.msg,'err'); return; }
+  persist(); closeModal();
+  printDoc(docForm(jobById(jobId), res.rec));
+  toast(formKindTitle(kind)+(formId?' updated':' saved'));
+  render();
+}
+function docForm(j, f){ return f.kind==='release' ? docRelease(j, f) : docWaiver(j, f); }
+function printIssuedForm(jobId, formId){
+  var f=_findForm(jobId, formId);
+  if(!f){ toast('Form not found','err'); return; }
+  printDoc(docForm(jobById(jobId), f));
+}
+
+/* ======================= Quitclaim & Release Waiver ======================= */
 /* Starting list of declined items: what the PMS inspection flagged, if any.
    The adviser edits it down to what the customer actually declined. */
 function waiverDefaultItems(j){
@@ -11723,62 +11833,22 @@ function waiverDefaultItems(j){
     return f.label+(f.n?' — '+f.n:'')+' ('+(f.s==='replace'?'needs replacement':'requires attention')+')';
   });
 }
-function _waiverJobs(){
-  return (S.jobs||[]).filter(function(j){ return typeof jobCancelled!=='function' || !jobCancelled(j); })
-    .slice().sort(function(a,b){ return String(b.dateIn||'').localeCompare(String(a.dateIn||'')); }).slice(0,300);
-}
-function _staffOpts(list, sel){
-  return '<option value="">—</option>'+list.map(function(s){
-    return '<option value="'+attr(s.id)+'"'+(s.id===sel?' selected':'')+'>'+esc(s.name)+'</option>'; }).join('');
-}
-/* The waiver dialog. ed = the saved waiver being edited (its job is fixed then),
-   or null for a new one. */
-function waiverFormHTML(jobId, ed){
-  var j = jobId ? jobById(jobId) : null;
-  var head = ed
-    ? '<input type="hidden" id="wvJob" value="'+attr(j?j.id:'')+'"><input type="hidden" id="wvEdit" value="'+attr(ed.id)+'">'+
-      '<div class="muted small" style="margin:0 0 8px">Editing the waiver issued '+esc(fmtDateTime(ed.at))+' on '+esc(j?j.no:'')+'. Reprint it and have it signed again if the signed copy no longer matches.</div>'
-    : field('Job order','<select id="wvJob" onchange="openWaiver(this.value)">'+
-        '<option value="">— pick the job order —</option>'+_waiverJobs().map(function(x){
-          return '<option value="'+attr(x.id)+'"'+(j&&x.id===j.id?' selected':'')+'>'+esc(x.no+' · '+(x.plate||'')+' · '+(x.owner||''))+'</option>'; }).join('')+
-        '</select>', 'The vehicle and customer details come from the job order.')+
-      '<input type="hidden" id="wvEdit" value="">';
+function waiverFormHTML(j, ed){
+  var head = '<input type="hidden" id="fmKind" value="waiver">'+_formHead('waiver', j, ed);
   if (!j) return head;
-  var veh = ((j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:'')).trim();
   var secs = staffByRole('Secretary');
-  var advs = (S.staff||[]).filter(function(s){ return s.role==='SA' || s.role==='SV'; });
   var secSel = ed ? ed.secretaryId : (secs.length===1 ? secs[0].id : '');
-  var lang = (ed && ed.lang) || 'en';
   var items = ed ? (ed.items||[]) : waiverDefaultItems(j);
   return head+
-    '<div class="notes small" style="margin:0 0 10px"><b>'+esc(j.plate)+'</b> · '+esc(veh||'—')+
-      (j.chassis?' · Chassis '+esc(j.chassis):'')+' · '+esc(num(j.odometer))+' km<br>'+
-      esc(j.owner||'—')+(j.contactNumber?' · '+esc(j.contactNumber):'')+'</div>'+
-    '<div class="grid2">'+
-      field('Customer signing','<input id="wvCustomer" value="'+attr(ed ? ed.customer : (j.contactPerson||j.owner||''))+'">',
-        'The registered owner or the owner’s representative.')+
-      field('Language','<select id="wvLang"><option value="en"'+(lang==='en'?' selected':'')+'>English</option>'+
-        '<option value="fil"'+(lang==='fil'?' selected':'')+'>Filipino</option></select>', 'The whole printout is in this language.')+
-    '</div>'+
+    field('Customer signing','<input id="wvCustomer" value="'+attr(ed ? ed.customer : (j.contactPerson||j.owner||''))+'">',
+      'The registered owner or the owner’s representative.')+
     field('Declined repairs / parts','<textarea id="wvItems" rows="6" placeholder="One per line — e.g. Front brake pads worn to 2mm, replacement declined">'+
       esc(items.join('\n'))+'</textarea>', ed ? 'One item per line.' : 'One item per line. Filled from the PMS findings when there are any — keep only what the customer declined.')+
     field('Findings and risks explained (optional)','<textarea id="wvFindings" rows="3" placeholder="What was found and what could happen if not done">'+esc(ed?ed.findings||'':'')+'</textarea>')+
     '<div class="grid2">'+
       field('Secretary','<select id="wvSec">'+_staffOpts(secs, secSel)+'</select>')+
-      field('Service Adviser','<select id="wvAdv">'+_staffOpts(advs, ed ? ed.adviserId : j.saId)+'</select>')+
+      field('Service Adviser','<select id="wvAdv">'+_staffOpts(_advisers(), ed ? ed.adviserId : j.saId)+'</select>')+
     '</div>';
-}
-function _findForm(jobId, formId){
-  var j=jobById(jobId); return (j && (j.forms||[]).filter(function(x){ return x.id===formId; })[0]) || null;
-}
-function openWaiver(jobId, formId){
-  var ed = formId ? _findForm(jobId, formId) : null;
-  if (formId && !ed){ toast('Form not found','err'); return; }
-  var footer='<button class="btn ghost" onclick="closeModal()">Cancel</button><span style="flex:1"></span>'+
-    '<button class="btn primary" onclick="saveWaiver()">'+(ed?'Save changes &amp; print':'Save &amp; print')+'</button>';
-  var body=document.querySelector('#modalRoot .modal-body');
-  if (!ed && body && document.getElementById('wvJob') && !val('wvEdit')){ body.innerHTML=waiverFormHTML(jobId, null); return; }   // switching job: keep the dialog
-  openModal(ed ? 'Edit waiver' : 'Quitclaim & Release Waiver', waiverFormHTML(jobId, ed), { width:'640px', footer:footer });
 }
 /* Shared checks for a new or edited waiver: the cleaned fields, or { msg }. */
 function _waiverFields(data){
@@ -11790,7 +11860,6 @@ function _waiverFields(data){
   return { customer:customer, items:items, findings:String(data.findings||'').trim(),
     secretaryId:data.secretaryId||'', adviserId:data.adviserId||'', lang:(data.lang==='fil'?'fil':'en') };
 }
-function _meName(){ var me=(typeof CURRENT_USER!=='undefined') ? CURRENT_USER : null; return (me&&(me.name||me.username||me.email))||''; }
 /* Testable: record a waiver on its job. data = { customer, items[], findings,
    secretaryId, adviserId, lang }. Returns { ok, rec } or { ok:false, msg }. */
 function issueWaiverCore(jobId, data){
@@ -11800,30 +11869,15 @@ function issueWaiverCore(jobId, data){
   j.forms=j.forms||[]; j.forms.push(rec);
   return { ok:true, rec:rec };
 }
-/* Testable: change a saved waiver. It keeps its id and issue date (the date the
-   customer signed); the edit is stamped so a reprint can be told apart. */
-function updateWaiverCore(jobId, formId, data){
-  var f=_findForm(jobId, formId); if(!f) return { ok:false, msg:'Form not found' };
-  var v=_waiverFields(data); if(v.msg) return { ok:false, msg:v.msg };
+/* Change a saved form. It keeps its id and issue date (the date the customer
+   signed); the edit is stamped so a reprint can be told apart. */
+function _updateForm(jobId, formId, kind, v){
+  var f=_findForm(jobId, formId); if(!f || f.kind!==kind) return { ok:false, msg:'Form not found' };
+  if(v.msg) return { ok:false, msg:v.msg };
   Object.assign(f, v, { editedAt:new Date().toISOString(), editedBy:_meName() });
   return { ok:true, rec:f };
 }
-function saveWaiver(){
-  var jobId=val('wvJob'), formId=val('wvEdit');
-  var data={ customer:val('wvCustomer'), items:String(val('wvItems')||'').split(/\r?\n/), findings:val('wvFindings'),
-    secretaryId:val('wvSec'), adviserId:val('wvAdv'), lang:val('wvLang') };
-  var res = formId ? updateWaiverCore(jobId, formId, data) : issueWaiverCore(jobId, data);
-  if(!res.ok){ toast(res.msg,'err'); return; }
-  persist(); closeModal();
-  printDoc(docWaiver(jobById(jobId), res.rec));
-  toast(formId ? 'Waiver updated' : 'Waiver saved');
-  render();
-}
-function printIssuedForm(jobId, formId){
-  var f=_findForm(jobId, formId);
-  if(!f){ toast('Form not found','err'); return; }
-  printDoc(docWaiver(jobById(jobId), f));
-}
+function updateWaiverCore(jobId, formId, data){ return _updateForm(jobId, formId, 'waiver', _waiverFields(data)); }
 
 /* ---- The printout's wording, per language ----------------------------------
    Filipino months for the date the customer signs on. */
@@ -11833,13 +11887,19 @@ function fmtDateFil(iso){
   var m=new Date(d.getTime()+8*3600*1000);   // shop day (Asia/Manila)
   return 'ika-'+m.getUTCDate()+' ng '+FIL_MONTHS[m.getUTCMonth()]+', '+m.getUTCFullYear();
 }
+/* Labels both forms share. */
+var FORM_LABELS = {
+  en: { customerCopy:'Customer Copy', shopCopy:'Shop Copy', plate:'Plate', vehicle:'Vehicle', chassis:'Chassis #', odo:'Odometer',
+        jo:'Job Order', date:'Date', owner:'Registered owner', contact:'Contact #', address:'Address', sigAdv:'Service Adviser',
+        date_of:function(iso){ return fmtDate(iso); } },
+  fil:{ customerCopy:'Kopya ng Customer', shopCopy:'Kopya ng Shop', plate:'Plaka', vehicle:'Sasakyan', chassis:'Chassis #', odo:'Odometer',
+        jo:'Job Order', date:'Petsa', owner:'May-ari', contact:'Contact #', address:'Tirahan', sigAdv:'Service Adviser',
+        date_of:function(iso){ return fmtDateFil(iso); } }
+};
 /* name, shop and place arrive already escaped. */
 var WAIVER_TEXT = {
   en: {
-    title:'Quitclaim & Release Waiver · Declined Repairs', customerCopy:'Customer Copy', shopCopy:'Shop Copy',
-    plate:'Plate', vehicle:'Vehicle', chassis:'Chassis #', odo:'Odometer', jo:'Job Order', date:'Date',
-    owner:'Registered owner', contact:'Contact #', address:'Address',
-    date_of:function(iso){ return fmtDate(iso); },
+    title:'Quitclaim & Release Waiver · Declined Repairs',
     intro:function(name, shop){ return 'I, <b>'+name+'</b>, of legal age, as the registered owner or the owner’s authorized representative of the vehicle described above, '+
       'acknowledge that <b>'+shop+'</b> inspected the vehicle and recommended the following repairs and/or parts replacement:'; },
     itemsHead:'Recommended repair / part — DECLINED by the customer',
@@ -11851,14 +11911,10 @@ var WAIVER_TEXT = {
         'arising from or connected with the declined work, including any damage, loss, injury or expense that results from it not being performed.',
       'I understand that any warranty on the work the shop did perform does not cover failures caused by, or related to, the declined items.',
       'I have read and understood this Quitclaim and Release Waiver and I sign it voluntarily on <b>'+when+'</b>'+(place?' at '+place:'')+'.' ]; },
-    sigCustomer:'Customer — signature over printed name', sigSec:'Secretary', sigAdv:'Service Adviser',
-    foot:'Waiver'
+    sigCustomer:'Customer — signature over printed name', sigSec:'Secretary'
   },
   fil: {
-    title:'Quitclaim at Release Waiver · Mga Tinanggihang Pagkukumpuni', customerCopy:'Kopya ng Customer', shopCopy:'Kopya ng Shop',
-    plate:'Plaka', vehicle:'Sasakyan', chassis:'Chassis #', odo:'Odometer', jo:'Job Order', date:'Petsa',
-    owner:'May-ari', contact:'Contact #', address:'Tirahan',
-    date_of:function(iso){ return fmtDateFil(iso); },
+    title:'Quitclaim at Release Waiver · Mga Tinanggihang Pagkukumpuni',
     intro:function(name, shop){ return 'Ako, si <b>'+name+'</b>, nasa hustong gulang, bilang rehistradong may-ari o awtorisadong kinatawan ng may-ari ng sasakyang nakalarawan sa itaas, '+
       'ay kinikilala na sinuri ng <b>'+shop+'</b> ang sasakyan at inirekomenda ang mga sumusunod na pagkukumpuni at/o pagpapalit ng piyesa:'; },
     itemsHead:'Inirekomendang pagkukumpuni / piyesa — TINANGGIHAN ng customer',
@@ -11870,22 +11926,26 @@ var WAIVER_TEXT = {
         'na nagmumula o may kaugnayan sa mga tinanggihang gawain, kabilang ang anumang pinsala, kawalan, pagkasugat o gastos na idudulot ng hindi paggawa nito.',
       'Nauunawaan ko na ang anumang warranty sa mga gawaing isinagawa ng shop ay hindi sumasaklaw sa mga sirang dulot ng, o may kaugnayan sa, mga tinanggihang gawain o piyesa.',
       'Aking binasa at naunawaan ang Quitclaim at Release Waiver na ito at kusang-loob ko itong nilagdaan ngayong <b>'+when+'</b>'+(place?' sa '+place:'')+'.' ]; },
-    sigCustomer:'Customer — lagda sa ibabaw ng pangalan', sigSec:'Sekretarya', sigAdv:'Service Adviser',
-    foot:'Waiver'
+    sigCustomer:'Customer — lagda sa ibabaw ng pangalan', sigSec:'Sekretarya'
   }
 };
+function _formFoot(L, j, f){
+  return '<div class="foot">'+esc(formKindTitle(f.kind))+' '+esc(f.id)+' · '+L.jo+' '+esc(j.no)+' · '+L.plate+' '+esc(j.plate)+
+    (f.editedAt?' · edited '+esc(fmtDateTime(f.editedAt)):'')+'</div>';
+}
+function _sigGrid(cells){ return '<div class="sig-grid">'+cells.map(function(c){ return '<div class="sigline">'+c[0]+'<br>'+c[1]+'</div>'; }).join('')+'</div>'; }
+function _staffSig(id){ return id ? esc(staffName(id)) : ''; }
 
 /* The printout: Customer Copy and Shop Copy, in the waiver's language. */
 function docWaiver(j, f){
-  var T=WAIVER_TEXT[f.lang==='fil'?'fil':'en'];
+  var lang=f.lang==='fil'?'fil':'en', T=WAIVER_TEXT[lang], L=FORM_LABELS[lang];
   var sh=S.shop||{}, shop=esc(sh.legal||sh.name||'the shop');
-  var veh=((j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:'')).trim();
-  var when=T.date_of(f.at);
+  var when=L.date_of(f.at);
   function copy(tag){
     return '<div class="copy-tag">'+tag+'</div>'+docHeader(T.title)+
       metaCols(
-        [[T.plate, esc(j.plate)],[T.vehicle, esc(veh)],[T.chassis, esc(j.chassis)],[T.odo, num(j.odometer)+' km']],
-        [[T.jo, esc(j.no)],[T.date, esc(when)],[T.owner, esc(j.owner)],[T.contact, esc(j.contactNumber)],[T.address, esc(j.address)]])+
+        [[L.plate, esc(j.plate)],[L.vehicle, esc(_vehLabel(j))],[L.chassis, esc(j.chassis)],[L.odo, num(j.odometer)+' km']],
+        [[L.jo, esc(j.no)],[L.date, esc(when)],[L.owner, esc(j.owner)],[L.contact, esc(j.contactNumber)],[L.address, esc(j.address)]])+
       '<p style="font-size:12.5px;line-height:1.55">'+T.intro(esc(f.customer), shop)+'</p>'+
       '<table><thead><tr><th style="width:36px">#</th><th>'+T.itemsHead+'</th></tr></thead><tbody>'+
         (f.items||[]).map(function(it,i){ return '<tr><td>'+(i+1)+'</td><td>'+esc(it)+'</td></tr>'; }).join('')+
@@ -11894,15 +11954,128 @@ function docWaiver(j, f){
       '<div style="font-size:12.5px;line-height:1.55">'+
         T.paras(shop, esc(when), sh.address?esc(sh.address):'').map(function(p){ return '<p>'+p+'</p>'; }).join('')+
       '</div>'+
-      '<div class="sig-grid">'+
-        '<div class="sigline">'+T.sigCustomer+'<br><b>'+esc(f.customer)+'</b></div>'+
-        '<div class="sigline">'+T.sigSec+'<br>'+(f.secretaryId?esc(staffName(f.secretaryId)):'')+'</div>'+
-        '<div class="sigline">'+T.sigAdv+'<br>'+(f.adviserId?esc(staffName(f.adviserId)):'')+'</div>'+
-      '</div>'+
-      '<div class="foot">'+T.foot+' '+esc(f.id)+' · '+T.jo+' '+esc(j.no)+' · '+T.plate+' '+esc(j.plate)+
-        (f.editedAt?' · edited '+esc(fmtDateTime(f.editedAt)):'')+'</div>';
+      _sigGrid([[T.sigCustomer,'<b>'+esc(f.customer)+'</b>'],[T.sigSec,_staffSig(f.secretaryId)],[L.sigAdv,_staffSig(f.adviserId)]])+
+      _formFoot(L, j, f);
   }
-  return docShell('Waiver '+j.no, '<div class="pagebreak">'+copy(T.customerCopy)+'</div>'+copy(T.shopCopy));
+  return docShell('Waiver '+j.no, '<div class="pagebreak">'+copy(L.customerCopy)+'</div>'+copy(L.shopCopy));
+}
+
+/* =========================== Vehicle Release Form ========================== */
+/* What the intake checklist recorded as left in the vehicle. */
+function jobBelongings(j){
+  var cl=j && j.checklist; if(!cl || !cl.created) return [];
+  return Object.keys(cl.items||{}).filter(function(k){ return cl.items[k]; });
+}
+function releaseFormHTML(j, ed){
+  var head = '<input type="hidden" id="fmKind" value="release">'+_formHead('release', j, ed);
+  if (!j) return head;
+  var items = jobBelongings(j);
+  var back = ed ? (ed.returned||[]) : items;
+  var belong = items.length
+    ? items.map(function(k){ return '<label class="row gap small" style="align-items:center;margin:2px 0"><input type="checkbox" data-belong="'+attr(k)+'"'+(back.indexOf(k)>=0?' checked':'')+'> '+esc(k)+'</label>'; }).join('')
+    : '<div class="muted small">No belongings were listed at intake.</div>';
+  return head+
+    (j.stage!=='Released' ? '<div class="lg-msg" style="margin:0 0 10px">This job order is not released yet — print this at handover, then tap <b>Release vehicle</b> on the job.</div>' : '')+
+    '<div class="grid2">'+
+      field('Customer receiving','<input id="rlCustomer" value="'+attr(ed ? ed.customer : (j.contactPerson||j.owner||''))+'">', 'The person who takes the vehicle and signs.')+
+      field('Odometer at release','<input id="rlOdo" type="text" inputmode="numeric" value="'+attr(ed ? ed.odo : (j.lastServiceOdo||j.odometer||''))+'">')+
+    '</div>'+
+    field('Belongings returned', '<div>'+belong+'</div>', items.length ? 'Untick anything not handed back.' : '')+
+    field('Remarks (optional)','<textarea id="rlRemarks" rows="2" placeholder="e.g. old parts returned in the trunk">'+esc(ed?ed.remarks||'':'')+'</textarea>')+
+    '<div class="grid2">'+
+      field('Service Adviser','<select id="rlAdv">'+_staffOpts(_advisers(), ed ? ed.adviserId : j.saId)+'</select>')+
+      field('Released by (Supervisor)','<select id="rlBy">'+_staffOpts(staffByRole('SV'), ed ? ed.releasedById : j.approvedReleaseBy)+'</select>')+
+    '</div>';
+}
+function _releaseFields(j, data){
+  data=data||{};
+  var customer=String(data.customer||'').trim();
+  if(!customer) return { msg:'Enter the name of the customer receiving the vehicle' };
+  if(!(j.stage==='Final Billing' || j.stage==='Released')) return { msg:'Bill the job order first — a release form is for a billed job' };
+  var clean=function(a){ return (a||[]).map(function(s){ return String(s||'').trim(); }).filter(Boolean); };
+  return { customer:customer, odo:Number(String(data.odo||'').replace(/[^0-9.]/g,''))||0, remarks:String(data.remarks||'').trim(),
+    returned:clean(data.returned), notReturned:clean(data.notReturned),
+    adviserId:data.adviserId||'', releasedById:data.releasedById||'', lang:(data.lang==='fil'?'fil':'en') };
+}
+/* Testable: record a release form on its job. data = { customer, odo, remarks,
+   returned[], notReturned[], adviserId, releasedById, lang }. */
+function issueReleaseCore(jobId, data){
+  var j=jobById(jobId); if(!j) return { ok:false, msg:'Pick the job order' };
+  var v=_releaseFields(j, data); if(v.msg) return { ok:false, msg:v.msg };
+  var rec=Object.assign({ id:uid('fm'), kind:'release', at:new Date().toISOString(), byName:_meName() }, v);
+  j.forms=j.forms||[]; j.forms.push(rec);
+  return { ok:true, rec:rec };
+}
+function updateReleaseCore(jobId, formId, data){
+  var j=jobById(jobId); if(!j) return { ok:false, msg:'Form not found' };
+  return _updateForm(jobId, formId, 'release', _releaseFields(j, data));
+}
+
+var RELEASE_TEXT = {
+  en: {
+    title:'Vehicle Release Form', or:'OR #', relOdo:'Odometer at release', relDate:'Date released',
+    work:'Work done', type:'Type', desc:'Description', qty:'Qty', part:'Part', labor:'Labor',
+    belong:'Belongings returned', noBelong:'No belongings were listed at intake.', notBack:'not returned',
+    pay:'Payment', paid:'Paid in full', onCharge:function(b){ return 'Released on charge — '+b+' still owing'; }, owing:function(b){ return 'Balance '+b; },
+    voided:'Receipt voided', remarks:'Remarks', waiverRef:function(id, d){ return 'Declined work: see Quitclaim & Release Waiver '+id+' dated '+d+'.'; },
+    paras:function(name, shop, when, place){ return [
+      'I, <b>'+name+'</b>, acknowledge that I have received from <b>'+shop+'</b> the vehicle described above, on the date and at the odometer reading stated.',
+      'I have inspected the vehicle and received it in good order and condition, with the work listed above done to my satisfaction and my belongings returned as listed above.',
+      'Any concern about the work done must be reported to the shop as soon as possible. The shop is not responsible for damage caused by accident, misuse, or work done elsewhere after release, '+
+        'nor for any repair the customer declined in a waiver signed for this job order.',
+      'I sign this release voluntarily on <b>'+when+'</b>'+(place?' at '+place:'')+'.' ]; },
+    sigCustomer:'Customer — received by (signature over printed name)', sigBy:'Released by (Supervisor)'
+  },
+  fil: {
+    title:'Vehicle Release Form · Katibayan ng Pagtanggap ng Sasakyan', or:'OR #', relOdo:'Odometer sa paglabas', relDate:'Petsa ng paglabas',
+    work:'Mga gawaing isinagawa', type:'Uri', desc:'Paglalarawan', qty:'Dami', part:'Piyesa', labor:'Labor',
+    belong:'Mga gamit na naibalik', noBelong:'Walang gamit na nakalista sa pagpasok ng sasakyan.', notBack:'hindi naibalik',
+    pay:'Bayad', paid:'Bayad nang buo', onCharge:function(b){ return 'Inilabas nang naka-charge — '+b+' pa ang balanse'; }, owing:function(b){ return 'Balanse '+b; },
+    voided:'Voided ang resibo', remarks:'Puna', waiverRef:function(id, d){ return 'Mga tinanggihang gawain: tingnan ang Quitclaim at Release Waiver '+id+' na may petsang '+d+'.'; },
+    paras:function(name, shop, when, place){ return [
+      'Ako, si <b>'+name+'</b>, ay kinikilala na aking tinanggap mula sa <b>'+shop+'</b> ang sasakyang nakalarawan sa itaas, sa petsa at odometer na nakasaad.',
+      'Aking sinuri ang sasakyan at tinanggap ko ito sa maayos na kalagayan, tapos ang mga gawaing nakalista sa itaas ayon sa aking kasiyahan, at naibalik ang aking mga gamit ayon sa nakalista sa itaas.',
+      'Anumang reklamo tungkol sa gawaing isinagawa ay dapat ipaalam agad sa shop. Hindi mananagot ang shop sa pinsalang dulot ng aksidente, maling paggamit, o gawaing isinagawa sa ibang lugar matapos ilabas ang sasakyan, '+
+        'gayundin sa anumang pagkukumpuning tinanggihan ng customer sa waiver na nilagdaan para sa job order na ito.',
+      'Kusang-loob kong nilagdaan ang release na ito ngayong <b>'+when+'</b>'+(place?' sa '+place:'')+'.' ]; },
+    sigCustomer:'Customer — tumanggap (lagda sa ibabaw ng pangalan)', sigBy:'Inilabas ni (Supervisor)'
+  }
+};
+/* Payment status as of printing. */
+function _releasePayLine(T, j){
+  if (typeof jobVoided==='function' && jobVoided(j)) return T.voided;
+  var bal=(typeof jobBalance==='function') ? jobBalance(j) : 0;
+  if (bal<=0.001) return T.paid;
+  return j.charge ? T.onCharge(peso(bal)) : T.owing(peso(bal));
+}
+function docRelease(j, f){
+  var lang=f.lang==='fil'?'fil':'en', T=RELEASE_TEXT[lang], L=FORM_LABELS[lang];
+  var sh=S.shop||{}, shop=esc(sh.legal||sh.name||'the shop');
+  var when=L.date_of(f.at), relDate=L.date_of(j.releasedAt||f.at);
+  var waivers=(j.forms||[]).filter(function(x){ return x.kind==='waiver'; });
+  var work='<table><thead><tr><th style="width:36px">#</th><th style="width:70px">'+T.type+'</th><th>'+T.desc+'</th><th class="r">'+T.qty+'</th></tr></thead><tbody>'+
+    (j.lines||[]).map(function(l,i){ return '<tr><td>'+(i+1)+'</td><td>'+(l.type==='part'?T.part:T.labor)+'</td><td>'+esc(l.desc)+'</td><td class="r">'+num(l.qty)+'</td></tr>'; }).join('')+
+    '</tbody></table>';
+  var belongings=(f.returned||[]).map(function(k){ return '<div>☑ '+esc(k)+'</div>'; }).join('')+
+    (f.notReturned||[]).map(function(k){ return '<div>☐ '+esc(k)+' <i>('+T.notBack+')</i></div>'; }).join('');
+  function copy(tag){
+    return '<div class="copy-tag">'+tag+'</div>'+docHeader(T.title)+
+      metaCols(
+        [[L.plate, esc(j.plate)],[L.vehicle, esc(_vehLabel(j))],[L.chassis, esc(j.chassis)],[T.relOdo, f.odo?num(f.odo)+' km':'']],
+        [[L.jo, esc(j.no)],[T.or, esc(j.orNumber||'')],[T.relDate, esc(relDate)],[L.owner, esc(j.owner)],[L.contact, esc(j.contactNumber)]])+
+      '<div class="dtitle" style="font-size:12px;margin-top:10px">'+T.work+'</div>'+work+
+      '<div class="dtitle" style="font-size:12px;margin-top:10px">'+T.belong+'</div>'+
+        (belongings ? '<div class="checks">'+belongings+'</div>' : '<div class="muted small">'+T.noBelong+'</div>')+
+      '<div class="notes"><b>'+T.pay+':</b> '+esc(_releasePayLine(T, j))+
+        waivers.map(function(w){ return '<br>'+esc(T.waiverRef(w.id, L.date_of(w.at))); }).join('')+
+        (f.remarks?'<br><b>'+T.remarks+':</b> '+esc(f.remarks):'')+'</div>'+
+      '<div style="font-size:12.5px;line-height:1.55">'+
+        T.paras(esc(f.customer), shop, esc(when), sh.address?esc(sh.address):'').map(function(p){ return '<p>'+p+'</p>'; }).join('')+
+      '</div>'+
+      _sigGrid([[T.sigCustomer,'<b>'+esc(f.customer)+'</b>'],[L.sigAdv,_staffSig(f.adviserId)],[T.sigBy,_staffSig(f.releasedById)]])+
+      _formFoot(L, j, f);
+  }
+  return docShell('Release '+j.no, '<div class="pagebreak">'+copy(L.customerCopy)+'</div>'+copy(L.shopCopy));
 }
 
 </script>
