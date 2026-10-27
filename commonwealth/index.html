@@ -670,7 +670,7 @@ var BRANCH = {"id":"commonwealth","slug":"commonwealth","name":"Basic by JMSI �
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-10-26 · efe76a0';
+var APP_VERSION = 'v1.3.0 · 2026-10-27 · 47dcc2d';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -774,7 +774,14 @@ function fmtDateTime(iso){ if(!iso) return '—'; var d=new Date(iso); if(isNaN(
 function daysBetween(a,b){ var ms = new Date(b) - new Date(a); return Math.floor(ms/86400000); }
 
 /* ---- Line / money math (single source of truth) --------------------------- */
-function lineTotal(l){ return round2((Number(l.qty)||0) * (Number(l.price)||0)); }
+/* A NOT-BILLED part line (noBill) is a replacement for a part damaged at the
+   shop: it comes out of stock and its cost counts, but the customer is not
+   charged for it and never sees it. Its cost may be charged to the mechanic
+   who damaged it (chargeTo, part20). */
+function lineNoBill(l){ return !!l && l.type==='part' && !!l.noBill; }
+function lineTotal(l){ return lineNoBill(l) ? 0 : round2((Number(l.qty)||0) * (Number(l.price)||0)); }
+/* The lines the customer is billed for — what customer documents list. */
+function billedLines(j){ return ((j&&j.lines)||[]).filter(function(l){ return !lineNoBill(l); }); }
 function sumLines(lines, type){
   return round2((lines||[]).reduce(function(s,l){
     if (type && l.type!==type) return s; return s + lineTotal(l);
@@ -2954,7 +2961,8 @@ function jobLinesPanel(j){
     var rows = list.map(function(l){
       return '<tr>'+
         '<td>'+(type==='part'&&l.sku?'<span class="muted small">'+esc(l.sku)+'</span> ':'')+esc(l.desc)+
-          (laborSubcontracted(l)?' <span class="chip">Subcontracted'+(can('part_cost')?' · net '+peso(l.netPrice):'')+'</span>':'')+'</td><td class="r">'+num(l.qty)+'</td>'+
+          (laborSubcontracted(l)?' <span class="chip">Subcontracted'+(can('part_cost')?' · net '+peso(l.netPrice):'')+'</span>':'')+
+          (lineNoBill(l)?' <span class="chip gold">Not billed'+(l.chargeTo?' · charged to '+esc(staffName(l.chargeTo)):' · shop absorbs')+'</span>':'')+'</td><td class="r">'+num(l.qty)+'</td>'+
         (showPrice?'<td class="r">'+peso(l.price)+'</td><td class="r">'+peso(lineTotal(l))+'</td>':'')+
         '<td class="r">'+(locked?'':'<button class="ic" onclick="editLine(\''+j.id+'\',\''+l.id+'\')">✎</button>'+
           '<button class="ic" onclick="delLine(\''+j.id+'\',\''+l.id+'\')">✕</button>')+'</td></tr>';
@@ -2970,8 +2978,9 @@ function jobLinesPanel(j){
 /* Line editor. Part lines: Qty → SKU (auto-fills Part Name / Net Price / SRP from
    the parts catalog, all editable) with full manual entry when no SKU is used.
    Labor lines: pick from the labor menu or free-text. */
-function lineForm(l){
+function lineForm(l, forJob){
   l=l||{type:'part',qty:1,price:0,desc:''};
+  _lineForJob=!!forJob;       // only a job's part lines can be "not billed" (estimates are quotes)
   _skuFill=null;              // fresh box — nothing here was auto-filled yet
   // Parts and labor are encoded separately — the type is fixed by which panel's
   // Add button opened the dialog, so no Type selector is shown.
@@ -2990,7 +2999,26 @@ function partFields(l){
     '<div class="grid2">'+
     field('Net price (required)','<input id="lnNet" type="text" inputmode="decimal" value="'+attr(l.netPrice||0)+'" onfocus="this.select()">')+
     field('SRP','<input id="lnPrice" type="text" inputmode="decimal" value="'+attr(l.price||0)+'" onfocus="this.select()">')+
-    '</div><div id="skuMsg" class="muted small">'+catalogHint()+'</div>';
+    '</div><div id="skuMsg" class="muted small">'+catalogHint()+'</div>'+
+    (_lineForJob ? noBillFields(l) : '');
+}
+/* "Not billed": a replacement for a part damaged here. Who pays for it decides
+   the mechanic's pay, so only an admin or Supervisor picks the mechanic. */
+var _lineForJob=false;
+function noBillFields(l){
+  var can=canAdjustPayout(), on=!!l.noBill;
+  var mechs=(S.staff||[]).filter(function(s){ return isMechanicRole(s.role); });
+  var who = can
+    ? '<select id="lnChargeTo"><option value="">— shop absorbs the cost —</option>'+mechs.map(function(s){ return '<option value="'+s.id+'"'+(l.chargeTo===s.id?' selected':'')+'>'+esc(s.name)+'</option>'; }).join('')+'</select>'
+    : '<div class="small">'+(l.chargeTo?esc(staffName(l.chargeTo)):'Shop absorbs the cost')+' <span class="muted">· an admin or Supervisor sets this</span></div>';
+  var n=Number(l.chargeN)||1, inst = can
+    ? '<select id="lnChargeN">'+[1,2,3,4,5,6,7,8].map(function(k){ return '<option value="'+k+'"'+(k===n?' selected':'')+'>'+(k===1?'All on the next payout':k+' weekly payouts')+'</option>'; }).join('')+'</select>' : '';
+  return '<label class="chk mt8"><input type="checkbox" id="lnNoBill"'+(on?' checked':'')+' onchange="document.getElementById(\'lnChargeBox\').style.display=this.checked?\'\':\'none\'">'+
+      ' Not billed — replaces a part damaged here; the customer is not charged</label>'+
+    '<div id="lnChargeBox"'+(on?'':' style="display:none"')+'><div class="grid2">'+
+      field('Charge the cost to', who, 'The net price × qty is deducted from that mechanic’s pay when a payout is finalized.')+
+      (can?field('Deduct over', inst, 'Keep each deduction to 20% of the week’s wages or less.'):'')+
+    '</div></div>';
 }
 function laborFields(l){
   var laborOpts='<option value="">— free text —</option>'+laborList().map(function(p){return '<option value="'+p.id+'" data-price="'+p.price+'" data-name="'+attr(p.name)+'"'+(l.ref===p.id?' selected':'')+'>'+esc(p.name)+'</option>';}).join('');
@@ -3053,7 +3081,7 @@ var _pmsLineJob=null;   // job id when a JOB add-labor dialog is open (gates the
 function addLine(id,type){
   lineCtx={job:id,line:null,type:type||'part'};
   _pmsLineJob=id;
-  openModal(type==='labor'?'Add labor':'Add parts', lineForm({type:type||'part'}), {
+  openModal(type==='labor'?'Add labor':'Add parts', lineForm({type:type||'part'}, true), {
     footer:'<button class="btn ghost" onclick="closeModal()">Done</button>'+
       '<span style="flex:1"></span>'+
       '<button class="btn primary" onclick="saveLineMore()">Add line</button>' });
@@ -3081,11 +3109,12 @@ function saveLineMore(){
   var data=readLine();
   if(!data.desc){ toast(data.type==='part'?'Part name required':'Description required','err'); return; }
   if(blockMissingNet(data)) return;
+  Object.assign(data, noBillFromForm(null));
   data.id=uid('ln'); j.lines.push(data); persist();
   toast('Added · '+data.desc);
   render();                                   // refresh the lines table behind the dialog
   var body=document.querySelector('#modalRoot .modal-body');
-  if(body){ body.innerHTML=lineForm({type:data.type}); }   // fresh form, same Type for fast repeats
+  if(body){ body.innerHTML=lineForm({type:data.type}, true); }   // fresh form, same Type for fast repeats
   refocusLineForm();
 }
 /* Return focus to the FIRST real field of the line form — Qty for parts, the
@@ -3098,7 +3127,7 @@ function refocusLineForm(){
   }, 20);
 }
 function editLine(id,lid){ var j=jobById(id); var l=j.lines.find(function(x){return x.id===lid;}); _pmsLineJob=null;
-  openModal('Edit line', lineForm(l), { onOk:'saveLine' }); setTimeout(function(){lineCtx={job:id,line:lid};},10); }
+  openModal('Edit line', lineForm(l, true), { onOk:'saveLine' }); setTimeout(function(){lineCtx={job:id,line:lid};},10); }
 var lineCtx=null;
 function readLine(){
   var type=val('lnType');
@@ -3108,12 +3137,27 @@ function readLine(){
   return { type:'part', ref:null, sku:(val('lnSku')||'').trim(), desc:val('lnDesc'),
     netPrice:Number(val('lnNet'))||0, qty:Number(val('lnQty'))||0, price:Number(val('lnPrice'))||0 };
 }
+/* The not-billed fields from the line dialog (nothing when it has none, e.g. labor).
+   prev = the line as it was: the charge date only moves when the mechanic changes,
+   so editing the qty or price does not restart a charge already being deducted. */
+function noBillFromForm(prev){
+  if(typeof document==='undefined' || !document.getElementById('lnNoBill')) return {};
+  var on=checked('lnNoBill'), can=!!document.getElementById('lnChargeTo');
+  var to=on ? (can ? (val('lnChargeTo')||'') : ((prev&&prev.chargeTo)||'')) : '';
+  return lineChargeFields(prev, on, to, can ? val('lnChargeN') : (prev&&prev.chargeN));
+}
+/* Testable core. */
+function lineChargeFields(prev, on, to, n){
+  var was=(prev&&prev.chargeTo)||'', at=(prev&&prev.chargeAt)||'';
+  if(!to) at=''; else if(to!==was || !at) at=new Date().toISOString();
+  return { noBill:!!on, chargeTo:to, chargeN:Math.min(8, Math.max(1, Math.round(Number(n)||1))), chargeAt:at };
+}
 function saveLine(){
   var j=jobById(lineCtx.job); var data=readLine();
   if(!data.desc){ toast(data.type==='part'?'Part name required':'Description required','err'); return; }
   if(blockMissingNet(data)) return;
-  if(lineCtx.line){ var l=j.lines.find(function(x){return x.id===lineCtx.line;}); Object.assign(l,data); }
-  else { data.id=uid('ln'); j.lines.push(data); }
+  if(lineCtx.line){ var l=j.lines.find(function(x){return x.id===lineCtx.line;}); Object.assign(l,data,noBillFromForm(l)); }
+  else { Object.assign(data, noBillFromForm(null)); data.id=uid('ln'); j.lines.push(data); }
   persist(); closeModal(); render();
 }
 function delLine(id,lid){
@@ -3311,6 +3355,7 @@ function jobComebackPanel(j){
         (orig?kv('Comeback of','<a class="lnk" onclick="go(\'job\',\''+orig.id+'\')">'+esc(orig.no)+'</a> <span class="muted small">'+esc(fmtDate(orig.dateIn))+'</span>'):(j.comebackOf?kv('Comeback of',esc(j.comebackOf)):''))+
         (j.comebackMechId?kv('At-fault mechanic',esc(staffName(j.comebackMechId))):'')+
         (j.comebackReason?kv('Reason',esc(j.comebackReason)):'')+
+        (j.comebackMechId?kv('Gives back',esc([cbGiveBack(j)?'commission on the original job':'', j.cbChargeParts?'parts '+peso(cbPartsCost(j))+(j.cbChargeParts.n>1?' over '+j.cbChargeParts.n+' payouts':''):''].filter(Boolean).join(' + ')||'nothing')):'')+
       '</div>'+
       (j.warranty?'<p class="muted small mt8">No charge to the customer; no commission is paid on this job. Counts against the at-fault mechanic’s comeback rate.</p>':'')+
       (comebackSetupWarning(j)?'<p class="small mt8 st-bad-t">⚠ '+esc(comebackSetupWarning(j))+'</p>':'')+
@@ -3336,15 +3381,37 @@ function editComeback(id){
   var mopts='<option value="">— select mechanic —</option>'+mechs.map(function(s){return '<option value="'+s.id+'"'+(j.comebackMechId===s.id?' selected':'')+'>'+esc(s.name)+'</option>';}).join('');
   openModal('Mark as comeback / warranty',
     field('Comeback of (previous JO)','<select id="cbOf" onchange="cbPickOrig()">'+jopts+'</select>','Previous job for this vehicle that this rework relates to. Needed for the commission deduction.')+
-    field('At-fault mechanic','<select id="cbMech">'+mopts+'</select>','The mechanic who did the ORIGINAL job. Their commission on that job is deducted once.')+
+    field('At-fault mechanic','<select id="cbMech">'+mopts+'</select>','The mechanic who did the ORIGINAL job.')+
     field('Reason / what failed','<textarea id="cbReason" rows="2">'+esc(j.comebackReason||'')+'</textarea>')+
-    '<label class="chk"><input type="checkbox" id="cbWarranty"'+(j.warranty?' checked':'')+'> Warranty — no charge to customer, no commission</label>',
+    '<label class="chk"><input type="checkbox" id="cbWarranty"'+(j.warranty?' checked':'')+'> Warranty — no charge to customer, no commission</label>'+
+    cbPayFields(j),
     { onOk:'saveComeback', width:'580px' });
   setTimeout(function(){ cbCtx=id; },10);
+}
+/* What the at-fault mechanic gives back. Both change pay, so only an admin or
+   Supervisor can change them; anyone else sees them as they are.
+     • Give back the commission on the original job (on unless switched off).
+     • Charge the cost of the parts on THIS job (a warranty job: the shop is
+       not paid for them) — parts already charged on their own line excepted. */
+function cbGiveBack(j){ return !!j && j.cbGiveBack!==false; }
+function cbPayFields(j){
+  var can=canAdjustPayout(), dis=can?'':' disabled', pc=j.cbChargeParts||null, n=(pc&&Number(pc.n))||1;
+  return '<div class="mt8"><b class="small">What the at-fault mechanic gives back</b>'+(can?'':' <span class="muted small">· an admin or Supervisor sets this</span>')+'</div>'+
+    '<label class="chk"><input type="checkbox" id="cbGive"'+(cbGiveBack(j)?' checked':'')+dis+'> Their commission on the original job (once, on the next payout finalized)</label>'+
+    '<label class="chk"><input type="checkbox" id="cbParts"'+(pc?' checked':'')+dis+'> The cost of the parts on this job — warranty only ('+peso(cbPartsCost(j))+' now)</label>'+
+    (can?field('Deduct the parts over','<select id="cbPartsN">'+[1,2,3,4,5,6,7,8].map(function(k){ return '<option value="'+k+'"'+(k===n?' selected':'')+'>'+(k===1?'All on the next payout':k+' weekly payouts')+'</option>'; }).join('')+'</select>',
+      'Keep each deduction to 20% of the week’s wages or less. Have the mechanic sign a Salary Deduction Agreement (Forms).'):'');
+}
+/* Net cost of this job’s part lines not charged on their own. */
+function cbPartsCost(j){
+  return round2(((j&&j.lines)||[]).reduce(function(t,l){
+    return (l.type==='part' && !(lineNoBill(l) && l.chargeTo)) ? t+(Number(l.netPrice)||0)*(Number(l.qty)||0) : t; },0));
 }
 /* Why a comeback will deduct no commission, or '' when it will (or none is meant). */
 function comebackSetupWarning(j){
   if(!j || !j.comebackMechId) return '';
+  if(j.cbChargeParts && !j.warranty) return 'No parts charged: tick Warranty — a customer who pays for the parts is not charged twice.';
+  if(!cbGiveBack(j)) return '';
   var who=staffName(j.comebackMechId);
   if(!j.comebackOf) return 'No commission deducted from '+who+': pick the previous JO under “Comeback of”.';
   var o=jobById(j.comebackOf); if(!o) return '';
@@ -3370,11 +3437,21 @@ function saveComeback(){
   else if(changed){ j.comebackAt=new Date().toISOString(); j.comebackPaid=null; }
   j.comebackReason=val('cbReason')||'';
   j.warranty=checked('cbWarranty');
+  if(canAdjustPayout()) cbSetPay(j, checked('cbGive'), checked('cbParts'), val('cbPartsN'));
   persist(); closeModal(); render();
   var wasOf=was.split('|')[0];
   var warn=comebackSetupWarning(j) || (changed && wasOf ? comebackTakenNote(wasOf) : '');
   if(warn){ toast(warn,'err'); return; }
-  toast(j.warranty?'Marked as warranty comeback — no charge, no commission':(j.comebackOf?'Marked as comeback':'Comeback cleared'));
+  toast(j.warranty?'Marked as warranty comeback — no charge to the customer':(j.comebackOf?'Marked as comeback':'Comeback cleared'));
+}
+
+/* Testable core: the give-back choices. The parts charge keeps its date while it
+   stays on with the same mechanic, so editing does not restart it. */
+function cbSetPay(j, give, parts, n){
+  j.cbGiveBack=!!give;
+  if(!parts || !j.comebackMechId){ j.cbChargeParts=null; return; }
+  var was=j.cbChargeParts, keep=was && was.at && was.staffId===j.comebackMechId;
+  j.cbChargeParts={ at:keep?was.at:new Date().toISOString(), staffId:j.comebackMechId, n:Math.min(8, Math.max(1, Math.round(Number(n)||1))) };
 }
 
 /* ---- Per-mechanic labor timer --------------------------------------------- */
@@ -6165,7 +6242,7 @@ function metaCols(left, right){
 function docJobOrder(j){
   function copy(tag){
     var lines='<table><thead><tr><th>#</th><th>Type</th><th>SKU</th><th>Description</th><th class="r">Qty</th></tr></thead><tbody>'+
-      (j.lines||[]).map(function(l,i){return '<tr><td>'+(i+1)+'</td><td>'+(l.type==='part'?'Part':'Labor')+'</td><td>'+esc((l.type==='part'&&l.sku)?l.sku:'—')+'</td><td>'+esc(l.desc)+'</td><td class="r">'+num(l.qty)+'</td></tr>';}).join('')+
+      billedLines(j).map(function(l,i){return '<tr><td>'+(i+1)+'</td><td>'+(l.type==='part'?'Part':'Labor')+'</td><td>'+esc((l.type==='part'&&l.sku)?l.sku:'—')+'</td><td>'+esc(l.desc)+'</td><td class="r">'+num(l.qty)+'</td></tr>';}).join('')+
       '</tbody></table>';
     var cl=j.checklist&&j.checklist.created? '<div class="dtitle" style="font-size:12px;margin-top:14px">Items left in vehicle</div><div class="checks">'+
       Object.keys(j.checklist.items||{}).filter(function(k){return j.checklist.items[k];}).map(function(k){return '<div>☑ '+esc(k)+'</div>';}).join('')+'</div>'+
@@ -6199,7 +6276,7 @@ function pricedLinesTable(j,opts){
   var skuHead = sku ? '<th>SKU</th>' : '';
   var skuCell = function(l){ return sku ? '<td>'+esc((l&&l.type==='part'&&l.sku)?l.sku:'—')+'</td>' : ''; };
   return '<table><thead><tr><th>#</th><th>Type</th>'+skuHead+'<th>Description</th><th class="r">Qty</th><th class="r">Unit</th><th class="r">Amount</th></tr></thead><tbody>'+
-    (j.lines||[]).map(function(l,i){return '<tr><td>'+(i+1)+'</td><td>'+(l.type==='part'?'Part':'Labor')+'</td>'+skuCell(l)+'<td>'+esc(l.desc)+'</td>'+
+    billedLines(j).map(function(l,i){return '<tr><td>'+(i+1)+'</td><td>'+(l.type==='part'?'Part':'Labor')+'</td>'+skuCell(l)+'<td>'+esc(l.desc)+'</td>'+
       '<td class="r">'+num(l.qty)+'</td><td class="r">'+peso(l.price)+'</td><td class="r">'+peso(lineTotal(l))+'</td></tr>';}).join('')+
     (j.addlWork||[]).filter(function(a){return a.approved;}).map(function(a){return '<tr><td></td><td>Add\'l</td>'+(sku?'<td>—</td>':'')+'<td>'+esc(a.desc)+'</td><td class="r">1</td><td class="r">'+peso(a.amount)+'</td><td class="r">'+peso(a.amount)+'</td></tr>';}).join('')+
     '</tbody></table>';
@@ -6448,7 +6525,7 @@ function docPayout(){
         '<td class="r">'+(a.amount>0?'+':'')+peso(a.amount)+'</td><td>'+esc(a.reason)+'</td></tr>'; }).join('')+'</tbody></table>':'')+
     '<div class="foot">Commission = each staff member’s own rate × the job’s labor, on jobs they were assigned to (payout-on staff only). '+
       'Commission is net of back jobs: the at-fault mechanic’s commission on the original job is taken off once, on the first payout finalized after the back job is recorded. '+
-      'Adjustments = cash advances, deductions and bonuses dated in this period.</div>';
+      'Adjustments = cash advances, deductions and bonuses dated in this period, and parts charges (a damaged part at net cost) taken on this payout.</div>';
   return docShell('Payout sheet', body);
 }
 /* Printing takes nothing: back-job deductions are taken by Finalize payout (part20). */
@@ -6756,8 +6833,8 @@ function portalDataForVehicle(v){
     owner:v.owner||'', contact:pickContact(v.contactNumber),
     nextServiceDate:v.nextServiceDate||'', nextServiceOdo:Number(v.nextServiceOdo)||0,
     history: hist.map(function(j){
-      var work=(j.lines||[]).filter(function(l){return l.type==='labor';}).map(function(l){return l.desc;}).filter(Boolean).join(' · ')
-        || (j.lines||[]).map(function(l){return l.desc;}).filter(Boolean).join(' · ') || 'Service';
+      var work=billedLines(j).filter(function(l){return l.type==='labor';}).map(function(l){return l.desc;}).filter(Boolean).join(' · ')
+        || billedLines(j).map(function(l){return l.desc;}).filter(Boolean).join(' · ') || 'Service';
       var b=runningBill(j);
       return {
         jobId:j.id, no:j.no||'', stage:j.stage||'', orNumber:j.orNumber||'',
@@ -6769,7 +6846,7 @@ function portalDataForVehicle(v){
           ingressOdo:Number(j.odometer)||0, lastOdo:Number(j.lastServiceOdo)||0,
           warranty:!!j.warranty, comeback:(j.comebackOf?((jobById(j.comebackOf)||{}).no||''):''),
           workAuth:(j.workAuth||[]).map(function(a){ return { desc:a.desc||'', amount:Number(a.amount)||0, approvedBy:a.approvedBy||'', method:a.method||'', at:a.at||'' }; }),
-          lines:(j.lines||[]).map(function(l){ return { type:l.type, sku:(l.type==='part'?(l.sku||''):''), desc:l.desc, qty:Number(l.qty)||0, price:Number(l.price)||0, total:lineTotal(l) }; }),
+          lines:billedLines(j).map(function(l){ return { type:l.type, sku:(l.type==='part'?(l.sku||''):''), desc:l.desc, qty:Number(l.qty)||0, price:Number(l.price)||0, total:lineTotal(l) }; }),
           addl:(j.addlWork||[]).filter(function(a){return a.approved;}).map(function(a){ return { desc:a.desc, amount:Number(a.amount)||0 }; }),
           vatable:b.vatable, vat:b.vat, exempt:!!b.exempt, disc:b.disc, gross:b.gross, vatRate:Number((S.shop||{}).vatRate)||12,
           supervisor:staffNameIfRole(j.approvedReleaseBy,'SV'), secretary:staffNameIfRole(j.paymentReceivedBy,'Secretary'),
@@ -7062,7 +7139,7 @@ if (typeof module!=='undefined' && module.exports){
     scheduleNextService:scheduleNextService, clearNextService:clearNextService, alertStrip:alertStrip,
     jobVehicleLabel:jobVehicleLabel, replyRecipients:replyRecipients, unreadMessages:unreadMessages, messageStrip:messageStrip, myStaffIds:myStaffIds, messageAcked:messageAcked,
     buildLogEntry:buildLogEntry, logEntryFor:logEntryFor, jobStatusPanel:jobStatusPanel, lastLogForLabel:lastLogForLabel,
-    jobDescriptionPanel:jobDescriptionPanel, jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fillVehicleBlanks:fillVehicleBlanks, openJobsForPlate:openJobsForPlate, correctPayment:correctPayment, overpaidJobs:overpaidJobs, paymentCorrections:paymentCorrections, billBaseline:billBaseline, trackBillChanges:trackBillChanges, billChanges:billChanges, discountRows:discountRows, discountReasonMissing:discountReasonMissing, cashExpected:cashExpected, cashCountRows:cashCountRows, paymentsMissingRef:paymentsMissingRef, releasedOwing:releasedOwing, docMoneyChecks:docMoneyChecks, moneyCheckData:moneyCheckData, voidedReceipts:voidedReceipts, cancelledJobs:cancelledJobs, voidsHoldingMoney:voidsHoldingMoney, docVoids:docVoids, addPayAdj:addPayAdj, payAdjInPeriod:payAdjInPeriod, accessLogHTML:accessLogHTML, docWaiver:docWaiver, issueWaiverCore:issueWaiverCore, issueReleaseCore:issueReleaseCore, updateReleaseCore:updateReleaseCore, docRelease:docRelease, issueFormCore:issueFormCore, updateFormCore:updateFormCore, docGenericForm:docGenericForm, docBlankForm:docBlankForm, genericFormHTML:genericFormHTML, formMenu:formMenu, formWho:formWho, FORM_DEFS:function(){ return FORM_DEFS; }, FORM_DEF_ORDER:function(){ return FORM_DEF_ORDER; }, billingReleaseForm:billingReleaseForm, docBillingWithRelease:docBillingWithRelease, formJobMatches:formJobMatches, jobBelongings:jobBelongings, finishRelease:finishRelease, updateWaiverCore:updateWaiverCore, fmtDateFil:fmtDateFil, waiverDefaultItems:waiverDefaultItems, issuedForms:issuedForms, deviceLockAtRisk:deviceLockAtRisk, deviceLockWarningHTML:deviceLockWarningHTML, comebackSetupWarning:comebackSetupWarning, comebackDeductions:comebackDeductions, finalizePayoutCore:finalizePayoutCore, finalizePayoutCheck:finalizePayoutCheck, voidPayoutCore:voidPayoutCore, undoComebackCore:undoComebackCore, payoutStatusText:payoutStatusText, comebackPendingNotCounted:comebackPendingNotCounted, comebackTakenNote:comebackTakenNote, comebackDeductionsInPeriod:comebackDeductionsInPeriod, netPayoutRows:netPayoutRows, docPayout:docPayout, docMechCommission:docMechCommission, setProdPeriod:function(p,f,t){ PROD_PERIOD=p; PROD_FROM=f||''; PROD_TO=t||''; }, paymentsDoc:paymentsDoc, pmsGateMissing:pmsGateMissing, jobsMissingInfo:jobsMissingInfo, partNetMissing:partNetMissing, lessVatApplied:lessVatApplied, lessVatStale:lessVatStale, markLessVat:markLessVat, syncLessVat:syncLessVat, discVat:discVat, discountReasonPicker:discountReasonPicker, jobPLSplit:jobPLSplit, plForRange:plForRange, opexForRange:opexForRange, docPL:docPL, discountExVat:discountExVat, discountAmount:discountAmount, discountedLabor:discountedLabor, readDiscountObj:function(d){ return d; }, discountEditor:discountEditor, pmsDefaultMechs:pmsDefaultMechs, pmsReadyToSubmit:pmsReadyToSubmit, PMS_TEMPLATE:function(){ return PMS_TEMPLATE; }, pmsSectionMissing:pmsSectionMissing, orSeriesInRange:orSeriesInRange, orRangeGaps:orRangeGaps, inRptRange:inRptRange, setRptRangeRaw:function(k,r){ RPT_RANGE[k]=r; }, docDiscounts:docDiscounts, warnIfPlateOnBoard:warnIfPlateOnBoard, plFor:plFor, opexFor:opexFor, payFor:payFor, monthlyPay:monthlyPay, addMonths:addMonths, syncCollections:syncCollections, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
+    jobDescriptionPanel:jobDescriptionPanel, jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fillVehicleBlanks:fillVehicleBlanks, openJobsForPlate:openJobsForPlate, correctPayment:correctPayment, overpaidJobs:overpaidJobs, paymentCorrections:paymentCorrections, billBaseline:billBaseline, trackBillChanges:trackBillChanges, billChanges:billChanges, discountRows:discountRows, discountReasonMissing:discountReasonMissing, cashExpected:cashExpected, cashCountRows:cashCountRows, paymentsMissingRef:paymentsMissingRef, releasedOwing:releasedOwing, docMoneyChecks:docMoneyChecks, moneyCheckData:moneyCheckData, voidedReceipts:voidedReceipts, cancelledJobs:cancelledJobs, voidsHoldingMoney:voidsHoldingMoney, docVoids:docVoids, addPayAdj:addPayAdj, payAdjInPeriod:payAdjInPeriod, accessLogHTML:accessLogHTML, docWaiver:docWaiver, issueWaiverCore:issueWaiverCore, issueReleaseCore:issueReleaseCore, updateReleaseCore:updateReleaseCore, docRelease:docRelease, issueFormCore:issueFormCore, updateFormCore:updateFormCore, docGenericForm:docGenericForm, docBlankForm:docBlankForm, genericFormHTML:genericFormHTML, formMenu:formMenu, formWho:formWho, FORM_DEFS:function(){ return FORM_DEFS; }, FORM_DEF_ORDER:function(){ return FORM_DEF_ORDER; }, billingReleaseForm:billingReleaseForm, docBillingWithRelease:docBillingWithRelease, formJobMatches:formJobMatches, jobBelongings:jobBelongings, finishRelease:finishRelease, updateWaiverCore:updateWaiverCore, fmtDateFil:fmtDateFil, waiverDefaultItems:waiverDefaultItems, issuedForms:issuedForms, deviceLockAtRisk:deviceLockAtRisk, deviceLockWarningHTML:deviceLockWarningHTML, comebackSetupWarning:comebackSetupWarning, comebackDeductions:comebackDeductions, partsCharges:partsCharges, partsChargeSources:partsChargeSources, allDeductions:allDeductions, jobPartsCharge:jobPartsCharge, lineChargeFields:lineChargeFields, cbSetPay:cbSetPay, cbPartsCost:cbPartsCost, billedLines:billedLines, lineNoBill:lineNoBill, partsPendingNotCounted:partsPendingNotCounted, noBillFields:noBillFields, cbPayFields:cbPayFields, finalizePayoutCore:finalizePayoutCore, finalizePayoutCheck:finalizePayoutCheck, voidPayoutCore:voidPayoutCore, undoComebackCore:undoComebackCore, payoutStatusText:payoutStatusText, comebackPendingNotCounted:comebackPendingNotCounted, comebackTakenNote:comebackTakenNote, comebackDeductionsInPeriod:comebackDeductionsInPeriod, netPayoutRows:netPayoutRows, docPayout:docPayout, docMechCommission:docMechCommission, setProdPeriod:function(p,f,t){ PROD_PERIOD=p; PROD_FROM=f||''; PROD_TO=t||''; }, paymentsDoc:paymentsDoc, pmsGateMissing:pmsGateMissing, jobsMissingInfo:jobsMissingInfo, partNetMissing:partNetMissing, lessVatApplied:lessVatApplied, lessVatStale:lessVatStale, markLessVat:markLessVat, syncLessVat:syncLessVat, discVat:discVat, discountReasonPicker:discountReasonPicker, jobPLSplit:jobPLSplit, plForRange:plForRange, opexForRange:opexForRange, docPL:docPL, discountExVat:discountExVat, discountAmount:discountAmount, discountedLabor:discountedLabor, readDiscountObj:function(d){ return d; }, discountEditor:discountEditor, pmsDefaultMechs:pmsDefaultMechs, pmsReadyToSubmit:pmsReadyToSubmit, PMS_TEMPLATE:function(){ return PMS_TEMPLATE; }, pmsSectionMissing:pmsSectionMissing, orSeriesInRange:orSeriesInRange, orRangeGaps:orRangeGaps, inRptRange:inRptRange, setRptRangeRaw:function(k,r){ RPT_RANGE[k]=r; }, docDiscounts:docDiscounts, warnIfPlateOnBoard:warnIfPlateOnBoard, plFor:plFor, opexFor:opexFor, payFor:payFor, monthlyPay:monthlyPay, addMonths:addMonths, syncCollections:syncCollections, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
     afterServiceMissing:afterServiceMissing, afterServiceDone:afterServiceDone, afterServiceStaff:afterServiceStaff,
     canWriteAfterService:canWriteAfterService, afterServiceSignerName:afterServiceSignerName, afterServiceBlock:afterServiceBlock,
     allocateSeriesNumber:allocateSeriesNumber, maxSeriesNo:maxSeriesNo, nextNo:nextNo,
@@ -10684,6 +10761,8 @@ function opexForRange(from, to){
   /* Commission payout adjustments (part20): a bonus is an extra cost, a deduction
      lowers it, and so does a one-time comeback deduction. Cash advances are left out — a loan taken back from pay, not a cost. */
   (S.commadj||[]).concat(comebackDeductions()).forEach(function(a){ if(a && a.type!=='advance' && a.date>=from && a.date<=to) add(COMMADJ_CATEGORY, a.amount); });
+  // A parts charge (part20) lowers it by the whole amount on the day it was charged, however many payouts it is spread over.
+  partsChargeSources().forEach(function(c){ if(c.recorded>=from && c.recorded<=to) add(COMMADJ_CATEGORY, -c.total); });
   return { byCat:byCat, total:total };
 }
 function opexFor(m){ return opexForRange(m+'-01', m+'-'+String(daysInMonth(m)).padStart(2,'0')); }
@@ -11418,7 +11497,9 @@ var PAYADJ_TYPES = [
 ];
 /* Not pickable in the modal — added automatically by comebackDeductions(). */
 var COMEBACK_ADJ = { k:'comeback', label:'Comeback deduction', sign:-1 };
-function payAdjType(k){ if(k===COMEBACK_ADJ.k) return COMEBACK_ADJ; return PAYADJ_TYPES.find(function(t){ return t.k===k; }) || PAYADJ_TYPES[4]; }
+/* Not pickable either — added automatically by partsCharges(). */
+var PARTS_ADJ = { k:'partscharge', label:'Parts charge', sign:-1 };
+function payAdjType(k){ if(k===COMEBACK_ADJ.k) return COMEBACK_ADJ; if(k===PARTS_ADJ.k) return PARTS_ADJ; return PAYADJ_TYPES.find(function(t){ return t.k===k; }) || PAYADJ_TYPES[4]; }
 function canAdjustPayout(){ return (typeof isAdminOrSV==='function') ? isAdminOrSV() : true; }
 
 /* Comeback deductions: when a job is marked a comeback with an at-fault
@@ -11471,7 +11552,7 @@ function comebackCandidates(){
   billedJobs().forEach(function(j){ isBilled[j.id]=1; });   // the original must have been paid out
   (S.jobs||[]).forEach(function(j){
     if(!j.comebackOf || !j.comebackMechId || !isBilled[j.comebackOf] || !localDay(cbWhen(j))) return;
-    if(jobVoided(j) || jobCancelled(j)) return;
+    if(jobVoided(j) || jobCancelled(j) || j.cbGiveBack===false) return;   // give-back switched off (part4)
     var f=first[j.comebackOf];
     if(!f || cbWhen(j)<cbWhen(f)) first[j.comebackOf]=j;
   });
@@ -11483,7 +11564,7 @@ function comebackCandidates(){
   }).filter(function(c){ return c.amount<0; });
 }
 /* What a payout record keeps of a deduction — so a reprint matches what was paid. */
-function cbFreeze(d){ return { origId:d.origId, jobId:d.jobId, staffId:d.staffId, cbNo:d.cbNo, origNo:d.origNo, origPlate:d.origPlate, recorded:d.recorded, amount:d.amount, reason:d.reason }; }
+function cbFreeze(d){ return { kind:d.kind||COMEBACK_ADJ.k, origId:d.origId, jobId:d.jobId, staffId:d.staffId, cbNo:d.cbNo, origNo:d.origNo, origPlate:d.origPlate, recorded:d.recorded, amount:d.amount, reason:d.reason }; }
 function cbRow(c, status, paid){
   return { id:'cb-'+c.origId, auto:true, origId:c.origId, jobId:c.jobId, staffId:c.staffId, cbNo:c.cbNo, origNo:c.origNo, origPlate:c.origPlate,
     recorded:c.recorded, date:c.recorded, type:COMEBACK_ADJ.k, amount:c.amount, reason:c.reason, byName:'Auto', at:c.recorded, status:status, paid:paid };
@@ -11492,6 +11573,7 @@ function cbRow(c, status, paid){
 function comebackDeductions(){
   var taken=takenByOrig(), out=[];
   Object.keys(taken).forEach(function(oid){ var t=taken[oid], p=t.pay;
+    if(t.item.kind===PARTS_ADJ.k) return;   // a parts charge (partsCharges)
     out.push(cbRow(t.item, 'taken', { id:p.id, from:p.from, to:p.to, at:p.at, byName:p.byName||'', legacy:p.legacy?'stamp':'' })); });
   comebackCandidates().forEach(function(c){
     if(taken[c.origId]) return;
@@ -11501,6 +11583,88 @@ function comebackDeductions(){
     else out.push(cbRow(c, 'pending', null));
   });
   return out;
+}
+
+/* ---- Parts charges -----------------------------------------------------------
+   A part the mechanic damaged, charged to them at its net cost (what the shop
+   paid, never more than the loss). Two sources (part4):
+     • a NOT-BILLED part line with a mechanic in "Charge the cost to";
+     • a warranty comeback with "the cost of the parts on this job" ticked —
+       every part line on it except ones already charged on their own.
+   Like a back job it is taken by Finalize payout, never by printing. Spread
+   over n payouts, one piece is pending at a time: piece k+1 only after piece
+   k was taken, each = what is still owed ÷ the payouts left. Each piece is
+   frozen on its payout like a comeback (origId pc:<source>:<k>), so editing
+   the line later changes only what is still owed, never what was taken.
+   It shows as an adjustment (not off the Commission), dated the day charged. */
+function partsChargeSources(){
+  var out=[];
+  (S.jobs||[]).forEach(function(j){
+    if(!j || jobVoided(j) || jobCancelled(j)) return;
+    (j.lines||[]).forEach(function(l){
+      if(!lineNoBill(l) || !l.chargeTo || !localDay(l.chargeAt)) return;
+      out.push({ key:j.id+':'+l.id, jobId:j.id, staffId:l.chargeTo, jobNo:j.no, plate:j.plate, recorded:localDay(l.chargeAt),
+        total:round2((Number(l.netPrice)||0)*(Number(l.qty)||0)), n:Number(l.chargeN)||1, what:l.desc||'part' });
+    });
+    var pc=j.cbChargeParts;
+    if(pc && j.warranty && j.comebackMechId && localDay(pc.at))
+      out.push({ key:j.id+':cb', jobId:j.id, staffId:j.comebackMechId, jobNo:j.no, plate:j.plate, recorded:localDay(pc.at),
+        total:cbPartsCost(j), n:Number(pc.n)||1, what:'parts on warranty job' });
+  });
+  return out.filter(function(c){ return c.total>0; });
+}
+function pcRow(c, status, paid){
+  return { id:'pc-'+c.origId, auto:true, kind:PARTS_ADJ.k, origId:c.origId, jobId:c.jobId, staffId:c.staffId, cbNo:c.cbNo, origNo:c.origNo, origPlate:c.origPlate,
+    recorded:c.recorded, date:c.recorded, type:PARTS_ADJ.k, amount:c.amount, reason:c.reason, byName:'Auto', at:c.recorded, status:status, paid:paid };
+}
+/* Every parts-charge piece: the taken ones, then the one pending per source. */
+function partsCharges(){
+  var taken=takenByOrig(), out=[];
+  Object.keys(taken).forEach(function(oid){ var t=taken[oid], p=t.pay; if(t.item.kind!==PARTS_ADJ.k) return;
+    out.push(pcRow(t.item, 'taken', { id:p.id, from:p.from, to:p.to, at:p.at, byName:p.byName||'', legacy:'' })); });
+  partsChargeSources().forEach(function(c){
+    // Pieces taken so far (one put back leaves a gap: the gap is the next piece).
+    var pre='pc:'+c.key+':', k=0, got=0, nTaken=0;
+    Object.keys(taken).forEach(function(oid){ if(oid.indexOf(pre)===0){ got=round2(got-taken[oid].item.amount); nTaken++; } });
+    while(taken[pre+k]) k++;
+    var owed=round2(c.total-got); if(!(owed>0.004)) return;
+    var left=Math.max(1, c.n-nTaken), amt=left>1 ? round2(owed/left) : owed;
+    out.push(pcRow({ origId:'pc:'+c.key+':'+k, jobId:c.jobId, staffId:c.staffId, cbNo:c.jobNo, origNo:c.jobNo, origPlate:c.plate, recorded:c.recorded, amount:round2(-amt),
+      reason:'Parts charge '+c.jobNo+' — '+c.what+(c.n>1 || k>0 ? ' ('+(k+1)+' of '+Math.max(c.n,k+1)+')' : '') }, 'pending', null));
+  });
+  return out;
+}
+/* Comebacks and parts charges together — what Finalize payout takes. */
+function allDeductions(){ return comebackDeductions().concat(partsCharges()); }
+/* Which deductions a period counts:
+     • a finalized payout's dates — exactly what it took (plus old-rule ones in range);
+     • a payout still being prepared — every pending one (plus old-rule ones in range);
+     • any other range — the taken ones whose payout ended in the range. */
+function deductionsInPeriod(list){
+  var r=prodRange(), fp=finalizedPayout(), open=!fp && payoutOpen();
+  return list.filter(function(d){
+    if(d.status==='pending') return open;
+    if(fp && d.paid.id && !d.paid.legacy) return d.paid.id===fp.id;
+    return d.paid.to>=r.from && d.paid.to<=r.to;
+  });
+}
+function partsChargesInPeriod(){ return deductionsInPeriod(partsCharges()); }
+function partsPendingNotCounted(){
+  if(!finalizedPayout() && payoutOpen()) return [];
+  return partsCharges().filter(function(d){ return d.status==='pending'; });
+}
+/* What one job charges a mechanic, for the Salary Deduction Agreement (part22). */
+function jobPartsCharge(j){
+  var src=partsChargeSources().filter(function(c){ return c.jobId===(j&&j.id); });
+  if(!src.length) return null;
+  var who=src[0].staffId, mine=src.filter(function(c){ return c.staffId===who; }), items=[];
+  (j.lines||[]).forEach(function(l){
+    if(l.type!=='part') return;
+    var own=lineNoBill(l) && l.chargeTo===who, all=!!j.cbChargeParts && j.comebackMechId===who && !(lineNoBill(l) && l.chargeTo);
+    if(own || all) items.push(num(l.qty)+' × '+(l.desc||'part')+' — '+peso(round2((Number(l.netPrice)||0)*(Number(l.qty)||0))));
+  });
+  return { staffId:who, items:items, total:round2(mine.reduce(function(t,c){ return t+c.total; },0)),
+    n:mine.reduce(function(m,c){ return Math.max(m,c.n); },1) };
 }
 
 /* ---- Finalizing a payout --------------------------------------------------- */
@@ -11532,7 +11696,7 @@ function finalizePayoutCore(){
   adoptLegacyStamps();
   var r=prodPayoutRange();
   var rec={ id:uid('pay'), kind:'payout', from:r.from, to:r.to, at:new Date().toISOString(), byName:payoutByName(),
-    items:comebackDeductions().filter(function(d){ return d.status==='pending'; }).map(cbFreeze) };
+    items:allDeductions().filter(function(d){ return d.status==='pending'; }).map(cbFreeze) };
   S.payouts.push(rec);
   return { ok:true, rec:rec };
 }
@@ -11550,10 +11714,10 @@ function adoptLegacyStamps(){
 }
 function finalizePayout(){
   var err=finalizePayoutCheck(); if(err){ toast(err,'err'); return; }
-  var pend=comebackDeductions().filter(function(d){ return d.status==='pending'; });
+  var pend=allDeductions().filter(function(d){ return d.status==='pending'; });
   var tot=round2(pend.reduce(function(t,d){ return t+d.amount; },0));
   confirmModal('Finalize payout · '+prodPeriodLabel(),
-    'This locks in the payout for these dates. '+(pend.length ? pend.length+' pending back-job deduction'+(pend.length>1?'s':'')+' ('+peso(tot)+') will be taken on it and on no later payout.' : 'There are no pending back-job deductions.')+
+    'This locks in the payout for these dates. '+(pend.length ? pend.length+' pending back-job / parts deduction'+(pend.length>1?'s':'')+' ('+peso(tot)+') will be taken on it and on no later payout.' : 'There are no pending back-job or parts deductions.')+
       ' Finalize after you have checked the sheet, before you hand out the pay.',
     function(){ var r=finalizePayoutCore(); if(!r.ok){ toast(r.err,'err'); return; } persist(); toast('Payout finalized'); render(); }, 'Finalize payout');
 }
@@ -11572,7 +11736,7 @@ function voidPayout(payoutId){
 /* Testable core: put one taken deduction back to pending (taken by mistake). */
 function undoComebackCore(origId){
   if(!canAdjustPayout()) return { ok:false, err:'Only an admin or Supervisor can adjust payouts' };
-  var d=comebackDeductions().find(function(x){ return x.origId===origId && x.status==='taken'; });
+  var d=allDeductions().find(function(x){ return x.origId===origId && x.status==='taken'; });
   if(!d || d.paid.legacy==='date') return { ok:false, err:'Nothing to put back' };
   if(d.paid.id){ if(!Array.isArray(S.payouts)) S.payouts=[];
     S.payouts.push({ id:uid('payu'), kind:'undo', payoutId:d.paid.id, origId:origId, at:new Date().toISOString(), byName:payoutByName() }); }
@@ -11581,9 +11745,9 @@ function undoComebackCore(origId){
 }
 function undoComebackTaken(origId){
   if(!canAdjustPayout()){ toast('Only an admin or Supervisor can adjust payouts','err'); return; }
-  var d=comebackDeductions().find(function(x){ return x.origId===origId && x.status==='taken'; }); if(!d) return;
+  var d=allDeductions().find(function(x){ return x.origId===origId && x.status==='taken'; }); if(!d) return;
   confirmModal('Put back to pending',
-    'The back-job deduction on '+d.cbNo+' will be taken on the next payout you finalize instead.',
+    'The '+(d.kind===PARTS_ADJ.k?'parts charge':'back-job deduction')+' on '+d.cbNo+' will be taken on the next payout you finalize instead.',
     function(){ var r=undoComebackCore(origId); if(!r.ok){ toast(r.err,'err'); return; } persist(); toast('Back to pending'); render(); }, 'Put back', true);
 }
 /* For the comeback modal: the deduction on this original job was already taken. */
@@ -11592,18 +11756,8 @@ function comebackTakenNote(origId){
   return d ? 'The back-job deduction on '+d.origNo+' was already taken from '+staffName(d.staffId)+' ('+peso(d.amount)+'). Changing the comeback does not change that; add a payout adjustment if it was wrong.' : '';
 }
 
-/* The deductions counted in the period being looked at:
-     • a finalized payout's dates — exactly what it took (plus old-rule ones in range);
-     • a payout still being prepared — every pending one (plus old-rule ones in range);
-     • any other range — the taken ones whose payout ended in the range. */
-function comebackDeductionsInPeriod(){
-  var r=prodRange(), fp=finalizedPayout(), open=!fp && payoutOpen();
-  return comebackDeductions().filter(function(d){
-    if(d.status==='pending') return open;
-    if(fp && d.paid.id && !d.paid.legacy) return d.paid.id===fp.id;
-    return d.paid.to>=r.from && d.paid.to<=r.to;
-  });
-}
+/* The back-job deductions counted in the period being looked at (deductionsInPeriod). */
+function comebackDeductionsInPeriod(){ return deductionsInPeriod(comebackDeductions()); }
 /* Pending ones the period does NOT count (listed so they aren't forgotten). */
 function comebackPendingNotCounted(){
   if(!finalizedPayout() && payoutOpen()) return [];
@@ -11620,10 +11774,10 @@ function payoutStatusText(){
 function comebackDeductionByStaff(){
   var by={}; comebackDeductionsInPeriod().forEach(function(d){ by[d.staffId]=round2((by[d.staffId]||0)+d.amount); }); return by;
 }
-/* Adjustments dated inside the Productivity period. */
+/* Adjustments dated inside the Productivity period, plus the parts charges it counts. */
 function payAdjInPeriod(){
   var r=prodRange();
-  return (S.commadj||[]).filter(function(a){ return a && a.date>=r.from && a.date<=r.to; })
+  return (S.commadj||[]).filter(function(a){ return a && a.date>=r.from && a.date<=r.to; }).concat(partsChargesInPeriod())
     .sort(function(a,b){ return String(b.date).localeCompare(String(a.date)) || String(b.at).localeCompare(String(a.at)); });
 }
 function payAdjTotals(){
@@ -11683,6 +11837,7 @@ function payAdjCard(){
       (can?'<button class="btn sm primary" onclick="openPayAdj()">＋ Add adjustment</button>':'')+'</div>'+
     '<p class="muted small">Cash advances, deductions and bonuses for this pay period. Net payout = commission (payout-on staff) + bonuses − advances and deductions. '+
       'A <b>back job</b> with an at-fault mechanic takes that mechanic’s commission on the original job off their Commission — once, on the next payout you <b>finalize</b>. '+
+      'A <b>parts charge</b> (a part they damaged: a not-billed part line, or the parts on a warranty comeback) is taken the same way, at net cost, over the payouts picked there. '+
       'To pay out: pick <b>Custom</b> with the pay week’s dates, print and check the Payout sheet, then <b>Finalize payout</b>. Printing alone takes nothing.</p>'+
     payoutStatusHTML(can)+
     (rows.length ? '<div class="card pad0"><table class="tbl sm"><thead><tr><th>Staff</th><th class="r">Commission</th><th class="r">Adjustments</th><th class="r">Net payout</th></tr></thead><tbody>'+
@@ -11696,11 +11851,25 @@ function payAdjCard(){
     (list.length ? '<div class="card pad0"><table class="tbl sm"><thead><tr><th>Date</th><th>Staff</th><th>Type</th><th class="r">Amount</th><th>Reason</th><th>By</th>'+(can?'<th></th>':'')+'</tr></thead><tbody>'+
       list.map(function(a){ return '<tr><td>'+esc(fmtDate(a.date))+'</td><td>'+esc(staffName(a.staffId))+'</td><td>'+esc(payAdjType(a.type).label)+'</td>'+
         '<td class="r'+(a.amount<0?' st-bad-t':'')+'"><b>'+(a.amount>0?'+':'')+peso(a.amount)+'</b></td><td>'+esc(a.reason)+'</td><td>'+esc(a.byName||'—')+'</td>'+
-        (can?'<td class="r"><button class="btn sm ghost" onclick="deletePayAdj(\''+a.id+'\')">Remove</button></td>':'')+'</tr>'; }).join('')+
+        (can?'<td class="r">'+payAdjAction(a)+'</td>':'')+'</tr>'; }).join('')+
       '</tbody></table></div>' : '<div class="muted small">No adjustments in this period.</div>')+
+    partsLaterHTML()+
   '</div>';
 }
 
+/* A typed adjustment can be removed; a parts charge comes from its job line —
+   change it there — and once taken can only be put back to pending. */
+function payAdjAction(a){
+  if(!a.auto) return '<button class="btn sm ghost" onclick="deletePayAdj(\''+a.id+'\')">Remove</button>';
+  if(a.status==='pending') return '<b class="st-warn-t small">Pending</b>';
+  return '<button class="btn sm ghost" title="Taken on the payout '+attr(fmtDate(a.paid.from)+' – '+fmtDate(a.paid.to))+'" onclick="undoComebackTaken(\''+a.origId+'\')">Put back</button>';
+}
+/* Parts charges still pending that this view does not count. */
+function partsLaterHTML(){
+  var later=partsPendingNotCounted(); if(!later.length) return '';
+  return '<p class="muted small mt8"><b>'+later.length+' parts charge'+(later.length>1?'s':'')+' pending</b> — taken on the next payout you finalize (not counted here): '+
+    later.map(function(d){ return esc(staffName(d.staffId))+' '+peso(d.amount)+' ('+esc(d.cbNo)+')'; }).join(', ')+'.</p>';
+}
 function openPayAdj(){
   if(!canAdjustPayout()){ toast('Only an admin or Supervisor can adjust payouts','err'); return; }
   var staff=(S.staff||[]).filter(function(s){ return isMechanicRole(s.role); })   // payout adjustments are for mechanics
@@ -12012,10 +12181,10 @@ function fmtDateFil(iso){
 }
 /* Labels both forms share. */
 var FORM_LABELS = {
-  en: { customerCopy:'Customer Copy', shopCopy:'Shop Copy', plate:'Plate', vehicle:'Vehicle', chassis:'Chassis #', odo:'Odometer',
+  en: { customerCopy:'Customer Copy', employeeCopy:'Employee Copy', shopCopy:'Shop Copy', plate:'Plate', vehicle:'Vehicle', chassis:'Chassis #', odo:'Odometer',
         jo:'Job Order', date:'Date', owner:'Registered owner', contact:'Contact #', address:'Address', sigAdv:'Service Adviser',
         date_of:function(iso){ return fmtDate(iso); } },
-  fil:{ customerCopy:'Kopya ng Customer', shopCopy:'Kopya ng Shop', plate:'Plaka', vehicle:'Sasakyan', chassis:'Chassis #', odo:'Odometer',
+  fil:{ customerCopy:'Kopya ng Customer', employeeCopy:'Kopya ng Empleyado', shopCopy:'Kopya ng Shop', plate:'Plaka', vehicle:'Sasakyan', chassis:'Chassis #', odo:'Odometer',
         jo:'Job Order', date:'Petsa', owner:'May-ari', contact:'Contact #', address:'Tirahan', sigAdv:'Service Adviser',
         date_of:function(iso){ return fmtDateFil(iso); } }
 };
@@ -12234,7 +12403,7 @@ function releaseSection(j, f){
       '<b>'+T.belong+':</b> '+(belong||esc(T.noBelong))+
       waivers.map(function(w){ return '<br>'+esc(T.waiverRef(w.id, L.date_of(w.at))); }).join('')+
       (f.remarks?'<br><b>'+T.remarks+':</b> '+esc(f.remarks):'')+
-      ((j.lines||[]).some(function(l){ return l.type==='part'; }) ? '<br><b>'+T.oldParts+':</b> ☐ '+T.opTaken+' &nbsp; ☐ '+T.opDispose : '')+
+      (billedLines(j).some(function(l){ return l.type==='part'; }) ? '<br><b>'+T.oldParts+':</b> ☐ '+T.opTaken+' &nbsp; ☐ '+T.opDispose : '')+
     '</div>'+
     '<p style="font-size:11.5px;line-height:1.45;margin:6px 0 0">'+T.short(esc(f.customer), shop, esc(d.signed))+'</p>'+
     _sigGrid([[T.sigCustomer,'<b>'+esc(f.customer)+'</b>'],
@@ -12264,7 +12433,7 @@ function releaseBody(j, f){
   var dd=_releaseDates(j, f, L), when=dd.signed, relDate=dd.rel;
   var waivers=(j.forms||[]).filter(function(x){ return x.kind==='waiver'; });
   var work='<table><thead><tr><th style="width:36px">#</th><th style="width:70px">'+T.type+'</th><th>'+T.desc+'</th><th class="r">'+T.qty+'</th></tr></thead><tbody>'+
-    (j.lines||[]).map(function(l,i){ return '<tr><td>'+(i+1)+'</td><td>'+(l.type==='part'?T.part:T.labor)+'</td><td>'+esc(l.desc)+'</td><td class="r">'+num(l.qty)+'</td></tr>'; }).join('')+
+    billedLines(j).map(function(l,i){ return '<tr><td>'+(i+1)+'</td><td>'+(l.type==='part'?T.part:T.labor)+'</td><td>'+esc(l.desc)+'</td><td class="r">'+num(l.qty)+'</td></tr>'; }).join('')+
     '</tbody></table>';
   var belongings=_releaseBelongings(j, f, T, '</div><div>'); if(belongings) belongings='<div>'+belongings+'</div>';
   function copy(tag){
@@ -12488,7 +12657,7 @@ function _fdWarrantyEnd(c){
 function _fdWorkTable(c, head){
   return '<table><thead><tr><th style="width:36px">#</th><th>'+head+'</th><th class="r">Qty</th></tr></thead><tbody>'+
     (c.blank ? _blankRows(6, 3) : '')+
-    (c.blank ? [] : (c.j.lines||[])).map(function(l,i){
+    (c.blank ? [] : billedLines(c.j)).map(function(l,i){
       return '<tr><td>'+(i+1)+'</td><td>'+esc(l.desc)+'</td><td class="r">'+num(l.qty)+'</td></tr>'; }).join('')+
     '</tbody></table>';
 }
@@ -12601,8 +12770,53 @@ FORM_DEFS.incident = {
   }
 };
 
+/* 9. Salary Deduction Agreement (internal) --------------------------------- */
+/* For a part a mechanic damaged and pays for (part20 parts charges). The Labor
+   Code allows a deduction for loss or damage only when the employee is clearly
+   responsible, was heard first, the amount is fair and no more than the actual
+   loss, and each deduction is at most 20% of the week's wages — so the form
+   records the explanation, the net cost and the installments. */
+function _fdCharge(j){ return (typeof jobPartsCharge==='function') ? jobPartsCharge(j) : null; }
+FORM_DEFS.deduction = {
+  title:'Salary Deduction Agreement',
+  sub:'Internal: a mechanic agrees to pay for a part they damaged, deducted from their pay.',
+  who:'mechanicId', copies:['employee','shop'],
+  fields:[
+    { key:'mechanicId', type:'staff', roles:['SM','Mechanic'], label:'Mechanic', req:true, def:function(j){ var c=_fdCharge(j); return c ? c.staffId : (j.comebackMechId||''); } },
+    { key:'items', type:'lines', label:'Part(s) damaged, at net cost', req:true, hint:'One per line — e.g. 1 × Brake pads (front) — ₱1,250.00',
+      def:function(j){ var c=_fdCharge(j); return c ? c.items : []; } },
+    { key:'what', type:'textarea', label:'What happened', req:true, def:function(j){ return j.comebackReason||''; } },
+    { key:'explain', type:'textarea', label:'The mechanic’s own explanation', hint:'Heard before deciding — write it in their words' },
+    { key:'amount', type:'number', label:'Total to be deducted (₱)', req:true, hint:'No more than what the shop paid for the part(s)', def:function(j){ var c=_fdCharge(j); return c ? c.total : ''; } },
+    { key:'n', type:'number', label:'Number of weekly payouts', req:true, def:function(j){ var c=_fdCharge(j); return c ? c.n : 1; } },
+    _fdSupervisor()
+  ],
+  text:{
+    en:{ title:'Salary Deduction Agreement',
+      body:function(c){ var per=c.blank?'₱ '+FORM_BLANK_S:esc(peso(round2((Number(c.d.amount)||0)/Math.max(1,Number(c.d.n)||1))));
+        return '<p>I, <b>'+c.staff('mechanicId')+(c.blank?FORM_BLANK:'')+'</b>, an employee of <b>'+c.shop+'</b>, acknowledge that while working on the vehicle described above under Job Order <b>'+c.jo()+'</b>, the following part(s) were damaged through my fault:</p>'+
+        c.list('items','Part damaged — net cost to the shop')+
+        '<div class="notes"><b>What happened:</b> '+c.e('what')+'</div>'+
+        '<div class="notes"><b>My explanation:</b> '+(c.d.explain?c.e('explain'):(c.blank?FORM_BLANK:'—'))+'</div>'+
+        '<p>I was given the chance to explain before this was decided. I agree that the cost of the part(s), <b>'+c.peso('amount')+'</b> — no more than what the shop paid for them — be deducted from my pay in <b>'+c.n('n')+'</b> weekly payout(s) of about <b>'+per+'</b> each, starting with the next payout.</p>'+
+        '<p>No single deduction will be more than 20% of my wages for that week; if it would be, the rest is carried to the following payout. This agreement covers only the item(s) listed above.</p>'+
+        '<p>Signed voluntarily on <b>'+c.when+'</b>.</p>'; },
+      sigs:function(c){ return [['Employee — '+_FD_SIG.en, '<b>'+c.staff('mechanicId')+'</b>'],['Supervisor', c.staff('supervisorId')],['Witness', '']]; } },
+    fil:{ title:'Kasunduan sa Pagkaltas sa Sahod',
+      body:function(c){ var per=c.blank?'₱ '+FORM_BLANK_S:esc(peso(round2((Number(c.d.amount)||0)/Math.max(1,Number(c.d.n)||1))));
+        return '<p>Ako, si <b>'+c.staff('mechanicId')+(c.blank?FORM_BLANK:'')+'</b>, empleyado ng <b>'+c.shop+'</b>, ay umaamin na habang ginagawa ko ang sasakyang nakalarawan sa itaas sa ilalim ng Job Order <b>'+c.jo()+'</b>, nasira dahil sa aking pagkakamali ang mga sumusunod na piyesa:</p>'+
+        c.list('items','Nasirang piyesa — halagang ibinayad ng shop')+
+        '<div class="notes"><b>Ang nangyari:</b> '+c.e('what')+'</div>'+
+        '<div class="notes"><b>Aking paliwanag:</b> '+(c.d.explain?c.e('explain'):(c.blank?FORM_BLANK:'—'))+'</div>'+
+        '<p>Binigyan ako ng pagkakataong magpaliwanag bago ito napagpasyahan. Pumapayag ako na ang halaga ng mga piyesa, <b>'+c.peso('amount')+'</b> — hindi hihigit sa ibinayad ng shop — ay ikaltas sa aking sahod sa loob ng <b>'+c.n('n')+'</b> lingguhang payout, humigit-kumulang <b>'+per+'</b> bawat isa, simula sa susunod na payout.</p>'+
+        '<p>Walang isang kaltas na hihigit sa 20% ng aking sahod sa linggong iyon; kung hihigit, ililipat ang natitira sa susunod na payout. Ang kasunduang ito ay para lamang sa mga nakalistang piyesa.</p>'+
+        '<p>Kusang-loob na nilagdaan ngayong <b>'+c.when+'</b>.</p>'; },
+      sigs:function(c){ return [['Empleyado — '+_FD_SIG.fil, '<b>'+c.staff('mechanicId')+'</b>'],['Supervisor', c.staff('supervisorId')],['Saksi', '']]; } }
+  }
+};
+
 /* ============================ the engine =================================== */
-var FORM_DEF_ORDER = ['rep','promissory','ownparts','pullout','warranty','storage','claim','incident'];
+var FORM_DEF_ORDER = ['rep','promissory','ownparts','pullout','warranty','storage','claim','incident','deduction'];
 
 /* Data of the last form of this kind anywhere — standing terms carry forward. */
 function _fdPrev(kind){
@@ -12707,7 +12921,7 @@ function docGenericForm(j, f, blank){
       _sigGrid(T.sigs(c).map(function(s){ return blank ? [s[0],''] : s; }))+   // blank: the line above is for the signature
       (blank?'':_formFoot(L, j, f));
   }
-  var copies=(blank ? ['customer'] : (def.copies||['customer','shop'])).map(function(k){ return copy(k==='shop'?L.shopCopy:L.customerCopy); });
+  var copies=(blank ? ['customer'] : (def.copies||['customer','shop'])).map(function(k){ return copy(k==='shop'?L.shopCopy:k==='employee'?L.employeeCopy:L.customerCopy); });
   return docShell(def.title+' '+j.no, copies.map(function(h,i){ return i<copies.length-1 ? '<div class="pagebreak">'+h+'</div>' : h; }).join(''));
 }
 
