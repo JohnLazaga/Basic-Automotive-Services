@@ -516,6 +516,9 @@ a.lnk{color:var(--brand);cursor:pointer;font-weight:600}
 #updBanner{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:100000;display:flex;align-items:center;gap:12px;background:#1D1D1F;color:#fff;padding:10px 12px 10px 16px;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.35);font-size:13px;max-width:92vw}
 #updBanner .upd-go{background:var(--brand);color:#fff;border:0;border-radius:9px;padding:7px 14px;font-weight:700;cursor:pointer}
 #updBanner .upd-x{background:none;border:0;color:#bbb;font-size:15px;cursor:pointer;padding:2px 6px}
+#alBanner{position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:100000;display:flex;align-items:center;gap:12px;background:#B3261E;color:#fff;padding:10px 12px 10px 16px;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.35);font-size:13px;max-width:92vw}
+#alBanner .upd-go{background:#fff;color:#B3261E;border:0;border-radius:9px;padding:7px 14px;font-weight:700;cursor:pointer;white-space:nowrap}
+#alBanner .upd-x{background:none;border:0;color:#fdd;font-size:15px;cursor:pointer;padding:2px 6px}
 .lg-ver{margin-top:10px;font-size:10.5px;letter-spacing:.03em;color:#6a6a70}
 .appver{opacity:.85}
 .lg-status{margin-top:16px;font-size:11px;color:#7a7a80}
@@ -670,7 +673,7 @@ var BRANCH = {"id":"main","slug":"fairview","name":"Basic by JMSI — Fairview (
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-10-27 · 47dcc2d';
+var APP_VERSION = 'v1.3.0 · 2026-10-28 · 8b59d55';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -1795,8 +1798,43 @@ function openLightbox(src, filename){
 }
 
 /* ---- Print ---------------------------------------------------------------- */
+/* Printing happens in a hidden frame INSIDE the app, so Chrome's print preview
+   opens over the app itself. It used to open the printout in a new tab and call
+   print() there — but a tab the app opens shares the app's process, so while
+   that tab's preview was open (or after it was closed mid-preview) the whole
+   app froze. iPhone/iPad Safari prints a frame as the parent page, so those
+   keep the new-tab way (their print sheet does not block the app). */
+function printIsIOS(){
+  var n=(typeof navigator!=='undefined')?navigator:{};
+  return /iPad|iPhone|iPod/.test(n.userAgent||'') || (n.platform==='MacIntel' && n.maxTouchPoints>1);
+}
 function printDoc(html){
   if (typeof window==='undefined') return;
+  if (!printIsIOS() && printInFrame(html)) return;
+  printInTab(html);
+}
+function printInFrame(html){
+  try {
+    var old=document.getElementById('printFrame'); if(old && old.parentNode) old.parentNode.removeChild(old);
+    var f=document.createElement('iframe');
+    f.id='printFrame'; f.setAttribute('aria-hidden','true'); f.tabIndex=-1;
+    // Off-screen but not display:none — a hidden frame prints blank in some browsers.
+    f.style.cssText='position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0;pointer-events:none';
+    var done=false;
+    f.onload=function(){
+      if(done) return; done=true;
+      setTimeout(function(){
+        try { f.contentWindow.focus(); f.contentWindow.print(); } catch(e){ printInTab(html); }
+      }, 50);
+    };
+    // srcdoc BEFORE appending: an iframe appended empty fires load at once for
+    // about:blank, and that would print a blank page.
+    f.srcdoc=html;
+    document.body.appendChild(f);
+    return true;
+  } catch(e){ return false; }
+}
+function printInTab(html){
   var w = null;
   try { w = window.open('', '_blank'); } catch(e){ w=null; }
   if (w && w.document){
@@ -7139,7 +7177,7 @@ if (typeof module!=='undefined' && module.exports){
     scheduleNextService:scheduleNextService, clearNextService:clearNextService, alertStrip:alertStrip,
     jobVehicleLabel:jobVehicleLabel, replyRecipients:replyRecipients, unreadMessages:unreadMessages, messageStrip:messageStrip, myStaffIds:myStaffIds, messageAcked:messageAcked,
     buildLogEntry:buildLogEntry, logEntryFor:logEntryFor, jobStatusPanel:jobStatusPanel, lastLogForLabel:lastLogForLabel,
-    jobDescriptionPanel:jobDescriptionPanel, jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fillVehicleBlanks:fillVehicleBlanks, openJobsForPlate:openJobsForPlate, correctPayment:correctPayment, overpaidJobs:overpaidJobs, paymentCorrections:paymentCorrections, billBaseline:billBaseline, trackBillChanges:trackBillChanges, billChanges:billChanges, discountRows:discountRows, discountReasonMissing:discountReasonMissing, cashExpected:cashExpected, cashCountRows:cashCountRows, paymentsMissingRef:paymentsMissingRef, releasedOwing:releasedOwing, docMoneyChecks:docMoneyChecks, moneyCheckData:moneyCheckData, voidedReceipts:voidedReceipts, cancelledJobs:cancelledJobs, voidsHoldingMoney:voidsHoldingMoney, docVoids:docVoids, addPayAdj:addPayAdj, payAdjInPeriod:payAdjInPeriod, accessLogHTML:accessLogHTML, docWaiver:docWaiver, issueWaiverCore:issueWaiverCore, issueReleaseCore:issueReleaseCore, updateReleaseCore:updateReleaseCore, docRelease:docRelease, issueFormCore:issueFormCore, updateFormCore:updateFormCore, docGenericForm:docGenericForm, docBlankForm:docBlankForm, genericFormHTML:genericFormHTML, formMenu:formMenu, formWho:formWho, FORM_DEFS:function(){ return FORM_DEFS; }, FORM_DEF_ORDER:function(){ return FORM_DEF_ORDER; }, billingReleaseForm:billingReleaseForm, docBillingWithRelease:docBillingWithRelease, formJobMatches:formJobMatches, jobBelongings:jobBelongings, finishRelease:finishRelease, updateWaiverCore:updateWaiverCore, fmtDateFil:fmtDateFil, waiverDefaultItems:waiverDefaultItems, issuedForms:issuedForms, deviceLockAtRisk:deviceLockAtRisk, deviceLockWarningHTML:deviceLockWarningHTML, comebackSetupWarning:comebackSetupWarning, comebackDeductions:comebackDeductions, partsCharges:partsCharges, partsChargeSources:partsChargeSources, allDeductions:allDeductions, jobPartsCharge:jobPartsCharge, lineChargeFields:lineChargeFields, cbSetPay:cbSetPay, cbPartsCost:cbPartsCost, billedLines:billedLines, lineNoBill:lineNoBill, partsPendingNotCounted:partsPendingNotCounted, noBillFields:noBillFields, cbPayFields:cbPayFields, finalizePayoutCore:finalizePayoutCore, finalizePayoutCheck:finalizePayoutCheck, voidPayoutCore:voidPayoutCore, undoComebackCore:undoComebackCore, payoutStatusText:payoutStatusText, comebackPendingNotCounted:comebackPendingNotCounted, comebackTakenNote:comebackTakenNote, comebackDeductionsInPeriod:comebackDeductionsInPeriod, netPayoutRows:netPayoutRows, docPayout:docPayout, docMechCommission:docMechCommission, setProdPeriod:function(p,f,t){ PROD_PERIOD=p; PROD_FROM=f||''; PROD_TO=t||''; }, paymentsDoc:paymentsDoc, pmsGateMissing:pmsGateMissing, jobsMissingInfo:jobsMissingInfo, partNetMissing:partNetMissing, lessVatApplied:lessVatApplied, lessVatStale:lessVatStale, markLessVat:markLessVat, syncLessVat:syncLessVat, discVat:discVat, discountReasonPicker:discountReasonPicker, jobPLSplit:jobPLSplit, plForRange:plForRange, opexForRange:opexForRange, docPL:docPL, discountExVat:discountExVat, discountAmount:discountAmount, discountedLabor:discountedLabor, readDiscountObj:function(d){ return d; }, discountEditor:discountEditor, pmsDefaultMechs:pmsDefaultMechs, pmsReadyToSubmit:pmsReadyToSubmit, PMS_TEMPLATE:function(){ return PMS_TEMPLATE; }, pmsSectionMissing:pmsSectionMissing, orSeriesInRange:orSeriesInRange, orRangeGaps:orRangeGaps, inRptRange:inRptRange, setRptRangeRaw:function(k,r){ RPT_RANGE[k]=r; }, docDiscounts:docDiscounts, warnIfPlateOnBoard:warnIfPlateOnBoard, plFor:plFor, opexFor:opexFor, payFor:payFor, monthlyPay:monthlyPay, addMonths:addMonths, syncCollections:syncCollections, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
+    jobDescriptionPanel:jobDescriptionPanel, jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fillVehicleBlanks:fillVehicleBlanks, openJobsForPlate:openJobsForPlate, correctPayment:correctPayment, overpaidJobs:overpaidJobs, paymentCorrections:paymentCorrections, billBaseline:billBaseline, trackBillChanges:trackBillChanges, billChanges:billChanges, discountRows:discountRows, discountReasonMissing:discountReasonMissing, cashExpected:cashExpected, cashCountRows:cashCountRows, paymentsMissingRef:paymentsMissingRef, releasedOwing:releasedOwing, docMoneyChecks:docMoneyChecks, moneyCheckData:moneyCheckData, voidedReceipts:voidedReceipts, cancelledJobs:cancelledJobs, voidsHoldingMoney:voidsHoldingMoney, docVoids:docVoids, addPayAdj:addPayAdj, payAdjInPeriod:payAdjInPeriod, accessLogHTML:accessLogHTML, unauthSignins:unauthSignins, newUnauthSignins:newUnauthSignins, unauthBannerHTML:unauthBannerHTML, alKey:alKey, docWaiver:docWaiver, issueWaiverCore:issueWaiverCore, issueReleaseCore:issueReleaseCore, updateReleaseCore:updateReleaseCore, docRelease:docRelease, issueFormCore:issueFormCore, updateFormCore:updateFormCore, docGenericForm:docGenericForm, docBlankForm:docBlankForm, genericFormHTML:genericFormHTML, formMenu:formMenu, formWho:formWho, FORM_DEFS:function(){ return FORM_DEFS; }, FORM_DEF_ORDER:function(){ return FORM_DEF_ORDER; }, billingReleaseForm:billingReleaseForm, docBillingWithRelease:docBillingWithRelease, formJobMatches:formJobMatches, jobBelongings:jobBelongings, finishRelease:finishRelease, updateWaiverCore:updateWaiverCore, fmtDateFil:fmtDateFil, waiverDefaultItems:waiverDefaultItems, issuedForms:issuedForms, deviceLockAtRisk:deviceLockAtRisk, deviceLockWarningHTML:deviceLockWarningHTML, comebackSetupWarning:comebackSetupWarning, comebackDeductions:comebackDeductions, printDoc:printDoc, partsCharges:partsCharges, partsChargeSources:partsChargeSources, allDeductions:allDeductions, jobPartsCharge:jobPartsCharge, lineChargeFields:lineChargeFields, cbSetPay:cbSetPay, cbPartsCost:cbPartsCost, billedLines:billedLines, lineNoBill:lineNoBill, partsPendingNotCounted:partsPendingNotCounted, noBillFields:noBillFields, cbPayFields:cbPayFields, finalizePayoutCore:finalizePayoutCore, finalizePayoutCheck:finalizePayoutCheck, voidPayoutCore:voidPayoutCore, undoComebackCore:undoComebackCore, payoutStatusText:payoutStatusText, comebackPendingNotCounted:comebackPendingNotCounted, comebackTakenNote:comebackTakenNote, comebackDeductionsInPeriod:comebackDeductionsInPeriod, netPayoutRows:netPayoutRows, docPayout:docPayout, docMechCommission:docMechCommission, setProdPeriod:function(p,f,t){ PROD_PERIOD=p; PROD_FROM=f||''; PROD_TO=t||''; }, paymentsDoc:paymentsDoc, pmsGateMissing:pmsGateMissing, jobsMissingInfo:jobsMissingInfo, partNetMissing:partNetMissing, lessVatApplied:lessVatApplied, lessVatStale:lessVatStale, markLessVat:markLessVat, syncLessVat:syncLessVat, discVat:discVat, discountReasonPicker:discountReasonPicker, jobPLSplit:jobPLSplit, plForRange:plForRange, opexForRange:opexForRange, docPL:docPL, discountExVat:discountExVat, discountAmount:discountAmount, discountedLabor:discountedLabor, readDiscountObj:function(d){ return d; }, discountEditor:discountEditor, pmsDefaultMechs:pmsDefaultMechs, pmsReadyToSubmit:pmsReadyToSubmit, PMS_TEMPLATE:function(){ return PMS_TEMPLATE; }, pmsSectionMissing:pmsSectionMissing, orSeriesInRange:orSeriesInRange, orRangeGaps:orRangeGaps, inRptRange:inRptRange, setRptRangeRaw:function(k,r){ RPT_RANGE[k]=r; }, docDiscounts:docDiscounts, warnIfPlateOnBoard:warnIfPlateOnBoard, plFor:plFor, opexFor:opexFor, payFor:payFor, monthlyPay:monthlyPay, addMonths:addMonths, syncCollections:syncCollections, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
     afterServiceMissing:afterServiceMissing, afterServiceDone:afterServiceDone, afterServiceStaff:afterServiceStaff,
     canWriteAfterService:canWriteAfterService, afterServiceSignerName:afterServiceSignerName, afterServiceBlock:afterServiceBlock,
     allocateSeriesNumber:allocateSeriesNumber, maxSeriesNo:maxSeriesNo, nextNo:nextNo,
@@ -10110,6 +10148,7 @@ function openAccessLog(){
   ACCESS_LOG = null; _renderAccessLog();
   loadAccessLog().then(function(list){
     ACCESS_LOG = list;
+    alMarkSeen(unauthSignins(list)); _alAlertRows = []; showUnauthBanner();   // opening the log counts as checking it
     _renderAccessLog();
   }).catch(function(e){ ACCESS_LOG = []; _renderAccessLog(); toast('Could not load the access log','err'); });
 }
@@ -10184,6 +10223,66 @@ function accessLogHTML(list, outsideOnly){
     : emptyState(outsideOnly ? 'Nobody opened BASIC from outside the shop.' : 'No sign-ins recorded yet.'));
 }
 
+/* ---- Alert banner for admins ------------------------------------------------
+   The owner asked to be told rather than have to go looking. When an admin
+   opens BASIC (and every 15 minutes while it stays open) the access log is read,
+   and any staff sign-in on a device that is not registered — or one the lock
+   refused — that this admin has not seen yet raises a red banner.
+   "Seen" is one entry per person, per day, per address, so someone who keeps
+   working on the same device does not re-alert all day. It is kept in this
+   browser, per admin, so another PC shows the same sign-ins once more. */
+var AL_ALERT_MS = 15 * 60 * 1000;
+var _alAlertTimer = null, _alAlertRows = [];
+function alKey(r){ return [r.day||'', r.uid||r.email||r.name||'', r.ip||''].join('|'); }
+/* Testable: staff rows on an unregistered device, or refused. Admins are exempt. */
+function unauthSignins(list){
+  return (list||[]).filter(function(r){
+    return !r.admin && (Number(r.unregistered)>0 || r.allowed===false);
+  });
+}
+function newUnauthSignins(list, seen){
+  seen = seen || {};
+  return unauthSignins(list).filter(function(r){ return !seen[alKey(r)]; })
+    .sort(function(a,b){ var A=_alTime(a.lastAt), B=_alTime(b.lastAt); return (B?B.getTime():0)-(A?A.getTime():0); });
+}
+function _alSeenKey(){ return 'basic.alSeen.'+branchId()+'.'+((CURRENT_USER && CURRENT_USER.uid)||''); }
+function alSeenLoad(){ try { return JSON.parse(localStorage.getItem(_alSeenKey())||'{}') || {}; } catch(e){ return {}; } }
+function alMarkSeen(rows){
+  var seen = alSeenLoad(), cut = todayISO(new Date(Date.now() - ACCESS_LOG_DAYS*86400000));
+  Object.keys(seen).forEach(function(k){ if (k.split('|')[0] < cut) delete seen[k]; });   // older than the log keeps
+  (rows||[]).forEach(function(r){ seen[alKey(r)] = 1; });
+  try { localStorage.setItem(_alSeenKey(), JSON.stringify(seen)); } catch(e){}
+}
+/* Testable: the banner's inner HTML for the new rows ('' when none). */
+function unauthBannerHTML(rows){
+  if (!(rows||[]).length) return '';
+  var n = rows.length, blocked = rows.filter(function(r){ return r.allowed===false; }).length;
+  var shown = rows.slice(0, 4).map(function(r){
+    return '<b>'+esc(r.name||r.email||'—')+'</b> ('+esc(fmtDate(r.day))+(r.allowed===false?', blocked':'')+')';
+  }).join(', ') + (n>4 ? ' and '+(n-4)+' more' : '');
+  return '<span>⚠ '+n+' sign-in'+(n===1?'':'s')+' from a device that is not registered'+
+      (blocked ? ' ('+blocked+' blocked)' : '')+' since you last checked: '+shown+'</span>'+
+    '<button class="upd-go" onclick="viewUnauthSignins()">View access log</button>'+
+    '<button class="upd-x" onclick="dismissUnauthSignins()" aria-label="Dismiss">✕</button>';
+}
+function showUnauthBanner(){
+  if (typeof document==='undefined') return;
+  var old = document.getElementById('alBanner');
+  if (!_alAlertRows.length){ if (old && old.parentNode) old.parentNode.removeChild(old); return; }
+  var b = old || document.createElement('div');
+  b.id = 'alBanner'; b.setAttribute('role','alert'); b.innerHTML = unauthBannerHTML(_alAlertRows);
+  if (!old) document.body.appendChild(b);
+}
+function checkUnauthSignins(){
+  if (!isAdminUser() || !premisesApplies()) return;
+  loadAccessLog().then(function(list){
+    _alAlertRows = newUnauthSignins(list, alSeenLoad());
+    showUnauthBanner();
+  }).catch(function(){ /* the banner is a convenience — the log itself still has it */ });
+}
+function viewUnauthSignins(){ ACCESS_LOG_OUTSIDE = true; openAccessLog(); }
+function dismissUnauthSignins(){ alMarkSeen(_alAlertRows); _alAlertRows = []; showUnauthBanner(); }
+
 function trustShopNetwork(){
   if(!isAdminUser()){ toast('Admins only','err'); return; }
   var el=document.getElementById('premStatus'); if(el){ el.textContent='Checking this connection…'; }
@@ -10247,6 +10346,10 @@ var _arPrevPrem = (typeof afterRender==='function') ? afterRender : function(){}
 afterRender = function(){
   _arPrevPrem();
   if (ROUTE.view==='settings' && PREM_NET===null && isAdminUser() && premisesApplies()) loadPremisesNetwork();
+  if (!_alAlertTimer && isAdminUser() && premisesApplies() && typeof setInterval==='function'){
+    _alAlertTimer = setInterval(checkUnauthSignins, AL_ALERT_MS);
+    checkUnauthSignins();
+  }
 };
 
 
