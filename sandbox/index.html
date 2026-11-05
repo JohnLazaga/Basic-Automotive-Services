@@ -673,7 +673,7 @@ var BRANCH = {"id":"sandbox","slug":"sandbox","name":"Basic by JMSI — Sandbox 
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-11-04 · df94205';
+var APP_VERSION = 'v1.3.0 · 2026-11-05 · 5ac2cae';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -3151,6 +3151,7 @@ function saveLineMore(){
   data.id=uid('ln'); j.lines.push(data); persist();
   toast('Added · '+data.desc);
   render();                                   // refresh the lines table behind the dialog
+  if(agreementAfterCharge(j, data.chargeTo)) return;   // a charged part: its agreement takes over the dialog
   var body=document.querySelector('#modalRoot .modal-body');
   if(body){ body.innerHTML=lineForm({type:data.type}, true); }   // fresh form, same Type for fast repeats
   refocusLineForm();
@@ -3194,9 +3195,11 @@ function saveLine(){
   var j=jobById(lineCtx.job); var data=readLine();
   if(!data.desc){ toast(data.type==='part'?'Part name required':'Description required','err'); return; }
   if(blockMissingNet(data)) return;
-  if(lineCtx.line){ var l=j.lines.find(function(x){return x.id===lineCtx.line;}); Object.assign(l,data,noBillFromForm(l)); }
+  var saved=data;
+  if(lineCtx.line){ saved=j.lines.find(function(x){return x.id===lineCtx.line;}); Object.assign(saved,data,noBillFromForm(saved)); }
   else { Object.assign(data, noBillFromForm(null)); data.id=uid('ln'); j.lines.push(data); }
   persist(); closeModal(); render();
+  agreementAfterCharge(j, saved.chargeTo);
 }
 function delLine(id,lid){
   var j=jobById(id); var l=(j.lines||[]).find(function(x){return x.id===lid;});
@@ -3477,6 +3480,7 @@ function saveComeback(){
   j.warranty=checked('cbWarranty');
   if(canAdjustPayout()) cbSetPay(j, checked('cbGive'), checked('cbParts'), val('cbPartsN'));
   persist(); closeModal(); render();
+  agreementAfterCharge(j, j.comebackMechId);   // warranty parts charged to them need an agreement too
   var wasOf=was.split('|')[0];
   var warn=comebackSetupWarning(j) || (changed && wasOf ? comebackTakenNote(wasOf) : '');
   if(warn){ toast(warn,'err'); return; }
@@ -7177,7 +7181,7 @@ if (typeof module!=='undefined' && module.exports){
     scheduleNextService:scheduleNextService, clearNextService:clearNextService, alertStrip:alertStrip,
     jobVehicleLabel:jobVehicleLabel, replyRecipients:replyRecipients, unreadMessages:unreadMessages, messageStrip:messageStrip, myStaffIds:myStaffIds, messageAcked:messageAcked,
     buildLogEntry:buildLogEntry, logEntryFor:logEntryFor, jobStatusPanel:jobStatusPanel, lastLogForLabel:lastLogForLabel,
-    jobDescriptionPanel:jobDescriptionPanel, jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fillVehicleBlanks:fillVehicleBlanks, openJobsForPlate:openJobsForPlate, correctPayment:correctPayment, overpaidJobs:overpaidJobs, paymentCorrections:paymentCorrections, billBaseline:billBaseline, trackBillChanges:trackBillChanges, billChanges:billChanges, discountRows:discountRows, discountReasonMissing:discountReasonMissing, cashExpected:cashExpected, cashCountRows:cashCountRows, paymentsMissingRef:paymentsMissingRef, releasedOwing:releasedOwing, docMoneyChecks:docMoneyChecks, moneyCheckData:moneyCheckData, voidedReceipts:voidedReceipts, cancelledJobs:cancelledJobs, voidsHoldingMoney:voidsHoldingMoney, docVoids:docVoids, addPayAdj:addPayAdj, payAdjInPeriod:payAdjInPeriod, accessLogHTML:accessLogHTML, unauthSignins:unauthSignins, newUnauthSignins:newUnauthSignins, unauthBannerHTML:unauthBannerHTML, alKey:alKey, docWaiver:docWaiver, issueWaiverCore:issueWaiverCore, issueReleaseCore:issueReleaseCore, updateReleaseCore:updateReleaseCore, docRelease:docRelease, issueFormCore:issueFormCore, updateFormCore:updateFormCore, docGenericForm:docGenericForm, docBlankForm:docBlankForm, genericFormHTML:genericFormHTML, fdLockRefresh:fdLockRefresh, formMenu:formMenu, formWho:formWho, FORM_DEFS:function(){ return FORM_DEFS; }, FORM_DEF_ORDER:function(){ return FORM_DEF_ORDER; }, billingReleaseForm:billingReleaseForm, docBillingWithRelease:docBillingWithRelease, formJobMatches:formJobMatches, jobBelongings:jobBelongings, finishRelease:finishRelease, updateWaiverCore:updateWaiverCore, fmtDateFil:fmtDateFil, waiverDefaultItems:waiverDefaultItems, issuedForms:issuedForms, deviceLockAtRisk:deviceLockAtRisk, deviceLockWarningHTML:deviceLockWarningHTML, comebackSetupWarning:comebackSetupWarning, comebackDeductions:comebackDeductions, printDoc:printDoc, partsCharges:partsCharges, partsChargeSources:partsChargeSources, allDeductions:allDeductions, jobPartsCharge:jobPartsCharge, lineChargeFields:lineChargeFields, cbSetPay:cbSetPay, cbPartsCost:cbPartsCost, billedLines:billedLines, lineNoBill:lineNoBill, partsPendingNotCounted:partsPendingNotCounted, noBillFields:noBillFields, cbPayFields:cbPayFields, finalizePayoutCore:finalizePayoutCore, finalizePayoutCheck:finalizePayoutCheck, voidPayoutCore:voidPayoutCore, undoComebackCore:undoComebackCore, payoutStatusText:payoutStatusText, comebackPendingNotCounted:comebackPendingNotCounted, comebackTakenNote:comebackTakenNote, comebackDeductionsInPeriod:comebackDeductionsInPeriod, netPayoutRows:netPayoutRows, docPayout:docPayout, docMechCommission:docMechCommission, setProdPeriod:function(p,f,t){ PROD_PERIOD=p; PROD_FROM=f||''; PROD_TO=t||''; }, paymentsDoc:paymentsDoc, pmsGateMissing:pmsGateMissing, jobsMissingInfo:jobsMissingInfo, partNetMissing:partNetMissing, lessVatApplied:lessVatApplied, lessVatStale:lessVatStale, markLessVat:markLessVat, syncLessVat:syncLessVat, discVat:discVat, discountReasonPicker:discountReasonPicker, jobPLSplit:jobPLSplit, plForRange:plForRange, opexForRange:opexForRange, docPL:docPL, discountExVat:discountExVat, discountAmount:discountAmount, discountedLabor:discountedLabor, readDiscountObj:function(d){ return d; }, discountEditor:discountEditor, pmsDefaultMechs:pmsDefaultMechs, pmsReadyToSubmit:pmsReadyToSubmit, PMS_TEMPLATE:function(){ return PMS_TEMPLATE; }, pmsSectionMissing:pmsSectionMissing, orSeriesInRange:orSeriesInRange, orRangeGaps:orRangeGaps, inRptRange:inRptRange, setRptRangeRaw:function(k,r){ RPT_RANGE[k]=r; }, docDiscounts:docDiscounts, warnIfPlateOnBoard:warnIfPlateOnBoard, plFor:plFor, opexFor:opexFor, payFor:payFor, monthlyPay:monthlyPay, addMonths:addMonths, syncCollections:syncCollections, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
+    jobDescriptionPanel:jobDescriptionPanel, jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fillVehicleBlanks:fillVehicleBlanks, openJobsForPlate:openJobsForPlate, correctPayment:correctPayment, overpaidJobs:overpaidJobs, paymentCorrections:paymentCorrections, billBaseline:billBaseline, trackBillChanges:trackBillChanges, billChanges:billChanges, discountRows:discountRows, discountReasonMissing:discountReasonMissing, cashExpected:cashExpected, cashCountRows:cashCountRows, paymentsMissingRef:paymentsMissingRef, releasedOwing:releasedOwing, docMoneyChecks:docMoneyChecks, moneyCheckData:moneyCheckData, voidedReceipts:voidedReceipts, cancelledJobs:cancelledJobs, voidsHoldingMoney:voidsHoldingMoney, docVoids:docVoids, addPayAdj:addPayAdj, payAdjInPeriod:payAdjInPeriod, accessLogHTML:accessLogHTML, unauthSignins:unauthSignins, newUnauthSignins:newUnauthSignins, unauthBannerHTML:unauthBannerHTML, alKey:alKey, docWaiver:docWaiver, issueWaiverCore:issueWaiverCore, issueReleaseCore:issueReleaseCore, updateReleaseCore:updateReleaseCore, docRelease:docRelease, issueFormCore:issueFormCore, updateFormCore:updateFormCore, docGenericForm:docGenericForm, docBlankForm:docBlankForm, genericFormHTML:genericFormHTML, fdLockRefresh:fdLockRefresh, agreementIssue:agreementIssue, deductionAgreementIssues:deductionAgreementIssues, partsAgreementHTML:partsAgreementHTML, saveLine:saveLine, saveLineMore:saveLineMore, setLineCtx:function(c){ lineCtx=c; }, formMenu:formMenu, formWho:formWho, FORM_DEFS:function(){ return FORM_DEFS; }, FORM_DEF_ORDER:function(){ return FORM_DEF_ORDER; }, billingReleaseForm:billingReleaseForm, docBillingWithRelease:docBillingWithRelease, formJobMatches:formJobMatches, jobBelongings:jobBelongings, finishRelease:finishRelease, updateWaiverCore:updateWaiverCore, fmtDateFil:fmtDateFil, waiverDefaultItems:waiverDefaultItems, issuedForms:issuedForms, deviceLockAtRisk:deviceLockAtRisk, deviceLockWarningHTML:deviceLockWarningHTML, comebackSetupWarning:comebackSetupWarning, comebackDeductions:comebackDeductions, printDoc:printDoc, partsCharges:partsCharges, partsChargeSources:partsChargeSources, allDeductions:allDeductions, jobPartsCharge:jobPartsCharge, lineChargeFields:lineChargeFields, cbSetPay:cbSetPay, cbPartsCost:cbPartsCost, billedLines:billedLines, lineNoBill:lineNoBill, partsPendingNotCounted:partsPendingNotCounted, noBillFields:noBillFields, cbPayFields:cbPayFields, finalizePayoutCore:finalizePayoutCore, finalizePayoutCheck:finalizePayoutCheck, voidPayoutCore:voidPayoutCore, undoComebackCore:undoComebackCore, payoutStatusText:payoutStatusText, comebackPendingNotCounted:comebackPendingNotCounted, comebackTakenNote:comebackTakenNote, comebackDeductionsInPeriod:comebackDeductionsInPeriod, netPayoutRows:netPayoutRows, docPayout:docPayout, docMechCommission:docMechCommission, setProdPeriod:function(p,f,t){ PROD_PERIOD=p; PROD_FROM=f||''; PROD_TO=t||''; }, paymentsDoc:paymentsDoc, pmsGateMissing:pmsGateMissing, jobsMissingInfo:jobsMissingInfo, partNetMissing:partNetMissing, lessVatApplied:lessVatApplied, lessVatStale:lessVatStale, markLessVat:markLessVat, syncLessVat:syncLessVat, discVat:discVat, discountReasonPicker:discountReasonPicker, jobPLSplit:jobPLSplit, plForRange:plForRange, opexForRange:opexForRange, docPL:docPL, discountExVat:discountExVat, discountAmount:discountAmount, discountedLabor:discountedLabor, readDiscountObj:function(d){ return d; }, discountEditor:discountEditor, pmsDefaultMechs:pmsDefaultMechs, pmsReadyToSubmit:pmsReadyToSubmit, PMS_TEMPLATE:function(){ return PMS_TEMPLATE; }, pmsSectionMissing:pmsSectionMissing, orSeriesInRange:orSeriesInRange, orRangeGaps:orRangeGaps, inRptRange:inRptRange, setRptRangeRaw:function(k,r){ RPT_RANGE[k]=r; }, docDiscounts:docDiscounts, warnIfPlateOnBoard:warnIfPlateOnBoard, plFor:plFor, opexFor:opexFor, payFor:payFor, monthlyPay:monthlyPay, addMonths:addMonths, syncCollections:syncCollections, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
     afterServiceMissing:afterServiceMissing, afterServiceDone:afterServiceDone, afterServiceStaff:afterServiceStaff,
     canWriteAfterService:canWriteAfterService, afterServiceSignerName:afterServiceSignerName, afterServiceBlock:afterServiceBlock,
     allocateSeriesNumber:allocateSeriesNumber, maxSeriesNo:maxSeriesNo, nextNo:nextNo,
@@ -11782,6 +11786,56 @@ function jobPartsCharge(j, staffId){
     n:mine.reduce(function(m,c){ return Math.max(m,c.n); },1) };
 }
 
+/* ---- The agreement behind a parts charge ------------------------------------
+   Every parts charge needs a Salary Deduction Agreement on its job, for that
+   mechanic, with the job line's total and payouts. It opens by itself when a
+   charge is set or changed (agreementAfterCharge), and Finalize waits for it.
+   The app knows it was saved, not that the paper was signed. */
+function _lastAgreement(j, staffId){
+  var out=null;
+  ((j&&j.forms)||[]).forEach(function(f){ if(f.kind==='deduction' && f.data && f.data.mechanicId===staffId) out=f; });
+  return out;
+}
+/* What is wrong with this mechanic's agreement on this job, or null. */
+function agreementIssue(j, staffId){
+  var c=jobPartsCharge(j, staffId); if(!c) return null;
+  var f=_lastAgreement(j, staffId), base={ jobId:j.id, jobNo:j.no, staffId:staffId, form:f };
+  if(!f) return Object.assign(base, { why:'missing' });
+  if(Math.abs((Number(f.data.amount)||0)-c.total)>0.004 || Number(f.data.n)!==c.n) return Object.assign(base, { why:'differs' });
+  return null;
+}
+/* One issue per job and mechanic with a piece still to be taken. */
+function deductionAgreementIssues(){
+  var seen={}, out=[];
+  partsCharges().forEach(function(d){
+    if(d.status!=='pending') return;
+    var k=d.jobId+'|'+d.staffId; if(seen[k]) return; seen[k]=1;
+    var i=agreementIssue(jobById(d.jobId), d.staffId); if(i) out.push(i);
+  });
+  return out;
+}
+/* Open this mechanic's agreement on this job: the saved one, or a new one. */
+function openDeductionFor(jobId, staffId){
+  var f=_lastAgreement(jobById(jobId), staffId);
+  openForm('deduction', jobId, f?f.id:null, f?null:staffId);
+}
+/* After a charge is set or changed: open the agreement if it now needs one.
+   True when it opened. Without Forms access it stays flagged on the payout. */
+function agreementAfterCharge(j, staffId){
+  if(!staffId || !agreementIssue(j, staffId)) return false;
+  if(typeof can==='function' && !can('forms')){ toast('Saved. Someone with Forms access must save the Salary Deduction Agreement before the payout can be finalized'); return false; }
+  openDeductionFor(j.id, staffId);
+  return true;
+}
+function partsAgreementHTML(){
+  var list=deductionAgreementIssues(); if(!list.length) return '';
+  var canFix=typeof can!=='function' || can('forms');
+  return '<div class="notes small mt8"><b class="st-warn-t">Finalize is waiting for '+list.length+' Salary Deduction Agreement'+(list.length>1?'s':'')+'</b>'+
+    list.map(function(i){ return '<div class="mt8"><b>'+esc(staffName(i.staffId))+'</b> · '+esc(i.jobNo)+' — '+(i.why==='missing'?'no agreement on this job':'the agreement does not match the job line')+
+      (canFix?' <button class="btn sm ghost" onclick="openDeductionFor(\''+i.jobId+'\',\''+i.staffId+'\')">'+(i.why==='missing'?'Create':'Correct')+'</button>':' <span class="muted">· someone with Forms access must do this</span>')+'</div>'; }).join('')+
+  '</div>';
+}
+
 /* ---- Finalizing a payout --------------------------------------------------- */
 /* A payout is a Custom range: Today / This month / All time are reports. */
 function prodPayoutRange(){ return (PROD_PERIOD==='custom' && PROD_FROM && PROD_TO) ? { from:PROD_FROM, to:PROD_TO } : null; }
@@ -11801,6 +11855,8 @@ function finalizePayoutCheck(){
   if(r.to>todayISO()) return 'This pay week has not ended yet';
   var o=payoutsOverlapping(r)[0];
   if(o) return (o.from===r.from && o.to===r.to) ? 'This payout is already finalized' : 'Overlaps the payout already finalized for '+fmtDate(o.from)+' – '+fmtDate(o.to);
+  var iss=deductionAgreementIssues();
+  if(iss.length) return 'Fix the Salary Deduction Agreement first: '+iss.map(function(i){ return staffName(i.staffId)+' ('+i.jobNo+')'; }).join(', ');
   return '';
 }
 function payoutByName(){ var me=(typeof CURRENT_USER!=='undefined' && CURRENT_USER) ? CURRENT_USER : null; return (me&&(me.name||me.username||me.email))||''; }
@@ -11955,6 +12011,7 @@ function payAdjCard(){
       'A <b>parts charge</b> (a part they damaged: a not-billed part line, or the parts on a warranty comeback) is taken the same way, at net cost, over the payouts picked there. '+
       'To pay out: pick <b>Custom</b> with the pay week’s dates, print and check the Payout sheet, then <b>Finalize payout</b>. Printing alone takes nothing.</p>'+
     payoutStatusHTML(can)+
+    partsAgreementHTML()+
     (rows.length ? '<div class="card pad0"><table class="tbl sm"><thead><tr><th>Staff</th><th class="r">Commission</th><th class="r">Adjustments</th><th class="r">Net payout</th></tr></thead><tbody>'+
       rows.map(function(r){ return '<tr><td><b>'+esc(r.name)+'</b> <span class="muted small">'+esc(roleLabel(r.role))+'</span></td>'+
         '<td class="r">'+peso(r.commission)+'</td><td class="r'+(r.adj<0?' st-bad-t':'')+'">'+(r.adj?(r.adj>0?'+':'')+peso(r.adj):'—')+'</td>'+
@@ -12163,14 +12220,15 @@ function _staffOpts(list, sel){
 }
 function _advisers(){ return (S.staff||[]).filter(function(s){ return s.role==='SA' || s.role==='SV'; }); }
 
-/* Open a form: kind, the job (optional) and, to edit, the saved form's id. */
-function openForm(kind, jobId, formId){
+/* Open a form: kind, the job (optional), to edit, the saved form's id and, for a
+   new form about one person, who it is about. */
+function openForm(kind, jobId, formId, who){
   if (typeof can==='function' && !can('forms')){ toast('Forms are for Service Advisers, the Secretary and admins','err'); return; }
   var ed = formId ? _findForm(jobId, formId) : null;
   if (formId && !ed){ toast('Form not found','err'); return; }
   var j = jobId ? jobById(jobId) : null;
   if (document.getElementById('fmLang')) _formLang = val('fmLang') || _formLang;   // keep the language while picking
-  var html = kind==='release' ? releaseFormHTML(j, ed) : kind==='waiver' ? waiverFormHTML(j, ed) : genericFormHTML(kind, j, ed);
+  var html = kind==='release' ? releaseFormHTML(j, ed) : kind==='waiver' ? waiverFormHTML(j, ed) : genericFormHTML(kind, j, ed, who);
   var footer='<button class="btn ghost" onclick="closeModal()">Cancel</button><span style="flex:1"></span>'+
     '<button class="btn primary" onclick="saveForm(\''+kind+'\')">'+(ed?'Save changes &amp; print':'Save &amp; print')+'</button>';
   var body=document.querySelector('#modalRoot .modal-body');
@@ -12948,12 +13006,12 @@ function _fdStaffList(fd){
 }
 function _fdId(k){ return 'ff_'+k; }
 
-function genericFormHTML(kind, j, ed){
+function genericFormHTML(kind, j, ed, who){
   var def=FORM_DEFS[kind];
   var head='<input type="hidden" id="fmKind" value="'+attr(kind)+'">'+_formHead(kind, j, ed);
   if(!j) return head;
   var prev=ed ? null : _fdPrev(kind), data=ed ? (ed.data||{}) : null;
-  var get=function(fd){ return data ? data[fd.key] : _fdDefault(fd, j, prev); };
+  var get=function(fd){ return data ? data[fd.key] : (who && fd.key===def.who) ? who : _fdDefault(fd, j, prev); };
   var whoFd=def.lock ? def.fields.filter(function(fd){ return fd.key===def.who; })[0] : null;
   var locked=whoFd ? def.lock(j, get(whoFd)) : null;
   return head+(data && def.lock ? _fdLockNote(j, data, locked) : '')+def.fields.map(function(fd){
