@@ -674,7 +674,7 @@ var BRANCH = {"id":"main","slug":"fairview","name":"Basic by JMSI — Fairview (
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-11-07 · 15a4dbf';
+var APP_VERSION = 'v1.3.0 · 2026-11-07 · b750e94';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -2817,7 +2817,8 @@ VIEWS.job = function(id){
 };
 
 function jobPrintButtons(j){
-  var btns='<button class="btn ghost" onclick="printJobOrder(\''+j.id+'\')">⎙ Job Order</button>';
+  var btns='<button class="btn ghost" onclick="printJobOrder(\''+j.id+'\')">⎙ Job Order</button>'+
+    '<button class="btn ghost" onclick="printReceivingSlip(\''+j.id+'\')">⎙ Receiving Slip</button>';
   if (j.stage!=='Job Order') btns+='<button class="btn ghost" onclick="printPostJob(\''+j.id+'\')">⎙ Post Job Report</button>';
   if (j.stage==='Final Billing'||j.stage==='Released') btns+='<button class="btn ghost" onclick="printBilling(\''+j.id+'\')">⎙ Final Billing</button>';
   if (typeof openForm==='function' && can('forms')){
@@ -3623,6 +3624,11 @@ function saveInspection(){
   CHECKLIST_ITEMS.forEach(function(it){ items[it]=checked('ck_'+btoa(it).replace(/=/g,'')); });
   j.checklist={ created:leave, leaveUnit:leave, items:items, bodyNotes:val('isBody') };
   persist(); closeModal(); toast('Check-in saved'); render();
+  // The customer is leaving: this is the moment they need their slip.
+  if(leave) openModal('Print the receiving slip?',
+    '<p class="muted small">The customer is leaving the unit. Print their slip now, and have both sides sign it.</p>',
+    { footer:'<button class="btn ghost" onclick="closeModal()">Not now</button>'+
+      '<button class="btn primary" id="rsPrint" onclick="closeModal();printReceivingSlip(\''+j.id+'\')">⎙ Print receiving slip</button>' });
 }
 
 /* ---- Photos panel --------------------------------------------------------- */
@@ -6351,6 +6357,33 @@ function docJobOrder(j){
 }
 function printJobOrder(id){ printDoc(docJobOrder(jobById(id))); }
 
+/* ---- Receiving slip: the customer's copy when they leave the car -----------
+   Records the state of the car as received. It goes home with the customer, so
+   it carries no prices, mechanics, job hours, chassis number or internal notes. */
+function docReceivingSlip(j){
+  var insp=j.inspection||{}, cl=j.checklist||{}, sh=S.shop||{};
+  var reading=Number(insp.odometer)||Number(j.odometer)||0;
+  var left=Object.keys(cl.items||{}).filter(function(k){ return cl.items[k]; });
+  var url=(sh.portalUrl && j.vehicleId) ? portalLink(j.vehicleId) : '';
+  return docShell('Receiving Slip '+j.no,
+    '<div class="copy-tag">Customer\'s Copy</div>'+ docHeader('Vehicle Receiving Slip · '+j.no)+
+    metaCols(
+      [['Plate', esc(j.plate)],['Vehicle', esc((j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:''))],['Owner', esc(j.owner)],['Contact person', esc(j.contactPerson)]],
+      [['Date in', fmtDate(j.dateIn)],['Expected finish', fmtDate(j.etd)],['Odometer', reading?odo(reading):''],['Fuel level', esc(fmtFuel(insp.fuel))]] )+
+    '<div class="notes"><b>Condition:</b> '+esc(insp.condition||'—')+'</div>'+
+    '<div class="dtitle" style="font-size:12px;margin-top:14px">Items left in vehicle</div>'+
+    (left.length ? '<div class="checks">'+left.map(function(k){ return '<div>☑ '+esc(k)+'</div>'; }).join('')+'</div>'
+                 : '<div class="notes">No items listed.</div>')+
+    (cl.bodyNotes?'<div class="notes"><b>Body:</b> '+esc(cl.bodyNotes)+'</div>':'')+
+    (url ? '<div style="text-align:center;margin-top:16px"><div id="rsQR" data-url="'+attr(url)+'" style="display:inline-block"></div>'+
+        '<div class="foot" style="margin-top:6px">Scan to see the status of your vehicle.</div></div>'+
+        '<script src="'+QR_LIB_URL+'" onload="var q=document.getElementById(\'rsQR\');new QRCode(q,{text:q.getAttribute(\'data-url\'),width:110,height:110})"><\/script>' : '')+
+    '<div class="sig-grid" style="grid-template-columns:1fr 1fr"><div class="sigline">Received by<br>'+esc(staffName(j.saId))+'</div>'+
+      '<div class="sigline">Customer<br>'+esc(j.owner||'')+'</div></div>'+
+    '<div class="foot">Keep this slip. For questions about your vehicle, call '+esc(sh.contact||'the shop')+'.</div>');
+}
+function printReceivingSlip(id){ printDoc(docReceivingSlip(jobById(id))); }
+
 /* ---- Priced lines table (shared by Post Job & Billing) -------------------- */
 function pricedLinesTable(j,opts){
   opts=opts||{}; var sku=!!opts.sku;
@@ -7236,7 +7269,7 @@ if (typeof module!=='undefined' && module.exports){
     importPartsText:importPartsText, importPartsFromArray:importPartsFromArray, parseCSV:parseCSV,
     portalHTML:portalHTML, isPortalRoute:isPortalRoute, setPortalId:function(fn){ portalVehicleId=fn; },
     portalDataForVehicle:portalDataForVehicle, portalCardsHTML:portalCardsHTML, portalReportHTML:portalReportHTML,
-    customerStatusText:customerStatusText, setCustomerNote:setCustomerNote, editCustomerNote:editCustomerNote, saveCustomerNote:saveCustomerNote,
+    docReceivingSlip:docReceivingSlip, editInspection:editInspection, saveInspection:saveInspection, fmtDate:fmtDate, staffName:staffName, customerStatusText:customerStatusText, setCustomerNote:setCustomerNote, editCustomerNote:editCustomerNote, saveCustomerNote:saveCustomerNote,
     setPublishPortal:function(fn){ var was=publishPortalDoc; publishPortalDoc=fn; return function(){ publishPortalDoc=was; }; },
     STATUS:function(){ return STATUS; }, STATUS_ORDER:function(){ return STATUS_ORDER; },
     quickC3:quickC3, logUpdate:logUpdate, saveUpdate:saveUpdate,
