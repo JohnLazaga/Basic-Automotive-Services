@@ -675,7 +675,7 @@ var BRANCH = {"id":"commonwealth","slug":"commonwealth","name":"Basic by JMSI �
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-11-07 · f029821';
+var APP_VERSION = 'v1.3.0 · 2026-11-07 · cdbe644';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -3610,7 +3610,7 @@ function editInspection(id,forSlip){
     field('Dash lights / DTC','<input id="isLights" value="'+attr(insp.lights||'')+'">')+
     field('General condition','<input id="isCond" value="'+attr(insp.condition||'')+'">')+'</div>'+
     '<label class="chk"><input type="checkbox" id="isRoadTest" '+(insp.roadTest?'checked':'')+'> Customer authorizes a road test (printed on the Job Order for the customer to sign)</label>'+
-    '<label class="chk"><input type="checkbox" id="isLeave" '+(cl.leaveUnit?'checked':'')+'> Customer is leaving the unit (create items checklist)</label>'+
+    '<label class="chk"><input type="checkbox" id="isLeave" '+((cl.leaveUnit||forSlip)?'checked':'')+'> Customer is leaving the unit (create items checklist)</label>'+
     '<div class="cl-title">Items left in vehicle</div><div class="cl-items">'+items+'</div>'+
     field('Body condition notes','<textarea id="isBody" rows="2">'+esc(cl.bodyNotes||'')+'</textarea>'),
     { onOk:forSlip?'saveInspectionAndSlip':'saveInspection', okText:forSlip?'⎙ Save &amp; print slip':'', width:'680px' });
