@@ -580,6 +580,7 @@ a.lnk{color:var(--brand);cursor:pointer;font-weight:600}
 [data-theme="dark"] .msgchip.me{background:var(--brand);border-color:var(--brand);color:#fff} [data-theme="dark"] .log-for,[data-theme="dark"] .jcard-for{color:#ffd60a}
 [data-theme="dark"] .nextsvc.due{color:#ff8a8a}
 [data-theme="dark"] .bay-car:hover{background:rgba(242,23,23,.28)}
+[data-theme="dark"] .p-card{background:var(--panel)}
 [data-theme="dark"] .p-due{border-color:rgba(242,23,23,.4)!important;background:rgba(242,23,23,.08)!important}
 [data-theme="dark"] .misslist li{background:rgba(242,23,23,.18);color:#ff9a9a;border-left-color:#ff6b6b}
 [data-theme="dark"] .fld.needfill input,[data-theme="dark"] .fld.needfill select,[data-theme="dark"] .fld.needfill textarea{background:rgba(242,23,23,.16)}
@@ -674,7 +675,7 @@ var BRANCH = {"id":"sudipen","slug":"sudipen","name":"Basic by JMSI — Sudipen"
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-11-07 · b750e94';
+var APP_VERSION = 'v1.3.0 · 2026-11-07 · f029821';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -2818,7 +2819,8 @@ VIEWS.job = function(id){
 
 function jobPrintButtons(j){
   var btns='<button class="btn ghost" onclick="printJobOrder(\''+j.id+'\')">⎙ Job Order</button>'+
-    '<button class="btn ghost" onclick="printReceivingSlip(\''+j.id+'\')">⎙ Receiving Slip</button>';
+    // The slip records the check-in, so it opens there first; saving prints it.
+    '<button class="btn ghost" onclick="editInspection(\''+j.id+'\',true)">⎙ Receiving Slip</button>';
   if (j.stage!=='Job Order') btns+='<button class="btn ghost" onclick="printPostJob(\''+j.id+'\')">⎙ Post Job Report</button>';
   if (j.stage==='Final Billing'||j.stage==='Released') btns+='<button class="btn ghost" onclick="printBilling(\''+j.id+'\')">⎙ Final Billing</button>';
   if (typeof openForm==='function' && can('forms')){
@@ -3598,7 +3600,7 @@ function jobInspectionPanel(j){
   '</div>';
 }
 function kv(k,v){ return '<div class="kv"><span class="kv-k">'+esc(k)+'</span><span class="kv-v">'+v+'</span></div>'; }
-function editInspection(id){
+function editInspection(id,forSlip){
   var j=jobById(id); var insp=j.inspection||{}; var cl=j.checklist||{items:{}};
   var items=CHECKLIST_ITEMS.map(function(it){ var on=cl.items&&cl.items[it];
     return '<label class="chk small"><input type="checkbox" id="ck_'+btoa(it).replace(/=/g,'')+'" '+(on?'checked':'')+'> '+esc(it)+'</label>'; }).join('');
@@ -3611,11 +3613,11 @@ function editInspection(id){
     '<label class="chk"><input type="checkbox" id="isLeave" '+(cl.leaveUnit?'checked':'')+'> Customer is leaving the unit (create items checklist)</label>'+
     '<div class="cl-title">Items left in vehicle</div><div class="cl-items">'+items+'</div>'+
     field('Body condition notes','<textarea id="isBody" rows="2">'+esc(cl.bodyNotes||'')+'</textarea>'),
-    { onOk:'saveInspection', width:'680px' });
+    { onOk:forSlip?'saveInspectionAndSlip':'saveInspection', okText:forSlip?'⎙ Save &amp; print slip':'', width:'680px' });
   setTimeout(function(){isCtx=id;},10);
 }
 var isCtx=null;
-function saveInspection(){
+function storeInspection(){
   var j=jobById(isCtx);
   var isOdo=Number(val('isOdo'))||0;
   j.inspection={ odometer:isOdo, fuel:(val('isFuel')===''?'':Number(val('isFuel'))||0), lights:val('isLights'), condition:val('isCond'), testDrive:j.inspection&&j.inspection.testDrive||'', roadTest:checked('isRoadTest') };
@@ -3624,8 +3626,13 @@ function saveInspection(){
   CHECKLIST_ITEMS.forEach(function(it){ items[it]=checked('ck_'+btoa(it).replace(/=/g,'')); });
   j.checklist={ created:leave, leaveUnit:leave, items:items, bodyNotes:val('isBody') };
   persist(); closeModal(); toast('Check-in saved'); render();
+  return j;
+}
+function saveInspectionAndSlip(){ printReceivingSlip(storeInspection().id); }
+function saveInspection(){
+  var j=storeInspection();
   // The customer is leaving: this is the moment they need their slip.
-  if(leave) openModal('Print the receiving slip?',
+  if(j.checklist.leaveUnit) openModal('Print the receiving slip?',
     '<p class="muted small">The customer is leaving the unit. Print their slip now, and have both sides sign it.</p>',
     { footer:'<button class="btn ghost" onclick="closeModal()">Not now</button>'+
       '<button class="btn primary" id="rsPrint" onclick="closeModal();printReceivingSlip(\''+j.id+'\')">⎙ Print receiving slip</button>' });
@@ -7269,7 +7276,7 @@ if (typeof module!=='undefined' && module.exports){
     importPartsText:importPartsText, importPartsFromArray:importPartsFromArray, parseCSV:parseCSV,
     portalHTML:portalHTML, isPortalRoute:isPortalRoute, setPortalId:function(fn){ portalVehicleId=fn; },
     portalDataForVehicle:portalDataForVehicle, portalCardsHTML:portalCardsHTML, portalReportHTML:portalReportHTML,
-    docReceivingSlip:docReceivingSlip, editInspection:editInspection, saveInspection:saveInspection, fmtDate:fmtDate, staffName:staffName, customerStatusText:customerStatusText, setCustomerNote:setCustomerNote, editCustomerNote:editCustomerNote, saveCustomerNote:saveCustomerNote,
+    docReceivingSlip:docReceivingSlip, editInspection:editInspection, saveInspection:saveInspection, saveInspectionAndSlip:saveInspectionAndSlip, fmtDate:fmtDate, staffName:staffName, customerStatusText:customerStatusText, setCustomerNote:setCustomerNote, editCustomerNote:editCustomerNote, saveCustomerNote:saveCustomerNote,
     setPublishPortal:function(fn){ var was=publishPortalDoc; publishPortalDoc=fn; return function(){ publishPortalDoc=was; }; },
     STATUS:function(){ return STATUS; }, STATUS_ORDER:function(){ return STATUS_ORDER; },
     quickC3:quickC3, logUpdate:logUpdate, saveUpdate:saveUpdate,
