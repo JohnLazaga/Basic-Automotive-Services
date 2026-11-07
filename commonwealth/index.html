@@ -463,6 +463,7 @@ a.lnk{color:var(--brand);cursor:pointer;font-weight:600}
 .p-live{border-color:var(--brand)} .p-live .p-big{margin-top:4px;font-size:16px} .p-note{margin-top:8px;font-size:13px}
 .p-photos{display:grid;grid-template-columns:repeat(3,1fr);gap:6px} .p-photos img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:9px}
 .p-contact{font-size:13px;line-height:1.6} .p-btn{display:block;text-align:center;background:var(--brand);color:#fff;border-radius:11px;padding:11px;font-weight:600;margin-top:10px}
+.p-bill{width:100%;border:0;font:inherit;font-weight:600;cursor:pointer}
 .p-foot{text-align:center;font-size:11px;color:var(--ink2);margin-top:10px}
 /* Service-history rows (timeline-like) + report drill-down */
 .p-item{display:block;padding:9px 0;border-bottom:1px solid var(--hair)} .p-item:last-child{border-bottom:0}
@@ -675,7 +676,7 @@ var BRANCH = {"id":"commonwealth","slug":"commonwealth","name":"Basic by JMSI �
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-11-07 · cdbe644';
+var APP_VERSION = 'v1.3.0 · 2026-11-07 · fd93ff5';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -7044,11 +7045,14 @@ function portalCardsHTML(d){
   }).join('') : '<div class="p-empty">No service records yet.</div>';
   var live=(d.live&&d.live.length)? '<div class="p-card p-live"><div class="p-card-t">In the shop now</div>'+
     d.live.map(function(l){
+      // A job still in the shop only has a history entry once it is billed.
+      var billAt=(d.history||[]).map(function(h){ return h.report?h.no:null; }).indexOf(l.no);
       return '<div class="p-item"><div class="p-item-top"><span class="p-jo">'+esc(l.no)+'</span> '+
           (l.dateIn?'<span class="p-date">In since '+esc(fmtDate(l.dateIn))+'</span>':'')+'</div>'+
         '<div class="p-big">'+esc(l.status)+'</div>'+
         (l.note?'<div class="p-note"><b>From the shop:</b> '+esc(l.note)+
           (l.noteAt?'<div class="p-card-s">'+esc(fmtDateTime(l.noteAt))+'</div>':'')+'</div>':'')+
+        (billAt>=0?'<button class="p-btn p-bill" onclick="portalViewReport('+billAt+')">View your bill →</button>':'')+
       '</div>';
     }).join('')+'</div>' : '';
   return '<div class="portal">'+
@@ -7119,17 +7123,24 @@ function portalReportHTML(h, d){
     '<div class="p-foot">'+esc(sh.name)+' · '+esc(sh.address)+'<br>THIS DOCUMENT IS NOT VALID FOR CLAIM OF INPUT TAX</div>'+
   '</div>';
 }
+/* Where a portal page draws: the staff preview window when one is open (the app
+   page sits behind it), otherwise the customer's whole page. */
+function portalShow(html){
+  if(typeof document==='undefined') return;
+  var frame=document.querySelector('#modalRoot .portal-frame');
+  var box=frame||document.getElementById('app'); if(!box) return;
+  box.innerHTML='<div class="portal-page">'+html+'</div>';
+  if(frame) frame.scrollTop=0;
+  else if(typeof window!=='undefined'&&window.scrollTo) window.scrollTo(0,0);
+}
 function portalViewReport(i){
   if(!PORTAL_LAST||!PORTAL_LAST.history) return;
   var h=PORTAL_LAST.history[i]; if(!h||!h.report) return;
-  var app=(typeof document!=='undefined')&&document.getElementById('app'); if(!app) return;
-  app.innerHTML='<div class="portal-page">'+portalReportHTML(h,PORTAL_LAST)+'</div>';
-  if(typeof window!=='undefined'&&window.scrollTo) window.scrollTo(0,0);
+  portalShow(portalReportHTML(h,PORTAL_LAST));
 }
 function portalViewHome(){
-  var app=(typeof document!=='undefined')&&document.getElementById('app'); if(!app||!PORTAL_LAST) return;
-  app.innerHTML='<div class="portal-page">'+portalCardsHTML(PORTAL_LAST)+'</div>';
-  if(typeof window!=='undefined'&&window.scrollTo) window.scrollTo(0,0);
+  if(!PORTAL_LAST) return;
+  portalShow(portalCardsHTML(PORTAL_LAST));
 }
 /* Customer appointment request — form + submit to the public appt_requests
    collection, which the staff app watches live. */
@@ -7275,7 +7286,7 @@ if (typeof module!=='undefined' && module.exports){
     deductInventory:deductInventory, receivePO:receivePO,
     importPartsText:importPartsText, importPartsFromArray:importPartsFromArray, parseCSV:parseCSV,
     portalHTML:portalHTML, isPortalRoute:isPortalRoute, setPortalId:function(fn){ portalVehicleId=fn; },
-    portalDataForVehicle:portalDataForVehicle, portalCardsHTML:portalCardsHTML, portalReportHTML:portalReportHTML,
+    portalDataForVehicle:portalDataForVehicle, portalCardsHTML:portalCardsHTML, portalReportHTML:portalReportHTML, portalViewReport:portalViewReport, portalViewHome:portalViewHome,
     docReceivingSlip:docReceivingSlip, editInspection:editInspection, saveInspection:saveInspection, saveInspectionAndSlip:saveInspectionAndSlip, fmtDate:fmtDate, staffName:staffName, customerStatusText:customerStatusText, setCustomerNote:setCustomerNote, editCustomerNote:editCustomerNote, saveCustomerNote:saveCustomerNote,
     setPublishPortal:function(fn){ var was=publishPortalDoc; publishPortalDoc=fn; return function(){ publishPortalDoc=was; }; },
     STATUS:function(){ return STATUS; }, STATUS_ORDER:function(){ return STATUS_ORDER; },
