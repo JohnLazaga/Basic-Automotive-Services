@@ -676,7 +676,7 @@ var BRANCH = {"id":"sandbox","slug":"sandbox","name":"Basic by JMSI — Sandbox 
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-11-07 · fd93ff5';
+var APP_VERSION = 'v1.3.0 · 2026-11-07 · 2e8f11d';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -6397,11 +6397,19 @@ function pricedLinesTable(j,opts){
   opts=opts||{}; var sku=!!opts.sku;
   var skuHead = sku ? '<th>SKU</th>' : '';
   var skuCell = function(l){ return sku ? '<td>'+esc((l&&l.type==='part'&&l.sku)?l.sku:'—')+'</td>' : ''; };
-  return '<table><thead><tr><th>#</th><th>Type</th>'+skuHead+'<th>Description</th><th class="r">Qty</th><th class="r">Unit</th><th class="r">Amount</th></tr></thead><tbody>'+
+  // Lines are priced without VAT. A shop that charges no VAT has nothing to add.
+  var vatHead = vatSplit(0,S).exempt ? '' : '<th class="r">VAT Incl. Price</th>';
+  var vatCell = function(amt){ return vatHead ? '<td class="r">'+peso(vatSplit(amt,S).gross)+'</td>' : ''; };
+  return '<table><thead><tr><th>#</th><th>Type</th>'+skuHead+'<th>Description</th><th class="r">Qty</th><th class="r">Unit</th><th class="r">Amount</th>'+vatHead+'</tr></thead><tbody>'+
     billedLines(j).map(function(l,i){return '<tr><td>'+(i+1)+'</td><td>'+(l.type==='part'?'Part':'Labor')+'</td>'+skuCell(l)+'<td>'+esc(l.desc)+'</td>'+
-      '<td class="r">'+num(l.qty)+'</td><td class="r">'+peso(l.price)+'</td><td class="r">'+peso(lineTotal(l))+'</td></tr>';}).join('')+
-    (j.addlWork||[]).filter(function(a){return a.approved;}).map(function(a){return '<tr><td></td><td>Add\'l</td>'+(sku?'<td>—</td>':'')+'<td>'+esc(a.desc)+'</td><td class="r">1</td><td class="r">'+peso(a.amount)+'</td><td class="r">'+peso(a.amount)+'</td></tr>';}).join('')+
+      '<td class="r">'+num(l.qty)+'</td><td class="r">'+peso(l.price)+'</td><td class="r">'+peso(lineTotal(l))+'</td>'+vatCell(lineTotal(l))+'</tr>';}).join('')+
+    (j.addlWork||[]).filter(function(a){return a.approved;}).map(function(a){return '<tr><td></td><td>Add\'l</td>'+(sku?'<td>—</td>':'')+'<td>'+esc(a.desc)+'</td><td class="r">1</td><td class="r">'+peso(a.amount)+'</td><td class="r">'+peso(a.amount)+'</td>'+vatCell(a.amount)+'</tr>';}).join('')+
     '</tbody></table>';
+}
+/* The printed reason for an Other discount. Older saves kept LESS VAT as the
+   reason; printouts call that a plain discount. */
+function discNoteNoVat(note){
+  return String(note||'').replace(/\bLESS\s+VAT\b|^\s*VAT\s*$/ig,'').replace(/^[\s·,;-]+|[\s·,;-]+$/g,'');
 }
 function totalsBox(j,opts){
   opts=opts||{}; var b=runningBill(j);
@@ -6422,10 +6430,11 @@ function totalsBox(j,opts){
     var d=j.discount||{}, dp=discParts(j), dl=discLabor(j), doo=discOther(j), dv=discVat(j);
     var hasBuckets=(d.parts!==undefined||d.labor!==undefined||d.other!==undefined||d.lessVat);
     if(hasBuckets && round2(dp+dl+doo+dv)===b.disc){
-      if(dv) rows+='<div class="l2"><span>Less: VAT</span><span>−'+peso(dv)+'</span></div>';
+      if(dv) rows+='<div class="l2"><span>Less: Discount</span><span>−'+peso(dv)+'</span></div>';
       if(dp) rows+='<div class="l2"><span>Less: Parts discount</span><span>−'+peso(dp)+'</span></div>';
       if(dl) rows+='<div class="l2"><span>Less: Labor discount</span><span>−'+peso(dl)+'</span></div>';
-      if(doo) rows+='<div class="l2"><span>Less: Other discount'+(d.otherNote?(' — '+esc(d.otherNote)):'')+'</span><span>−'+peso(doo)+'</span></div>';
+      var note=discNoteNoVat(d.otherNote);
+      if(doo) rows+='<div class="l2"><span>'+(d.otherNote&&!note?'Less: Discount':'Less: Other discount'+(note?(' — '+esc(note)):''))+'</span><span>−'+peso(doo)+'</span></div>';
     } else {
       rows+='<div class="l2"><span>Discount</span><span>−'+peso(b.disc)+'</span></div>';
     }
@@ -7125,9 +7134,11 @@ function portalReportHTML(h, d){
 }
 /* Where a portal page draws: the staff preview window when one is open (the app
    page sits behind it), otherwise the customer's whole page. */
+function portalPreviewFrame(){ return typeof document!=='undefined' ? document.querySelector('#modalRoot .portal-frame') : null; }
+function portalInPreview(){ return !!portalPreviewFrame(); }
 function portalShow(html){
   if(typeof document==='undefined') return;
-  var frame=document.querySelector('#modalRoot .portal-frame');
+  var frame=portalPreviewFrame();
   var box=frame||document.getElementById('app'); if(!box) return;
   box.innerHTML='<div class="portal-page">'+html+'</div>';
   if(frame) frame.scrollTop=0;
@@ -7145,8 +7156,8 @@ function portalViewHome(){
 /* Customer appointment request — form + submit to the public appt_requests
    collection, which the staff app watches live. */
 function portalApptForm(){
-  var d=PORTAL_LAST||{}; var app=(typeof document!=='undefined')&&document.getElementById('app'); if(!app) return;
-  app.innerHTML='<div class="portal-page"><div class="portal">'+
+  var d=PORTAL_LAST||{};
+  portalShow('<div class="portal">'+
     '<div class="p-head"><img class="p-lockup" src="'+LOGO_LOCKUP+'" alt="Basic by JMSI"/></div>'+
     '<button class="p-back" onclick="portalViewHome()">‹ Back</button>'+
     '<div class="p-veh"><div class="p-plate">Make an appointment</div>'+
@@ -7158,8 +7169,7 @@ function portalApptForm(){
       '<label class="p-fld"><span>What do you need?</span><textarea id="paNotes" rows="3" placeholder="e.g. PMS / oil change / brake check"></textarea></label>'+
       '<button class="p-btn" onclick="portalApptSubmit()">Send request</button>'+
       '<div id="paMsg" class="p-muted" style="margin-top:8px"></div>'+
-    '</div></div></div>';
-  if(typeof window!=='undefined'&&window.scrollTo) window.scrollTo(0,0);
+    '</div></div>');
 }
 function portalApptSubmit(){
   var d=PORTAL_LAST||{};
@@ -7167,6 +7177,8 @@ function portalApptSubmit(){
   var name=g('paName'), contact=g('paContact'), date=g('paDate'), notes=g('paNotes');
   var msg=document.getElementById('paMsg');
   if(!name||!contact){ if(msg){ msg.textContent='Please enter your name and contact number.'; msg.style.color='var(--brand)'; } return; }
+  // Staff trying the form must not put a fake request in the appointments list.
+  if(portalInPreview()){ portalApptDone(true); return; }
   var req={ plate:d.plate||'', vehicleId:(typeof portalVehicleId==='function'?portalVehicleId():'')||'',
     vehicle:(d.year+' '+d.make+' '+d.model).trim()+(d.variant?' '+d.variant:''),
     name:name, contact:contact, preferredDate:date||'', notes:notes||'', status:'new', source:'portal', createdAt:new Date().toISOString() };
@@ -7174,21 +7186,20 @@ function portalApptSubmit(){
     if(msg){ msg.textContent='Sending…'; msg.style.color=''; }
     bcol('appt_requests').add(req).then(function(){ portalApptDone(true); }).catch(function(){ portalApptDone(false); });
   } else {
-    portalApptDone(true);   // local/preview
+    portalApptDone(true);   // local
   }
 }
 function portalApptDone(ok){
-  var app=(typeof document!=='undefined')&&document.getElementById('app'); if(!app) return;
   var sh=(PORTAL_LAST&&PORTAL_LAST.shop)||{};
-  app.innerHTML='<div class="portal-page"><div class="portal">'+
+  portalShow('<div class="portal">'+
     '<div class="p-head"><img class="p-lockup" src="'+LOGO_LOCKUP+'" alt="Basic by JMSI"/></div>'+
     '<div class="p-card" style="text-align:center">'+
-      (ok? '<div class="p-big">✓ Request sent</div><p class="p-muted">Thank you! Our team will contact you shortly to confirm your appointment.</p>'
+      (portalInPreview()? '<div class="p-big">Preview only</div><p class="p-muted">Nothing was sent. A customer sees a confirmation here, and the request reaches your appointments.</p>'
+       : ok? '<div class="p-big">✓ Request sent</div><p class="p-muted">Thank you! Our team will contact you shortly to confirm your appointment.</p>'
          : '<div class="p-big">Couldn’t send</div><p class="p-muted">Please call the shop to book your appointment.</p>'+
            (sh.contact?'<a class="p-btn" href="tel:'+esc(firstPhone(sh.contact))+'">Call the shop</a>':''))+
       '<button class="p-back" onclick="portalViewHome()" style="margin-top:10px">‹ Back to portal</button>'+
-    '</div></div></div>';
-  if(typeof window!=='undefined'&&window.scrollTo) window.scrollTo(0,0);
+    '</div></div>');
 }
 function portalHTML(){
   var v=vehicleById(portalVehicleId());
@@ -7286,7 +7297,7 @@ if (typeof module!=='undefined' && module.exports){
     deductInventory:deductInventory, receivePO:receivePO,
     importPartsText:importPartsText, importPartsFromArray:importPartsFromArray, parseCSV:parseCSV,
     portalHTML:portalHTML, isPortalRoute:isPortalRoute, setPortalId:function(fn){ portalVehicleId=fn; },
-    portalDataForVehicle:portalDataForVehicle, portalCardsHTML:portalCardsHTML, portalReportHTML:portalReportHTML, portalViewReport:portalViewReport, portalViewHome:portalViewHome,
+    portalDataForVehicle:portalDataForVehicle, portalCardsHTML:portalCardsHTML, portalReportHTML:portalReportHTML, portalViewReport:portalViewReport, portalViewHome:portalViewHome, portalApptForm:portalApptForm, portalApptSubmit:portalApptSubmit,
     docReceivingSlip:docReceivingSlip, editInspection:editInspection, saveInspection:saveInspection, saveInspectionAndSlip:saveInspectionAndSlip, fmtDate:fmtDate, staffName:staffName, customerStatusText:customerStatusText, setCustomerNote:setCustomerNote, editCustomerNote:editCustomerNote, saveCustomerNote:saveCustomerNote,
     setPublishPortal:function(fn){ var was=publishPortalDoc; publishPortalDoc=fn; return function(){ publishPortalDoc=was; }; },
     STATUS:function(){ return STATUS; }, STATUS_ORDER:function(){ return STATUS_ORDER; },
