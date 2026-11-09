@@ -493,6 +493,17 @@ a.lnk{color:var(--brand);cursor:pointer;font-weight:600}
 @media (max-width:420px){
   .userchip{max-width:92px}                   /* very narrow phones: trim email further */
 }
+/* Floating Back (iPads and phones only): bottom-left, under dialogs and the open menu */
+.back-fab{display:none;position:fixed;left:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:50;
+  align-items:center;gap:4px;min-height:48px;padding:0 18px 0 14px;border:0;border-radius:24px;
+  background:var(--ink);color:var(--panel);font:inherit;font-size:15px;font-weight:600;
+  box-shadow:0 6px 18px rgba(0,0,0,.28);cursor:pointer;-webkit-tap-highlight-color:transparent}
+.back-fab:active{transform:scale(.95)}
+@media (pointer:coarse), (max-width:900px){
+  .back-fab:not([hidden]){display:flex}
+  .content{padding-bottom:88px}               /* room so the button never covers the last row */
+}
+@media print{.back-fab{display:none!important}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 
 /* ---- Login screen (cloud auth gate) ---- */
@@ -676,7 +687,7 @@ var BRANCH = {"id":"sandbox","slug":"sandbox","name":"Basic by JMSI — Sandbox 
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-11-07 · 2e8f11d';
+var APP_VERSION = 'v1.3.0 · 2026-11-09 · 2f40209';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -1363,6 +1374,21 @@ function goBack(){
   if (ROUTE.view!=='board') _navTo('board');   // nothing left to go back to → Board
 }
 
+/* Floating "‹ Back" for iPads and phones (no ESC key there). Same steps as ESC.
+   The stylesheet shows it only on touch or narrow screens. Not on the PMS
+   tablet form (its own link saves before leaving) or the QR photo uploader. */
+function backFabShown(){
+  if (ROUTE.view==='pmsform' || ROUTE.view==='photoup') return false;
+  return ROUTE.view!=='board' || NAV_STACK.length>0;
+}
+function backFabHTML(){
+  return '<button id="backFab" class="back-fab" onclick="goBack()" aria-label="Back"'+(backFabShown()?'':' hidden')+'>‹ Back</button>';
+}
+function updateBackFab(){
+  var b = document.getElementById ? document.getElementById('backFab') : null;
+  if (b && b.toggleAttribute) b.toggleAttribute('hidden', !backFabShown());
+}
+
 /* ---- View dispatch (filled by later parts) -------------------------------- */
 var VIEWS = {}; // id -> function(arg) -> html string
 
@@ -1675,6 +1701,7 @@ function render(){
       '<div class="main">' + topbarHTML() +
         '<div class="content" id="content">' + renderView() + '</div>' +
       '</div>' +
+      backFabHTML() +
       '<div id="modalRoot"></div>';
     _mode='app'; _mounted=true;
     if (typeof afterRender==='function') afterRender();
@@ -1696,6 +1723,7 @@ function render(){
   }
   updateNavActive();
   updateTopbar();
+  updateBackFab();
   if (typeof afterRender==='function') afterRender();
 }
 function updateNavActive(){
@@ -7288,6 +7316,8 @@ if (typeof module!=='undefined' && module.exports){
     laborTotal:laborTotal, partsTotal:partsTotal, jobGross:jobGross, jobBalance:jobBalance,
     runningBill:runningBill, commissionTable:commissionTable, agingBucket:agingBucket,
     VIEWS:function(){ return VIEWS; },
+    go:go, goBack:goBack, getRoute:function(){ return ROUTE; }, resetNav:function(){ NAV_STACK.length=0; ROUTE.view='board'; ROUTE.arg=null; },
+    backFabShown:backFabShown, backFabHTML:backFabHTML,
     docJobOrder:docJobOrder, docPostJob:docPostJob, docBilling:docBilling, docEstimate:docEstimate,
     docPO:docPO, docStatement:docStatement, docPayout:docPayout, docDailyClose:docDailyClose,
     eodData:eodData, docEodRange:docEodRange, setEodRange:function(f,t){ EOD_FROM=f; EOD_TO=t; },
