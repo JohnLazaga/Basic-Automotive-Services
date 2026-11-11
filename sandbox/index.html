@@ -690,7 +690,7 @@ var BRANCH = {"id":"sandbox","slug":"sandbox","name":"Basic by JMSI — Sandbox 
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-11-09 · 65ced85';
+var APP_VERSION = 'v1.3.0 · 2026-11-11 · 4dce1fb';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -11985,12 +11985,20 @@ function _lastAgreement(j, staffId){
   ((j&&j.forms)||[]).forEach(function(f){ if(f.kind==='deduction' && f.data && f.data.mechanicId===staffId) out=f; });
   return out;
 }
-/* What is wrong with this mechanic's agreement on this job, or null. */
+/* What is wrong with this mechanic's agreement on this job, or null.
+   A back job's charge also accepts a MATCHING agreement saved on the original
+   job: the damage happened there, so that is where staff file it (Fairview,
+   Nov 2026 — a second charge was added to the original to "match" it). */
 function agreementIssue(j, staffId){
   var c=jobPartsCharge(j, staffId); if(!c) return null;
+  function differs(f){ return Math.abs((Number(f.data.amount)||0)-c.total)>0.004 || Number(f.data.n)!==c.n; }
   var f=_lastAgreement(j, staffId), base={ jobId:j.id, jobNo:j.no, staffId:staffId, form:f };
-  if(!f) return Object.assign(base, { why:'missing' });
-  if(Math.abs((Number(f.data.amount)||0)-c.total)>0.004 || Number(f.data.n)!==c.n) return Object.assign(base, { why:'differs' });
+  if(!f){
+    var o=j.comebackOf && _lastAgreement(jobById(j.comebackOf), staffId);
+    if(o && !differs(o)) return null;
+    return Object.assign(base, { why:'missing' });
+  }
+  if(differs(f)) return Object.assign(base, { why:'differs' });
   return null;
 }
 /* One issue per job and mechanic with a piece still to be taken. */
@@ -13203,7 +13211,9 @@ function genericFormHTML(kind, j, ed, who){
   var get=function(fd){ return data ? data[fd.key] : (who && fd.key===def.who) ? who : _fdDefault(fd, j, prev); };
   var whoFd=def.lock ? def.fields.filter(function(fd){ return fd.key===def.who; })[0] : null;
   var locked=whoFd ? def.lock(j, get(whoFd)) : null;
-  return head+(data && def.lock ? _fdLockNote(j, data, locked) : '')+def.fields.map(function(fd){
+  var whoId=whoFd ? get(whoFd) : '';
+  var note=!def.lock ? '' : data ? _fdLockNote(j, data, locked, whoId) : (!locked && _fdBackJobCharging(j, whoId)) ? _fdLockNote(j, {}, null, whoId) : '';
+  return head+note+def.fields.map(function(fd){
     var v=fd.locked ? (locked?locked[fd.key]:'') : get(fd), id=_fdId(fd.key), lab=fd.label+(fd.req?'':'');
     var ro=fd.locked?' readonly':'';
     var ctl;
@@ -13217,9 +13227,21 @@ function genericFormHTML(kind, j, ed, who){
     return field(lab+(fd.req?' *':''), ctl, fd.hint||'');
   }).join('');
 }
+/* A back job of j whose parts are charged to this mechanic. The damage happened
+   on j, so staff open the agreement there; it belongs on the back job, and
+   "charge it here first" made them charge the same part twice (Nov 2026). */
+function _fdBackJobCharging(j, staffId){
+  if(!j || !staffId || typeof jobPartsCharge!=='function') return null;
+  return (S.jobs||[]).filter(function(x){ return x && x.comebackOf===j.id && !jobVoided(x) && !jobCancelled(x) && jobPartsCharge(x, staffId); })[0] || null;
+}
+function _fdNoChargeText(j, staffId){
+  var cb=_fdBackJobCharging(j, staffId);
+  return cb ? 'This part is charged on back job '+cb.no+', not on '+j.no+'. Save the agreement on '+cb.no+' instead — do not charge the part here again.'
+            : 'No part is charged to this mechanic on '+j.no+'. Charge it on the job line first (Not billed → Charge the cost to).';
+}
 /* Editing a saved agreement: say what saving changes, or why it can't be saved. */
-function _fdLockNote(j, data, locked){
-  if(!locked) return '<div class="notes small" style="margin:0 0 10px"><b>No part is charged to this mechanic on '+esc(j.no)+'.</b> Charge it on the job line first, then save this again.</div>';
+function _fdLockNote(j, data, locked, staffId){
+  if(!locked) return '<div class="notes small" style="margin:0 0 10px"><b>'+esc(_fdNoChargeText(j, staffId))+'</b></div>';
   if(Number(data.amount)===locked.amount && Number(data.n)===locked.n) return '';
   return '<div class="notes small" style="margin:0 0 10px"><b>This agreement says '+esc(peso(Number(data.amount)||0))+' over '+esc(num(data.n))+' payout(s). The job line says '+esc(peso(locked.amount))+' over '+esc(num(locked.n))+'.</b> Saving corrects it to the job line; have the mechanic sign the new copy.</div>';
 }
@@ -13242,7 +13264,7 @@ function _fdClean(kind, j, raw){
   if(def.billedOnly && !(j.stage==='Final Billing' || j.stage==='Released')) return { msg:'Bill the job order first — this form is for a billed job' };
   if(def.lock && raw[def.who]){   // locked fields always take the job line's values
     var locked=def.lock(j, String(raw[def.who]));
-    if(!locked) return { msg:'No part is charged to this mechanic on '+j.no+'. Charge it on the job line first (Not billed → Charge the cost to).' };
+    if(!locked) return { msg:_fdNoChargeText(j, String(raw[def.who])) };
     raw=Object.assign({}, raw, locked);
   }
   var data={}, miss='';
