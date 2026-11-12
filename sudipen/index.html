@@ -690,7 +690,7 @@ var BRANCH = {"id":"sudipen","slug":"sudipen","name":"Basic by JMSI — Sudipen"
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-11-12 · d2225c6';
+var APP_VERSION = 'v1.3.0 · 2026-11-12 · 7469e10';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -13221,6 +13221,7 @@ FORM_DEFS.testdrive = {
         '<div class="notes"><b>Purpose:</b> '+c.e('purpose')+'</div>'+
         '<p>The test drive is limited to about <b>'+c.n('km')+' km</b>'+((c.blank||Number(c.d.odo)>0)?', starting at <b>'+c.n('odo')+' km</b> on the odometer':'')+', and is for testing only.</p>'+
         '<p>I understand that a vehicle brought in for repair may have faults that show up or get worse on the road — it may stall, overheat or break down. I accept that risk, and I hold '+c.shop+', its owners and employees free from responsibility for breakdowns, damage or towing that result from the vehicle’s existing condition or from repairs not yet done.</p>'+
+        '<p>If the vehicle is involved in a road accident during the test drive that was <b>not caused by the shop’s driver</b> — for example, another motorist’s fault, a natural event, or road conditions the driver could not have avoided — '+c.shop+' is not liable for the damage. It will be claimed from the party at fault and/or the vehicle’s insurance, and the shop will help with the police report and the claim.</p>'+
         '<p>The shop remains responsible for damage caused by its driver’s negligence and for traffic violations committed during the drive.</p>'+
         '<p>Signed on <b>'+c.when+'</b>.</p>'; },
       sigs:function(c){ return [['Customer — '+_FD_SIG.en, '<b>'+c.e('customer')+'</b>'],['Driver', c.staff('driverId')],['Service Adviser', c.staff('adviserId')]]; } },
@@ -13230,6 +13231,7 @@ FORM_DEFS.testdrive = {
         '<div class="notes"><b>Layunin:</b> '+c.e('purpose')+'</div>'+
         '<p>Ang test drive ay hanggang humigit-kumulang <b>'+c.n('km')+' km</b>'+((c.blank||Number(c.d.odo)>0)?', simula sa <b>'+c.n('odo')+' km</b> sa odometer':'')+', at para lamang sa pagsubok.</p>'+
         '<p>Nauunawaan ko na ang sasakyang ipinaayos ay maaaring may sira na lumabas o lumala sa daan — maaari itong mamatayan, mag-overheat o masiraan. Tinatanggap ko ang panganib na ito, at pinawawalang-pananagutan ko ang '+c.shop+', ang mga may-ari at empleyado nito sa pagkasira, pinsala o paghila na dulot ng kasalukuyang kalagayan ng sasakyan o ng mga pagkukumpuning hindi pa nagagawa.</p>'+
+        '<p>Kung masangkot ang sasakyan sa aksidente sa daan habang nagte-test drive na <b>hindi kasalanan ng driver ng shop</b> — halimbawa, kasalanan ng ibang motorista, kalamidad, o kalagayan ng kalsada na hindi maiiwasan ng driver — hindi mananagot ang '+c.shop+' sa pinsala. Sisingilin ito sa may kasalanan at/o sa insurance ng sasakyan, at tutulong ang shop sa police report at sa claim.</p>'+
         '<p>Mananagot pa rin ang shop sa pinsalang dulot ng kapabayaan ng driver nito at sa mga paglabag sa batas-trapiko habang nagte-test drive.</p>'+
         '<p>Nilagdaan ngayong <b>'+c.when+'</b>.</p>'; },
       sigs:function(c){ return [['Customer — '+_FD_SIG.fil, '<b>'+c.e('customer')+'</b>'],['Driver', c.staff('driverId')],['Service Adviser', c.staff('adviserId')]]; } }
