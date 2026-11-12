@@ -690,7 +690,7 @@ var BRANCH = {"id":"sudipen","slug":"sudipen","name":"Basic by JMSI — Sudipen"
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-11-12 · cbb5cc7';
+var APP_VERSION = 'v1.3.0 · 2026-11-12 · d2225c6';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -3049,6 +3049,8 @@ function saveUpdate(){
   persist(); publishJobPortal(j); closeModal();
   toast(entry.for ? 'Logged · message for '+entry.for.map(staffName).join(', ') : 'Update logged');
   render();
+  // Waiting for the test drive: a reminder if no waiver was signed at check-in. Never blocks.
+  if(code==='C1' && typeof offerTestDriveWaiver==='function') offerTestDriveWaiver(j.id, 'c1');
 }
 
 /* ---- Lines panel ---------------------------------------------------------- */
@@ -3623,7 +3625,7 @@ function jobInspectionPanel(j){
     '<div class="grid2 ksmall">'+
       kv('Ingress odometer', odo(insp.odometer||j.odometer))+ kv('Fuel level', fmtFuel(insp.fuel))+
       kv('Dash lights / DTC', insp.lights||'None')+ kv('Condition', insp.condition||'—')+
-      kv('Road test', insp.roadTest?'Authorized by customer':'Not authorized')+
+      kv('Road test', insp.roadTest ? 'Authorized by customer · '+((typeof testDriveWaiverOf==='function' && testDriveWaiverOf(j))?'waiver signed':'no waiver yet') : 'Not authorized')+
     '</div>'+
     (cl.created? '<div class="checklist"><div class="cl-title">Items left in vehicle '+(cl.leaveUnit?'':'(unit not left)')+'</div>'+
       '<div class="cl-items">'+items+'</div>'+
@@ -3660,14 +3662,18 @@ function storeInspection(){
   persist(); closeModal(); toast('Check-in saved'); render();
   return j;
 }
-function saveInspectionAndSlip(){ printReceivingSlip(storeInspection().id); }
+/* After the slip the customer is still at the counter: offer the Test Drive
+   Waiver if they authorized a road test and haven't signed one. */
+function _thenWaiver(id){ if(typeof offerTestDriveWaiver==='function') offerTestDriveWaiver(id, 'checkin'); }
+function saveInspectionAndSlip(){ var j=storeInspection(); printReceivingSlip(j.id); _thenWaiver(j.id); }
 function saveInspection(){
   var j=storeInspection();
   // The customer is leaving: this is the moment they need their slip.
   if(j.checklist.leaveUnit) openModal('Print the receiving slip?',
     '<p class="muted small">The customer is leaving the unit. Print their slip now, and have both sides sign it.</p>',
-    { footer:'<button class="btn ghost" onclick="closeModal()">Not now</button>'+
-      '<button class="btn primary" id="rsPrint" onclick="closeModal();printReceivingSlip(\''+j.id+'\')">⎙ Print receiving slip</button>' });
+    { footer:'<button class="btn ghost" onclick="closeModal();_thenWaiver(\''+j.id+'\')">Not now</button>'+
+      '<button class="btn primary" id="rsPrint" onclick="closeModal();printReceivingSlip(\''+j.id+'\');_thenWaiver(\''+j.id+'\')">⎙ Print receiving slip</button>' });
+  else _thenWaiver(j.id);
 }
 
 /* ---- Photos panel --------------------------------------------------------- */
@@ -7370,7 +7376,7 @@ if (typeof module!=='undefined' && module.exports){
     scheduleNextService:scheduleNextService, clearNextService:clearNextService, alertStrip:alertStrip,
     jobVehicleLabel:jobVehicleLabel, replyRecipients:replyRecipients, unreadMessages:unreadMessages, messageStrip:messageStrip, myStaffIds:myStaffIds, messageAcked:messageAcked,
     buildLogEntry:buildLogEntry, logEntryFor:logEntryFor, jobStatusPanel:jobStatusPanel, lastLogForLabel:lastLogForLabel,
-    jobDescriptionPanel:jobDescriptionPanel, jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fillVehicleBlanks:fillVehicleBlanks, openJobsForPlate:openJobsForPlate, correctPayment:correctPayment, overpaidJobs:overpaidJobs, paymentCorrections:paymentCorrections, billBaseline:billBaseline, trackBillChanges:trackBillChanges, billChanges:billChanges, discountRows:discountRows, discountReasonMissing:discountReasonMissing, cashExpected:cashExpected, cashCountRows:cashCountRows, paymentsMissingRef:paymentsMissingRef, releasedOwing:releasedOwing, docMoneyChecks:docMoneyChecks, moneyCheckData:moneyCheckData, voidedReceipts:voidedReceipts, cancelledJobs:cancelledJobs, voidsHoldingMoney:voidsHoldingMoney, docVoids:docVoids, addPayAdj:addPayAdj, payAdjInPeriod:payAdjInPeriod, accessLogHTML:accessLogHTML, unauthSignins:unauthSignins, newUnauthSignins:newUnauthSignins, unauthBannerHTML:unauthBannerHTML, alKey:alKey, docWaiver:docWaiver, issueWaiverCore:issueWaiverCore, issueReleaseCore:issueReleaseCore, updateReleaseCore:updateReleaseCore, docRelease:docRelease, issueFormCore:issueFormCore, updateFormCore:updateFormCore, docGenericForm:docGenericForm, docBlankForm:docBlankForm, genericFormHTML:genericFormHTML, fdLockRefresh:fdLockRefresh, agreementIssue:agreementIssue, deductionAgreementIssues:deductionAgreementIssues, partsAgreementHTML:partsAgreementHTML, saveLine:saveLine, saveLineMore:saveLineMore, setLineCtx:function(c){ lineCtx=c; }, formMenu:formMenu, formWho:formWho, FORM_DEFS:function(){ return FORM_DEFS; }, FORM_DEF_ORDER:function(){ return FORM_DEF_ORDER; }, billingReleaseForm:billingReleaseForm, docBillingWithRelease:docBillingWithRelease, formJobMatches:formJobMatches, jobBelongings:jobBelongings, finishRelease:finishRelease, updateWaiverCore:updateWaiverCore, fmtDateFil:fmtDateFil, waiverDefaultItems:waiverDefaultItems, issuedForms:issuedForms, deviceLockAtRisk:deviceLockAtRisk, deviceLockWarningHTML:deviceLockWarningHTML, comebackSetupWarning:comebackSetupWarning, comebackDeductions:comebackDeductions, printDoc:printDoc, partsCharges:partsCharges, partsChargeSources:partsChargeSources, allDeductions:allDeductions, jobPartsCharge:jobPartsCharge, lineChargeFields:lineChargeFields, cbSetPay:cbSetPay, cbPartsCost:cbPartsCost, billedLines:billedLines, lineNoBill:lineNoBill, partsPendingNotCounted:partsPendingNotCounted, noBillFields:noBillFields, cbPayFields:cbPayFields, finalizePayoutCore:finalizePayoutCore, finalizePayoutCheck:finalizePayoutCheck, voidPayoutCore:voidPayoutCore, undoComebackCore:undoComebackCore, payoutStatusText:payoutStatusText, comebackPendingNotCounted:comebackPendingNotCounted, comebackTakenNote:comebackTakenNote, comebackDeductionsInPeriod:comebackDeductionsInPeriod, netPayoutRows:netPayoutRows, docPayout:docPayout, docMechCommission:docMechCommission, setProdPeriod:function(p,f,t){ PROD_PERIOD=p; PROD_FROM=f||''; PROD_TO=t||''; }, paymentsDoc:paymentsDoc, pmsGateMissing:pmsGateMissing, jobsMissingInfo:jobsMissingInfo, partNetMissing:partNetMissing, lessVatApplied:lessVatApplied, lessVatStale:lessVatStale, markLessVat:markLessVat, syncLessVat:syncLessVat, discVat:discVat, discountReasonPicker:discountReasonPicker, jobPLSplit:jobPLSplit, plForRange:plForRange, opexForRange:opexForRange, docPL:docPL, discountExVat:discountExVat, discountAmount:discountAmount, discountedLabor:discountedLabor, readDiscountObj:function(d){ return d; }, discountEditor:discountEditor, pmsDefaultMechs:pmsDefaultMechs, pmsReadyToSubmit:pmsReadyToSubmit, PMS_TEMPLATE:function(){ return PMS_TEMPLATE; }, pmsSectionMissing:pmsSectionMissing, orSeriesInRange:orSeriesInRange, orRangeGaps:orRangeGaps, inRptRange:inRptRange, setRptRangeRaw:function(k,r){ RPT_RANGE[k]=r; }, docDiscounts:docDiscounts, warnIfPlateOnBoard:warnIfPlateOnBoard, plFor:plFor, opexFor:opexFor, payFor:payFor, monthlyPay:monthlyPay, addMonths:addMonths, syncCollections:syncCollections, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
+    jobDescriptionPanel:jobDescriptionPanel, jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fillVehicleBlanks:fillVehicleBlanks, openJobsForPlate:openJobsForPlate, correctPayment:correctPayment, overpaidJobs:overpaidJobs, paymentCorrections:paymentCorrections, billBaseline:billBaseline, trackBillChanges:trackBillChanges, billChanges:billChanges, discountRows:discountRows, discountReasonMissing:discountReasonMissing, cashExpected:cashExpected, cashCountRows:cashCountRows, paymentsMissingRef:paymentsMissingRef, releasedOwing:releasedOwing, docMoneyChecks:docMoneyChecks, moneyCheckData:moneyCheckData, voidedReceipts:voidedReceipts, cancelledJobs:cancelledJobs, voidsHoldingMoney:voidsHoldingMoney, docVoids:docVoids, addPayAdj:addPayAdj, payAdjInPeriod:payAdjInPeriod, accessLogHTML:accessLogHTML, unauthSignins:unauthSignins, newUnauthSignins:newUnauthSignins, unauthBannerHTML:unauthBannerHTML, alKey:alKey, docWaiver:docWaiver, testDriveWaiverOf:testDriveWaiverOf, offerTestDriveWaiver:offerTestDriveWaiver, issueWaiverCore:issueWaiverCore, issueReleaseCore:issueReleaseCore, updateReleaseCore:updateReleaseCore, docRelease:docRelease, issueFormCore:issueFormCore, updateFormCore:updateFormCore, docGenericForm:docGenericForm, docBlankForm:docBlankForm, genericFormHTML:genericFormHTML, fdLockRefresh:fdLockRefresh, agreementIssue:agreementIssue, deductionAgreementIssues:deductionAgreementIssues, partsAgreementHTML:partsAgreementHTML, saveLine:saveLine, saveLineMore:saveLineMore, setLineCtx:function(c){ lineCtx=c; }, formMenu:formMenu, formWho:formWho, FORM_DEFS:function(){ return FORM_DEFS; }, FORM_DEF_ORDER:function(){ return FORM_DEF_ORDER; }, billingReleaseForm:billingReleaseForm, docBillingWithRelease:docBillingWithRelease, formJobMatches:formJobMatches, jobBelongings:jobBelongings, finishRelease:finishRelease, updateWaiverCore:updateWaiverCore, fmtDateFil:fmtDateFil, waiverDefaultItems:waiverDefaultItems, issuedForms:issuedForms, deviceLockAtRisk:deviceLockAtRisk, deviceLockWarningHTML:deviceLockWarningHTML, comebackSetupWarning:comebackSetupWarning, comebackDeductions:comebackDeductions, printDoc:printDoc, partsCharges:partsCharges, partsChargeSources:partsChargeSources, allDeductions:allDeductions, jobPartsCharge:jobPartsCharge, lineChargeFields:lineChargeFields, cbSetPay:cbSetPay, cbPartsCost:cbPartsCost, billedLines:billedLines, lineNoBill:lineNoBill, partsPendingNotCounted:partsPendingNotCounted, noBillFields:noBillFields, cbPayFields:cbPayFields, finalizePayoutCore:finalizePayoutCore, finalizePayoutCheck:finalizePayoutCheck, voidPayoutCore:voidPayoutCore, undoComebackCore:undoComebackCore, payoutStatusText:payoutStatusText, comebackPendingNotCounted:comebackPendingNotCounted, comebackTakenNote:comebackTakenNote, comebackDeductionsInPeriod:comebackDeductionsInPeriod, netPayoutRows:netPayoutRows, docPayout:docPayout, docMechCommission:docMechCommission, setProdPeriod:function(p,f,t){ PROD_PERIOD=p; PROD_FROM=f||''; PROD_TO=t||''; }, paymentsDoc:paymentsDoc, pmsGateMissing:pmsGateMissing, jobsMissingInfo:jobsMissingInfo, partNetMissing:partNetMissing, lessVatApplied:lessVatApplied, lessVatStale:lessVatStale, markLessVat:markLessVat, syncLessVat:syncLessVat, discVat:discVat, discountReasonPicker:discountReasonPicker, jobPLSplit:jobPLSplit, plForRange:plForRange, opexForRange:opexForRange, docPL:docPL, discountExVat:discountExVat, discountAmount:discountAmount, discountedLabor:discountedLabor, readDiscountObj:function(d){ return d; }, discountEditor:discountEditor, pmsDefaultMechs:pmsDefaultMechs, pmsReadyToSubmit:pmsReadyToSubmit, PMS_TEMPLATE:function(){ return PMS_TEMPLATE; }, pmsSectionMissing:pmsSectionMissing, orSeriesInRange:orSeriesInRange, orRangeGaps:orRangeGaps, inRptRange:inRptRange, setRptRangeRaw:function(k,r){ RPT_RANGE[k]=r; }, docDiscounts:docDiscounts, warnIfPlateOnBoard:warnIfPlateOnBoard, plFor:plFor, opexFor:opexFor, payFor:payFor, monthlyPay:monthlyPay, addMonths:addMonths, syncCollections:syncCollections, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
     afterServiceMissing:afterServiceMissing, afterServiceDone:afterServiceDone, afterServiceStaff:afterServiceStaff,
     canWriteAfterService:canWriteAfterService, afterServiceSignerName:afterServiceSignerName, afterServiceBlock:afterServiceBlock,
     allocateSeriesNumber:allocateSeriesNumber, maxSeriesNo:maxSeriesNo, nextNo:nextNo,
@@ -13198,6 +13204,8 @@ FORM_DEFS.testdrive = {
   title:'Test Drive Waiver',
   sub:'The customer lets the shop road-test the vehicle, and accepts the risk from its existing condition.',
   who:'customer',
+  /* A signed waiver is the customer's authorization: tick the check-in box. */
+  onSave:function(j){ j.inspection=j.inspection||{}; j.inspection.roadTest=true; },
   fields:[
     _fdCustomer(),
     { key:'purpose', type:'textarea', label:'Purpose of the test drive', req:true, hint:'e.g. confirm the noise at 60 km/h; check the repair before release' },
@@ -13326,6 +13334,7 @@ function issueFormCore(kind, jobId, raw, lang){
   var v=_fdClean(kind, j, raw); if(v.msg) return { ok:false, msg:v.msg };
   var rec={ id:uid('fm'), kind:kind, at:new Date().toISOString(), byName:_meName(), lang:(lang==='fil'?'fil':'en'), data:v.data };
   j.forms=j.forms||[]; j.forms.push(rec);
+  if(FORM_DEFS[kind].onSave) FORM_DEFS[kind].onSave(j, rec);
   return { ok:true, rec:rec };
 }
 function updateFormCore(kind, jobId, formId, raw, lang){
@@ -13333,7 +13342,25 @@ function updateFormCore(kind, jobId, formId, raw, lang){
   if(!j || !f || f.kind!==kind) return { ok:false, msg:'Form not found' };
   var v=_fdClean(kind, j, raw); if(v.msg) return { ok:false, msg:v.msg };
   f.data=v.data; f.lang=(lang==='fil'?'fil':'en'); f.editedAt=new Date().toISOString(); f.editedBy=_meName();
+  if(FORM_DEFS[kind].onSave) FORM_DEFS[kind].onSave(j, f);
   return { ok:true, rec:f };
+}
+/* The job's latest Test Drive Waiver, or null. */
+function testDriveWaiverOf(j){ return ((j&&j.forms)||[]).filter(function(f){ return f.kind==='testdrive'; }).pop()||null; }
+/* Offer the waiver when the road test is authorized but none is signed yet.
+   why: 'checkin' (the customer is at the counter) or 'c1' (waiting for the test
+   drive — usually the customer is gone). Returns true when a dialog was shown. */
+function offerTestDriveWaiver(id, why){
+  var j=jobById(id); if(!j || testDriveWaiverOf(j)) return false;
+  var auth=!!(j.inspection&&j.inspection.roadTest), canFill=(typeof can!=='function' || can('forms'));
+  if(why!=='c1' && (!auth || !canFill)) return false;
+  var msg = why!=='c1' ? 'The customer authorized a road test. Have them sign the Test Drive Waiver now, while they are here.'
+    : auth ? 'This job is waiting for a test drive, but no Test Drive Waiver is on file. Have the customer sign one — call them, or get it at release.'
+           : 'This job is waiting for a test drive, but the customer did not authorize a road test. Get their authorization before the vehicle leaves the shop — signing the Test Drive Waiver records it.';
+  openModal(why==='c1' ? 'No test drive waiver on file' : 'Print the Test Drive Waiver?', '<p class="muted small">'+esc(msg)+'</p>',
+    { footer:'<button class="btn ghost" onclick="closeModal()">'+(why==='c1'?'OK':'Not now')+'</button>'+
+      (canFill ? '<button class="btn primary" id="tdPrint" onclick="closeModal();openForm(\'testdrive\',\''+attr(j.id)+'\')">✍ Fill in &amp; print waiver</button>' : '') });
+  return true;
 }
 /* Who the form is about, for the Issued forms list. */
 function formWho(f){
