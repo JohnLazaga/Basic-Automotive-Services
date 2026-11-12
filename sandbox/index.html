@@ -690,7 +690,7 @@ var BRANCH = {"id":"sandbox","slug":"sandbox","name":"Basic by JMSI — Sandbox 
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-11-11 · 4dce1fb';
+var APP_VERSION = 'v1.3.0 · 2026-11-12 · cbb5cc7';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -13189,8 +13189,47 @@ FORM_DEFS.deduction = {
   }
 };
 
+/* 10. Test Drive Authorization & Waiver ------------------------------------ */
+/* The customer lets the shop's staff drive the vehicle on public roads to find
+   or confirm a fault. The waiver covers the vehicle's own condition — a waiver
+   of the shop's own negligence would be void (Civil Code art. 1171), so the
+   shop stays answerable for its driver's negligence and traffic violations. */
+FORM_DEFS.testdrive = {
+  title:'Test Drive Waiver',
+  sub:'The customer lets the shop road-test the vehicle, and accepts the risk from its existing condition.',
+  who:'customer',
+  fields:[
+    _fdCustomer(),
+    { key:'purpose', type:'textarea', label:'Purpose of the test drive', req:true, hint:'e.g. confirm the noise at 60 km/h; check the repair before release' },
+    { key:'km', type:'number', label:'Distance allowed — km', req:true, def:function(j, p){ return (p&&p.km)||10; } },
+    { key:'odo', type:'number', label:'Odometer before the drive (km)', def:function(j){ return (j.inspection&&Number(j.inspection.odometer))||Number(j.odometer)||''; } },
+    { key:'driverId', type:'staff', roles:['SV','SM','Mechanic','SA'], label:'Driver (licensed shop staff)' },
+    _fdAdviser()
+  ],
+  text:{
+    en:{ title:'Test Drive Authorization and Waiver',
+      body:function(c){ return '<p>I, <b>'+c.e('customer')+'</b>, authorize <b>'+c.shop+'</b> to have its licensed staff'+
+          (c.d.driverId||c.blank?' — <b>'+(c.blank?FORM_BLANK:c.staff('driverId'))+'</b> —':'')+' drive the vehicle described above on public roads to test it.</p>'+
+        '<div class="notes"><b>Purpose:</b> '+c.e('purpose')+'</div>'+
+        '<p>The test drive is limited to about <b>'+c.n('km')+' km</b>'+((c.blank||Number(c.d.odo)>0)?', starting at <b>'+c.n('odo')+' km</b> on the odometer':'')+', and is for testing only.</p>'+
+        '<p>I understand that a vehicle brought in for repair may have faults that show up or get worse on the road — it may stall, overheat or break down. I accept that risk, and I hold '+c.shop+', its owners and employees free from responsibility for breakdowns, damage or towing that result from the vehicle’s existing condition or from repairs not yet done.</p>'+
+        '<p>The shop remains responsible for damage caused by its driver’s negligence and for traffic violations committed during the drive.</p>'+
+        '<p>Signed on <b>'+c.when+'</b>.</p>'; },
+      sigs:function(c){ return [['Customer — '+_FD_SIG.en, '<b>'+c.e('customer')+'</b>'],['Driver', c.staff('driverId')],['Service Adviser', c.staff('adviserId')]]; } },
+    fil:{ title:'Awtorisasyon at Waiver sa Test Drive',
+      body:function(c){ return '<p>Ako, si <b>'+c.e('customer')+'</b>, ay nagbibigay ng awtoridad sa <b>'+c.shop+'</b> na ipamaneho sa lisensiyadong empleyado nito'+
+          (c.d.driverId||c.blank?' — si <b>'+(c.blank?FORM_BLANK:c.staff('driverId'))+'</b> —':'')+' ang sasakyang nakalarawan sa itaas sa pampublikong kalsada upang ito ay subukan.</p>'+
+        '<div class="notes"><b>Layunin:</b> '+c.e('purpose')+'</div>'+
+        '<p>Ang test drive ay hanggang humigit-kumulang <b>'+c.n('km')+' km</b>'+((c.blank||Number(c.d.odo)>0)?', simula sa <b>'+c.n('odo')+' km</b> sa odometer':'')+', at para lamang sa pagsubok.</p>'+
+        '<p>Nauunawaan ko na ang sasakyang ipinaayos ay maaaring may sira na lumabas o lumala sa daan — maaari itong mamatayan, mag-overheat o masiraan. Tinatanggap ko ang panganib na ito, at pinawawalang-pananagutan ko ang '+c.shop+', ang mga may-ari at empleyado nito sa pagkasira, pinsala o paghila na dulot ng kasalukuyang kalagayan ng sasakyan o ng mga pagkukumpuning hindi pa nagagawa.</p>'+
+        '<p>Mananagot pa rin ang shop sa pinsalang dulot ng kapabayaan ng driver nito at sa mga paglabag sa batas-trapiko habang nagte-test drive.</p>'+
+        '<p>Nilagdaan ngayong <b>'+c.when+'</b>.</p>'; },
+      sigs:function(c){ return [['Customer — '+_FD_SIG.fil, '<b>'+c.e('customer')+'</b>'],['Driver', c.staff('driverId')],['Service Adviser', c.staff('adviserId')]]; } }
+  }
+};
+
 /* ============================ the engine =================================== */
-var FORM_DEF_ORDER = ['rep','promissory','ownparts','pullout','warranty','storage','claim','incident','deduction'];
+var FORM_DEF_ORDER = ['rep','promissory','ownparts','pullout','testdrive','warranty','storage','claim','incident','deduction'];
 
 /* Data of the last form of this kind anywhere — standing terms carry forward. */
 function _fdPrev(kind){
