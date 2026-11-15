@@ -690,7 +690,7 @@ var BRANCH = {"id":"main","slug":"fairview","name":"Basic by JMSI — Fairview (
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-11-15 · 2b4bcd8';
+var APP_VERSION = 'v1.3.0 · 2026-11-15 · 0f1f290';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -816,6 +816,14 @@ function laborTotal(lines){ return sumLines(lines,'labor'); }
    carrying netPrice, but commissions still need to know). netPrice > 0 stays
    as the fallback for lines saved before the flag existed. */
 function laborSubcontracted(l){ return !!l && l.type==='labor' && (l.subcon===true || Number(l.netPrice)>0); }
+/* What a part line cost the shop (net × qty). Roles without cost access never
+   hold the net price once a branch's costs are separated (Option B); for a part
+   charged to a mechanic the server keeps that amount on the line (chargeTotal),
+   so pay deductions still come out right for everyone. */
+function lineCostTotal(l){
+  if(!l) return 0;
+  return Number(l.netPrice)>0 ? round2((Number(l.netPrice)||0)*(Number(l.qty)||0)) : (Number(l.chargeTotal)||0);
+}
 function subcontractCost(lines){
   return round2((lines||[]).reduce(function(s,l){ return laborSubcontracted(l) ? s+(Number(l.netPrice)||0)*(Number(l.qty)||0) : s; },0));
 }
@@ -3156,8 +3164,11 @@ function laborFields(l){
     field('Description','<input id="lnDesc" value="'+attr(l.desc||'')+'">')+
     '<div class="grid2">'+field('Qty','<input id="lnQty" type="text" inputmode="decimal" value="'+attr(l.qty||1)+'" onfocus="this.select()">')+
     field('Price','<input id="lnPrice" type="text" inputmode="decimal" value="'+attr(l.price||0)+'" onfocus="this.select()">')+'</div>'+
-    field('Net price (subcontracted only)','<input id="lnNet" type="text" inputmode="decimal" value="'+attr(l.netPrice||0)+'" onfocus="this.select()">',
-      'What the shop pays the outside mechanic. Leave 0 when our own mechanics do it — a subcontracted line earns no commission.')+
+    (canSeeCost()
+      ? field('Net price (subcontracted only)','<input id="lnNet" type="text" inputmode="decimal" value="'+attr(l.netPrice||0)+'" onfocus="this.select()">',
+          'What the shop pays the outside mechanic. Leave 0 when our own mechanics do it — a subcontracted line earns no commission.')
+      : '<label class="chk mt8"><input type="checkbox" id="lnSubcon"'+(laborSubcontracted(l)?' checked':'')+'> Subcontracted — done by an outside mechanic (earns no commission)</label>'+
+        field('What the shop pays him — only when adding or changing it','<input id="lnNet" type="text" inputmode="decimal" value="" placeholder="leave blank to keep" autocomplete="off">'))+
     '<div id="pmsLaborBtn">'+(typeof pmsLaborBtnHTML==='function'?pmsLaborBtnHTML(l.ref):'')+'</div>';
 }
 function catalogHint(){
@@ -3254,6 +3265,10 @@ function blockMissingNet(data, prev){
     if(prev && prev.type==='part' && String(prev.sku||'')===String(data.sku||'') && (Number(prev.netPrice)>0 || prev.costSet===true)){ data.netPrice=Number(prev.netPrice)||0; data.costSet=true; if(prev.netBy) data.netBy=prev.netBy; return false; }
     if(data.sku && typeof catalogLookup==='function' && catalogLookup(data.sku)) return false;
   }
+  // Subcontracted labor from a role without cost access: a blank box keeps what the shop pays.
+  if(!canSeeCost() && data && data.type==='labor' && data.subcon && !(Number(data.netPrice)>0) && prev && prev.type==='labor'){
+    data.netPrice=Number(prev.netPrice)||0;
+  }
   if(!partNetMissing(data)) return false;
   toast('Enter the net price (what the shop paid) for this part — it cannot be ₱0','err');
   var el=document.getElementById('lnNet'), box=(el && el.closest) ? el.closest('.fld') : null;
@@ -3294,7 +3309,8 @@ function readLine(){
   var type=val('lnType');
   if(type==='labor'){
     var lnet=Math.max(0,Number(val('lnNet'))||0);
-    return { type:'labor', ref:val('lnRef')||null, sku:'', netPrice:lnet, subcon:lnet>0, desc:val('lnDesc'), qty:Number(val('lnQty'))||0, price:Number(val('lnPrice'))||0 };
+    var subBox=(typeof document!=='undefined') ? document.getElementById('lnSubcon') : null;
+    return { type:'labor', ref:val('lnRef')||null, sku:'', netPrice:lnet, subcon:subBox ? (subBox.checked || lnet>0) : lnet>0, desc:val('lnDesc'), qty:Number(val('lnQty'))||0, price:Number(val('lnPrice'))||0 };
   }
   var pnet=Number(val('lnNet'))||0;
   return { type:'part', ref:null, sku:(val('lnSku')||'').trim(), desc:val('lnDesc'),
@@ -3571,7 +3587,7 @@ function cbPayFields(j){
 /* Net cost of this job’s part lines not charged on their own. */
 function cbPartsCost(j){
   return round2(((j&&j.lines)||[]).reduce(function(t,l){
-    return (l.type==='part' && !(lineNoBill(l) && l.chargeTo)) ? t+(Number(l.netPrice)||0)*(Number(l.qty)||0) : t; },0));
+    return (l.type==='part' && !(lineNoBill(l) && l.chargeTo)) ? t+lineCostTotal(l) : t; },0));
 }
 /* Why a comeback will deduct no commission, or '' when it will (or none is meant). */
 function comebackSetupWarning(j){
@@ -4632,7 +4648,9 @@ function convertEstimate(id){
   var e=estById(id);
   warnIfPlateOnBoard(e.plate, function(){ createJob({ plate:e.plate, owner:e.owner, contactPerson:e.contactPerson, contactNumber:e.contactNumber,
     year:e.year, make:e.make, model:e.model, odometer:e.odometer, assessedBy:e.assessedBy, saId:e.approvedSA, notes:e.notes,
-    lines: e.lines.map(function(l){ return { id:uid('ln'), type:l.type, ref:l.ref, sku:l.sku||'', netPrice:l.netPrice||0, desc:l.desc, qty:l.qty, price:l.price }; }) })
+    lines: e.lines.map(function(l){ var n={ id:uid('ln'), type:l.type, ref:l.ref, sku:l.sku||'', netPrice:l.netPrice||0, desc:l.desc, qty:l.qty, price:l.price,
+      fromEst:e.id, fromLine:l.id };   // the server copies the estimate line's cost when the cost is not on it (Option B)
+      if(l.subcon) n.subcon=true; if(l.costSet) n.costSet=true; return n; }) })
   .then(function(job){
     e.status='Converted'; persist();
     toast('Converted to '+job.no); go('job', job.id);
@@ -4981,11 +4999,12 @@ VIEWS.labor = function(){
     var actions=pms
       ? '<button class="ic" onclick="editLabor(\''+l.id+'\')" title="Edit rate">✎</button>'
       : '<button class="ic" onclick="editLabor(\''+l.id+'\')">✎</button><button class="ic" onclick="delLabor(\''+l.id+'\')">✕</button>';
-    return '<tr><td>'+nameCell+'</td><td class="r">'+peso(l.price)+'</td><td class="r">'+peso(l.cost||0)+'</td>'+
+    var seeCost=(typeof canSeeCost!=='function') || canSeeCost();
+    return '<tr><td>'+nameCell+'</td><td class="r">'+peso(l.price)+'</td>'+(seeCost?'<td class="r">'+peso(l.cost||0)+'</td>':'')+
       '<td class="r">'+actions+'</td></tr>';
   }).join('');
   return '<div class="page"><div class="page-head"><h1>Labor Catalog</h1><button class="btn primary" onclick="editLabor()">＋ Add labor</button></div>'+
-    '<div class="card pad0"><table class="tbl"><thead><tr><th>Service</th><th class="r">Rate</th><th class="r">Internal cost</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+    '<div class="card pad0"><table class="tbl"><thead><tr><th>Service</th><th class="r">Rate</th>'+(((typeof canSeeCost!=='function') || canSeeCost())?'<th class="r">Internal cost</th>':'')+'<th></th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
 };
 function editLabor(id){ var l=id?S.labor.find(function(x){return x.id===id;}):{}; var pms=isPmsLabor(l);
   openModal(id?'Edit labor':'Add labor',
@@ -4994,14 +5013,16 @@ function editLabor(id){ var l=id?S.labor.find(function(x){return x.id===id;}):{}
       : '<input id="lbName" value="'+attr(l.name||'')+'">',
       pms?'Standard item — rate is editable, name is fixed':'')+
     '<div class="grid2">'+field('Rate','<input id="lbPrice" type="number" step="0.01" value="'+attr(l.price||0)+'">')+
-    field('Internal cost','<input id="lbCost" type="number" step="0.01" value="'+attr(l.cost||0)+'">')+'</div>',
+    (((typeof canSeeCost!=='function') || canSeeCost()) ? field('Internal cost','<input id="lbCost" type="number" step="0.01" value="'+attr(l.cost||0)+'">') : '')+'</div>',
     { onOk:'saveLabor' }); setTimeout(function(){lbCtx=id||null;},10); }
 var lbCtx=null;
 function saveLabor(){
   var editing=lbCtx?S.labor.find(function(x){return x.id===lbCtx;}):null;
   var pms=isPmsLabor(editing);
   // Reserved item keeps its canonical name; only the rate (and internal cost) change.
-  var data={ name:pms?PMS_LABOR_NAME:val('lbName'), price:Number(val('lbPrice'))||0, cost:Number(val('lbCost'))||0 };
+  var data={ name:pms?PMS_LABOR_NAME:val('lbName'), price:Number(val('lbPrice'))||0 };
+  // Internal cost: only roles that can see costs set it; everyone else leaves it as it is.
+  if (typeof document==='undefined' || document.getElementById('lbCost')) data.cost=Number(val('lbCost'))||0;
   if(!data.name){toast('Name required','err');return;}
   if(editing){ Object.assign(editing,data); } else { data.id=uid('lb'); S.labor.push(data); }
   persist(); closeModal(); render(); }
@@ -7418,6 +7439,10 @@ if (typeof module!=='undefined' && module.exports){
     catalogLookup:catalogLookup, canSeeCost:canSeeCost, partFields:partFields, blockMissingNet:blockMissingNet,
     jobProfitPanel:jobProfitPanel, laborFields:laborFields, costLogHTML:costLogHTML,
     syncCollectionsNow:function(){ return syncCollections(); },
+    lineCostTotal:lineCostTotal, partsChargeSources:partsChargeSources, costStripLines:costStripLines, costStripLabor:costStripLabor,
+    cloudDocFormB:function(c,r){ return cloudDocForm(c,r); },
+    setCostsForTest:function(c,on){ COSTS=c||{jobs:{},est:{},labor:{}}; _costSyncOn=!!on; },
+    applyCostOverlay:function(c){ return applyCostOverlay(c); },
     orSeriesRows:orSeriesRows, joSeriesRows:joSeriesRows, seriesGaps:seriesGaps,
     docJoSeries:docJoSeries, docOrSeries:docOrSeries,
     jobVoided:jobVoided, jobCancelled:jobCancelled, jobLive:jobLive,
@@ -7877,6 +7902,7 @@ function startJobHistory(cut){
       first = false;
       _applyingRemote = true;
       var held = applyRemoteSnapshot('jobs', jobsUnion());
+      applyCostOverlay('jobs');
       if (typeof billBaseline==='function') billBaseline();
       _applyingRemote = false;
       JOBS_FULL = true;
@@ -7908,6 +7934,7 @@ function onCollectionSnapshot(c, snap, merged){
   // Photos re-attach off the OLD S.jobs, so this must run before the merge.
   if (c==='jobs'){ attachJobPhotos(incoming, S.jobs); attachPmsPhotos(incoming, S.jobs); }
   var held = applyRemoteSnapshot(c, incoming);
+  applyCostOverlay(c);                                      // cost roles: costs back onto the fresh records
   if (c==='jobs' && typeof billBaseline==='function') billBaseline();   // another device's change is theirs to log
   _applyingRemote = false;
   // Anything held back is still owed to the server; make sure a write is queued
@@ -7944,7 +7971,7 @@ async function cloudMigrate(base){
         var pmv = _jobPmsVals(rec);   // PMS inspection photos → pmsphotos docs
         if (pmv){ for (var mk in pmv){ if(!_own(pmv,mk)) continue; var mvv=pmv[mk]; if(!mvv||!Array.isArray(mvv.photos)) continue;
           for (var mj=0; mj<mvv.photos.length; mj++){ var md=mvv.photos[mj]; if(md){ try{ await bcol('pmsphotos').doc(pmsPhotoDocId(rec.id,mk,md)).set(plain({jobId:rec.id,key:mk,ord:mj,data:md})); }catch(e){ console.error('migrate pmsphoto', e); } } } } }
-        await bcol(c).doc(rec.id).set(plain(jobDocForCloud(rec)));
+        await bcol(c).doc(rec.id).set(plain(cloudDocForm(c, rec)));
       } else {
         await bcol(c).doc(rec.id).set(plain(rec));
       }
@@ -7979,12 +8006,13 @@ async function cloudPersist(){
     var ids = Object.keys(cur);
     for (var k=0;k<ids.length;k++){
       var id = ids[k], rec = cur[id];
-      var docForm = (c==='jobs') ? jobDocForCloud(rec) : rec;   // job doc carries no photo bytes
+      var docForm = cloudDocForm(c, rec);   // no photo bytes; no costs once separated (Option B)
       var js = JSON.stringify(docForm);
       if (prev[id] === js) continue;                            // unchanged (photo-only edits don't rewrite the job doc)
       try {
         await bcol(c).doc(id).set(plain(docForm));
         prev[id] = js;                                          // mark synced only on success
+        costNoteSent(c, docForm);
       } catch(e){ console.error('save '+c+'/'+id, e); }         // keep stale -> retried next save
     }
     // deletes (gone from S)
@@ -7999,8 +8027,7 @@ async function cloudPersist(){
 
 function rememberSnap(){
   syncCollections().forEach(function(c){
-    if (c==='jobs'){ var m={}; (S.jobs||[]).forEach(function(j){ if(j&&j.id) m[j.id]=JSON.stringify(jobDocForCloud(j)); }); _cloudSnap[c]=m; }
-    else _cloudSnap[c]=snapMap(S[c]);
+    var m={}; (S[c]||[]).forEach(function(r){ if(r&&r.id) m[r.id]=JSON.stringify(cloudDocForm(c, r)); }); _cloudSnap[c]=m;
   });
   _metaSnap.shop = JSON.stringify(S.shop);
   _metaSnap.counters = JSON.stringify(S.counters);
@@ -8164,7 +8191,98 @@ async function cloudPersistPhotos(){
 
 /* ---- Real-time listeners ------------------------------------------------- */
 /* The form a record takes in Firestore — jobs shed their photo bytes. */
-function cloudDocForm(c, rec){ return (c==='jobs') ? jobDocForCloud(rec) : rec; }
+function cloudDocForm(c, rec){
+  var r = (c==='jobs') ? jobDocForCloud(rec) : rec;
+  if (!costsSeparated()) return r;
+  if (c==='jobs' || c==='estimates') return costStripLines(c, r);
+  if (c==='labor') return costStripLabor(r);
+  return r;
+}
+
+/* ---- Option B: costs kept off the records everyone downloads ---------------
+   Once a branch is separated (meta/shop.costsSeparated, set by
+   sync/separate-costs.js), job/estimate/labor docs carry no costs. Costs live
+   in jobcosts / estcosts / laborcosts, which only "Part cost & margin" roles
+   can read and only the server writes (functions/costs.js).
+   - Writing: the doc form drops netPrice/cost. A cost this device entered or
+     changed (differs from the known one) rides along ONCE as netIn/costIn; the
+     server moves it into the cost record and strips it.
+   - Reading (cost roles only): COSTS is loaded through the logged loadCosts
+     function, then kept current by listeners, and overlaid onto the lines in
+     memory — so netPrice/cost sit exactly where the rest of the app expects. */
+var COSTS = { jobs:{}, est:{}, labor:{} }, _costSubs = [], _costSyncOn = false;
+function costsSeparated(){ return !!(typeof S!=='undefined' && S && S.shop && S.shop.costsSeparated===true); }
+function _knownCosts(c, id){ return ((c==='jobs' ? COSTS.jobs : COSTS.est)[id]) || {}; }
+function costStripLines(c, rec){
+  if (!rec || !Array.isArray(rec.lines)) return rec;
+  var known = _knownCosts(c, rec.id);
+  var copy = {}; for (var k in rec){ if(_own(rec,k)) copy[k]=rec[k]; }
+  copy.lines = rec.lines.map(function(l){
+    if (!l || typeof l!=='object' || !('netPrice' in l)) return l;
+    var n = {}; for (var lk in l){ if(_own(l,lk) && lk!=='netPrice') n[lk]=l[lk]; }
+    var v = Number(l.netPrice)||0;
+    if (v>0 && v!==Number(known[l.id])) n.netIn = v;          // new or changed — the server files it
+    return n;
+  });
+  return copy;
+}
+function costStripLabor(rec){
+  if (!rec || !('cost' in rec)) return rec;
+  var copy = {}; for (var k in rec){ if(_own(rec,k) && k!=='cost') copy[k]=rec[k]; }
+  var v = Number(rec.cost)||0;
+  if (v!==(Number(COSTS.labor[rec.id])||0)) copy.costIn = v;
+  return copy;
+}
+/* After a write that carried netIn/costIn: remember the value as known so the
+   next save does not send it again while the server catches up. */
+function costNoteSent(c, form){
+  if (!form) return;
+  if (c==='labor'){ if ('costIn' in form) COSTS.labor[form.id]=Number(form.costIn)||0; return; }
+  if (c!=='jobs' && c!=='estimates') return;
+  var bag = (c==='jobs') ? COSTS.jobs : COSTS.est;
+  (form.lines||[]).forEach(function(l){ if (l && l.netIn>0){ (bag[form.id]=bag[form.id]||{})[l.id]=l.netIn; } });
+}
+/* Put the known costs onto the in-memory records (cost roles only). */
+function applyCostOverlay(c){
+  if (!_costSyncOn) return;
+  var cs = c ? [c] : ['jobs','estimates','labor'];
+  cs.forEach(function(cc){
+    if (cc==='labor'){ (S.labor||[]).forEach(function(r){ if (r && _own(COSTS.labor, r.id)) r.cost = COSTS.labor[r.id]; }); return; }
+    var bag = (cc==='jobs') ? COSTS.jobs : COSTS.est;
+    (S[cc]||[]).forEach(function(r){
+      var m = r && bag[r.id]; if (!m) return;
+      (r.lines||[]).forEach(function(l){ if (l && _own(m, l.id)) l.netPrice = m[l.id]; });
+    });
+  });
+}
+function stopCostSync(){ _costSubs.forEach(function(u){ try{u();}catch(e){} }); _costSubs=[]; _costSyncOn=false; }
+/* Start (once) for a cost role in a separated branch. Safe to call repeatedly. */
+function startCostSync(){
+  if (_costSyncOn || !costsSeparated()) return;
+  if (typeof canSeeCost==='function' && !canSeeCost()) return;
+  if (typeof firebase==='undefined' || !firebase.functions || typeof dataLocal==='function' && dataLocal()) return;
+  _costSyncOn = true;
+  firebase.functions().httpsCallable('loadCosts')({ branch:branchId() }).then(function(r){
+    var d = (r && r.data) || {};
+    COSTS = { jobs:d.jobs||{}, est:d.est||{}, labor:d.labor||{} };
+    applyCostOverlay();          // doc forms are unchanged by this (known costs strip to nothing)
+    if (!modalOpen()) render();
+    var since = d.at || new Date().toISOString();
+    [['jobcosts','jobs'],['estcosts','estimates'],['laborcosts','labor']].forEach(function(p){
+      var u = bcol(p[0]).where('updatedAt','>',since).onSnapshot(function(snap){
+        snap.docChanges().forEach(function(ch){
+          var id = ch.doc.id, v = ch.doc.data()||{};
+          if (p[1]==='labor'){ if (ch.type==='removed') delete COSTS.labor[id]; else COSTS.labor[id]=Number(v.cost)||0; }
+          else { var bag = (p[1]==='jobs') ? COSTS.jobs : COSTS.est; if (ch.type==='removed') delete bag[id]; else bag[id]=v.lines||{}; }
+        });
+        if (!snap.docChanges().length) return;
+        applyCostOverlay(p[1]);
+        if (!modalOpen()) render();
+      }, function(err){ console.error('cost listener '+p[0], err); });
+      _costSubs.push(u);
+    });
+  }).catch(function(e){ console.error('loadCosts', e); _costSyncOn = false; });
+}
 
 /* Apply a remote snapshot WITHOUT discarding local edits that have not been
    written yet.
@@ -8219,6 +8337,7 @@ function applyRemoteSnapshot(c, incoming){
 /* Collection listeners are already running — cloudLoadAll() opened them and they
    were the load. This adds the meta-doc listeners alongside them (no unsub). */
 function cloudSubscribe(){
+  startCostSync();                  // cost roles in a separated branch (Option B)
   // Photos are NOT globally subscribed anymore (that read every photo doc on the
   // initial snapshot). Instead the currently-open job's photos are watched live by
   // watchJobPhotos(), reading only that one job's photo docs.
@@ -8232,7 +8351,15 @@ function cloudSubscribe(){
   // two documents we care about instead of the whole collection.
   var umShop = bcol('meta').doc('shop').onSnapshot(function(d){
     if (d.metadata.hasPendingWrites || !d.exists) return;
+    var wasSep = costsSeparated();
     S.shop = Object.assign(S.shop||{}, d.data()); _metaSnap.shop = JSON.stringify(S.shop);
+    // The branch's costs were just moved off the records (Option B). Records in
+    // this device's memory still hold them, and every one would now look
+    // changed — reload so the device starts clean instead of rewriting them all.
+    if (!wasSep && costsSeparated() && typeof location!=='undefined'){
+      if (typeof toast==='function') toast('Updating how costs are stored — reloading…');
+      setTimeout(function(){ location.reload(); }, 1500); return;
+    }
     if (!modalOpen()) render();
   }, function(err){ console.error('listener meta/shop', err); });
   var umCounters = bcol('meta').doc('counters').onSnapshot(function(d){
@@ -11996,7 +12123,7 @@ function partsChargeSources(){
     (j.lines||[]).forEach(function(l){
       if(!lineNoBill(l) || !l.chargeTo || !localDay(l.chargeAt)) return;
       out.push({ key:j.id+':'+l.id, jobId:j.id, staffId:l.chargeTo, jobNo:j.no, plate:j.plate, recorded:localDay(l.chargeAt),
-        total:round2((Number(l.netPrice)||0)*(Number(l.qty)||0)), n:Number(l.chargeN)||1, what:l.desc||'part' });
+        total:lineCostTotal(l), n:Number(l.chargeN)||1, what:l.desc||'part' });
     });
     var pc=j.cbChargeParts;
     if(pc && j.warranty && j.comebackMechId && localDay(pc.at))
@@ -12055,7 +12182,7 @@ function jobPartsCharge(j, staffId){
   (j.lines||[]).forEach(function(l){
     if(l.type!=='part') return;
     var own=lineNoBill(l) && l.chargeTo===who, all=!!j.cbChargeParts && j.comebackMechId===who && !(lineNoBill(l) && l.chargeTo);
-    if(own || all) items.push(num(l.qty)+' × '+(l.desc||'part')+' — '+peso(round2((Number(l.netPrice)||0)*(Number(l.qty)||0))));
+    if(own || all) items.push(num(l.qty)+' × '+(l.desc||'part')+' — '+peso(lineCostTotal(l)));
   });
   return { staffId:who, items:items, total:round2(mine.reduce(function(t,c){ return t+c.total; },0)),
     n:mine.reduce(function(m,c){ return Math.max(m,c.n); },1) };
