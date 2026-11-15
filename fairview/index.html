@@ -690,7 +690,7 @@ var BRANCH = {"id":"main","slug":"fairview","name":"Basic by JMSI — Fairview (
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-11-15 · acae95c';
+var APP_VERSION = 'v1.3.0 · 2026-11-15 · 2b4bcd8';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -812,7 +812,10 @@ function laborTotal(lines){ return sumLines(lines,'labor'); }
 /* Subcontracted labor: a labor line with a net price is work an outside mechanic
    did, and the net price (per unit, like a part's) is what the shop pays him.
    It is a cost to the shop and earns our own mechanics no commission. */
-function laborSubcontracted(l){ return !!l && l.type==='labor' && Number(l.netPrice)>0; }
+/* `subcon` is the cost-free flag (Option B: lines read by every role will stop
+   carrying netPrice, but commissions still need to know). netPrice > 0 stays
+   as the fallback for lines saved before the flag existed. */
+function laborSubcontracted(l){ return !!l && l.type==='labor' && (l.subcon===true || Number(l.netPrice)>0); }
 function subcontractCost(lines){
   return round2((lines||[]).reduce(function(s,l){ return laborSubcontracted(l) ? s+(Number(l.netPrice)||0)*(Number(l.qty)||0) : s; },0));
 }
@@ -3241,12 +3244,14 @@ function addLine(id,type){
 /* Every part needs its net price (what the shop paid). Without it the part
    costs ₱0, so profit, margins and the P&L are overstated. Flags the box and
    returns true when the line must not be saved. */
-function partNetMissing(l){ return !!l && l.type==='part' && !(Number(l.netPrice)>0); }
+/* `costSet` is the cost-free flag (see laborSubcontracted in part1): set when a
+   cost is entered or the server fills it, so the gate works without the cost. */
+function partNetMissing(l){ return !!l && l.type==='part' && !(l.costSet===true || Number(l.netPrice)>0); }
 function blockMissingNet(data, prev){
   if(!canSeeCost() && data && data.type==='part' && !(Number(data.netPrice)>0)){
     // Blank box from a role without cost access: keep the line's existing cost
     // (same part), or let the server fill a catalog part's after the save.
-    if(prev && prev.type==='part' && String(prev.sku||'')===String(data.sku||'') && Number(prev.netPrice)>0){ data.netPrice=Number(prev.netPrice); if(prev.netBy) data.netBy=prev.netBy; return false; }
+    if(prev && prev.type==='part' && String(prev.sku||'')===String(data.sku||'') && (Number(prev.netPrice)>0 || prev.costSet===true)){ data.netPrice=Number(prev.netPrice)||0; data.costSet=true; if(prev.netBy) data.netBy=prev.netBy; return false; }
     if(data.sku && typeof catalogLookup==='function' && catalogLookup(data.sku)) return false;
   }
   if(!partNetMissing(data)) return false;
@@ -3288,10 +3293,12 @@ var lineCtx=null;
 function readLine(){
   var type=val('lnType');
   if(type==='labor'){
-    return { type:'labor', ref:val('lnRef')||null, sku:'', netPrice:Math.max(0,Number(val('lnNet'))||0), desc:val('lnDesc'), qty:Number(val('lnQty'))||0, price:Number(val('lnPrice'))||0 };
+    var lnet=Math.max(0,Number(val('lnNet'))||0);
+    return { type:'labor', ref:val('lnRef')||null, sku:'', netPrice:lnet, subcon:lnet>0, desc:val('lnDesc'), qty:Number(val('lnQty'))||0, price:Number(val('lnPrice'))||0 };
   }
+  var pnet=Number(val('lnNet'))||0;
   return { type:'part', ref:null, sku:(val('lnSku')||'').trim(), desc:val('lnDesc'),
-    netPrice:Number(val('lnNet'))||0, qty:Number(val('lnQty'))||0, price:Number(val('lnPrice'))||0 };
+    netPrice:pnet, costSet:pnet>0, qty:Number(val('lnQty'))||0, price:Number(val('lnPrice'))||0 };
 }
 /* The not-billed fields from the line dialog (nothing when it has none, e.g. labor).
    prev = the line as it was: the charge date only moves when the mechanic changes,
