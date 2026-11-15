@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Basic Automotive Services</title>
+<meta name="theme-color" content="#111111">
+<link rel="icon" href="logo_official.png">
+<script>
+  /* Keep already-printed QR stickers working. Old stickers encode
+     basicautomotiveservices.com/#v=<id> (this root). The shop app now lives at
+     /fairview, so forward any portal link there before the page renders. */
+  (function(){
+    var h = location.hash || '';
+    if (/[#&]v=/.test(h)) { location.replace('fairview/' + h); }
+  })();
+</script>
+<style>
+  :root{ --bg:#111113; --ink:#f4f4f5; --ink2:#a1a1aa; --red:#F21717; --gold:#FFC000; }
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  html,body{ height:100%; }
+  body{
+    background:radial-gradient(1200px 600px at 50% -10%, #1d1d22 0%, var(--bg) 60%);
+    color:var(--ink);
+    font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    min-height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    text-align:center; padding:28px; gap:22px;
+  }
+  .logo{ width:min(300px,72vw); height:auto; display:block; }
+  .soon{ font-size:15px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink2); }
+  .rule{ width:54px; height:3px; border-radius:3px; background:linear-gradient(90deg,var(--red),var(--gold)); }
+  .tag{ font-size:13px; color:var(--ink2); max-width:34ch; line-height:1.5; }
+  .foot{ position:fixed; bottom:18px; left:0; right:0; font-size:12px; color:#6b6b73; }
+  .foot a{ color:var(--ink2); text-decoration:none; border-bottom:1px solid #3a3a42; padding-bottom:1px; }
+  .foot a:hover{ color:var(--ink); }
+</style>
+</head>
+<body>
+  <img class="logo" src="logo_primary.png" alt="Basic Automotive Services">
+  <div class="rule"></div>
+  <div class="soon">Website coming soon</div>
+  <p class="tag">Full-service auto repair &amp; preventive maintenance — Fairview, Quezon City.</p>
+  <div class="foot">Shop staff: <a href="fairview/">open the shop system →</a></div>
+</body>
+</html>
