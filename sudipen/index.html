@@ -690,7 +690,7 @@ var BRANCH = {"id":"sudipen","slug":"sudipen","name":"Basic by JMSI — Sudipen"
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-11-15 · e0081b2';
+var APP_VERSION = 'v1.3.0 · 2026-11-15 · acae95c';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -3104,14 +3104,27 @@ function lineForm(l, forJob){
 /* Numeric line fields are type="text" + inputmode so the value can be SELECTED
    on focus (number inputs can't be text-selected) — the default "1" highlights
    and the first keystroke overwrites it, for a keyboard-only add flow. */
+/* Part costs are held back from roles without "Part cost & margin" (council
+   decision, Nov 2026): the catalog they download has no costs, and for a
+   catalog part the server fills the net price after the line is saved
+   (stampLineCosts, functions/costs.js). They still type the cost of a part
+   that is NOT in the catalog, from the supplier's bill. The box never shows a
+   line's existing cost to them; left blank, the existing cost is kept. */
+function canSeeCost(){
+  if (typeof dataLocal==='function' && dataLocal()) return true;   // LAN branch: no server to fill costs
+  return (typeof can!=='function') || can('part_cost');
+}
 function partFields(l){
+  var netBox = canSeeCost()
+    ? field('Net price (required)','<input id="lnNet" type="text" inputmode="decimal" value="'+attr(l.netPrice||0)+'" onfocus="this.select()">')
+    : field('Net price — only for a part not in the catalog','<input id="lnNet" type="text" inputmode="decimal" value="" placeholder="filled in by the system for catalog parts" autocomplete="off">');
   return '<div class="grid2">'+
     field('Qty','<input id="lnQty" type="text" inputmode="decimal" value="'+attr(l.qty||1)+'" onfocus="this.select()">')+
     field('SKU','<input id="lnSku" value="'+attr(l.sku||'')+'" oninput="skuLookup()" placeholder="type SKU…" autocomplete="off">')+
     '</div>'+
     field('Part name','<input id="lnDesc" value="'+attr(l.desc||'')+'" placeholder="auto-fills from SKU, or type">')+
     '<div class="grid2">'+
-    field('Net price (required)','<input id="lnNet" type="text" inputmode="decimal" value="'+attr(l.netPrice||0)+'" onfocus="this.select()">')+
+    netBox+
     field('SRP','<input id="lnPrice" type="text" inputmode="decimal" value="'+attr(l.price||0)+'" onfocus="this.select()">')+
     '</div><div id="skuMsg" class="muted small">'+catalogHint()+'</div>'+
     (_lineForJob ? noBillFields(l) : '');
@@ -3162,9 +3175,13 @@ function skuLookup(){
   var sku=(val('lnSku')||'').trim(); var msg=document.getElementById('skuMsg');
   var hit = (sku && typeof catalogLookup==='function') ? catalogLookup(sku) : null;
   if(hit){
-    setVal('lnDesc',hit.name); setVal('lnNet',hit.net); setVal('lnPrice',hit.srp);
-    _skuFill={ desc:String(hit.name), net:String(hit.net), srp:String(hit.srp) };
-    if(msg){ msg.textContent='✓ '+hit.name; msg.className='ok small'; }
+    clearSkuFill();
+    var seeCost=canSeeCost();
+    setVal('lnDesc',hit.name); setVal('lnPrice',hit.srp);
+    _skuFill={ desc:String(hit.name), net:null, srp:String(hit.srp) };
+    if(seeCost && hit.net!=null){ setVal('lnNet',hit.net); _skuFill.net=String(hit.net); }
+    else if(seeCost) fetchSkuCost(sku);          // split catalog: ask the server (logged)
+    if(msg){ msg.textContent='✓ '+hit.name+(seeCost?'':' · cost filled in by the system'); msg.className='ok small'; }
     return;
   }
   clearSkuFill();
@@ -3184,9 +3201,27 @@ function clearSkuFill(){
   // .value, so the numbers written by the auto-fill come back as strings.
   function same(id,v){ return String(val(id))===String(v); }
   if(same('lnDesc', _skuFill.desc)) setVal('lnDesc','');
-  if(same('lnNet',  _skuFill.net))  setVal('lnNet',0);
+  if(_skuFill.net!=null && same('lnNet', _skuFill.net)) setVal('lnNet',0);
   if(same('lnPrice',_skuFill.srp))  setVal('lnPrice',0);
   _skuFill=null;
+}
+/* Cost of one SKU from the server, for roles with cost access (every lookup is
+   logged server-side). Cached for the session so re-typing a SKU is free. */
+var _skuCostCache={};
+function partCostCall(skus){
+  return firebase.functions().httpsCallable('partCost')({ branch:branchId(), skus:skus })
+    .then(function(r){ return (r && r.data && r.data.costs) || {}; });
+}
+function fetchSkuCost(sku){
+  function apply(cost){
+    if(cost==null || (val('lnSku')||'').trim()!==sku || !_skuFill) return;   // the encoder moved on
+    if(String(val('lnNet')||'0')!=='0' && String(val('lnNet'))!=='') return; // typed their own
+    setVal('lnNet',cost); _skuFill.net=String(cost);
+  }
+  if(sku in _skuCostCache){ apply(_skuCostCache[sku]); return; }
+  if(typeof firebase==='undefined' || !firebase.functions || typeof cloudOn!=='function' || !cloudOn()) return;
+  partCostCall([sku]).then(function(c){ _skuCostCache[sku]=(sku in c)?c[sku]:null; apply(_skuCostCache[sku]); })
+    .catch(function(){ /* offline / no access — the encoder types it */ });
 }
 function laborPick(){ var sel=document.getElementById('lnRef'); var o=sel.options[sel.selectedIndex];
   if(o&&o.value){ setVal('lnDesc',o.getAttribute('data-name')); setVal('lnPrice',o.getAttribute('data-price')); }
@@ -3207,7 +3242,13 @@ function addLine(id,type){
    costs ₱0, so profit, margins and the P&L are overstated. Flags the box and
    returns true when the line must not be saved. */
 function partNetMissing(l){ return !!l && l.type==='part' && !(Number(l.netPrice)>0); }
-function blockMissingNet(data){
+function blockMissingNet(data, prev){
+  if(!canSeeCost() && data && data.type==='part' && !(Number(data.netPrice)>0)){
+    // Blank box from a role without cost access: keep the line's existing cost
+    // (same part), or let the server fill a catalog part's after the save.
+    if(prev && prev.type==='part' && String(prev.sku||'')===String(data.sku||'') && Number(prev.netPrice)>0){ data.netPrice=Number(prev.netPrice); if(prev.netBy) data.netBy=prev.netBy; return false; }
+    if(data.sku && typeof catalogLookup==='function' && catalogLookup(data.sku)) return false;
+  }
   if(!partNetMissing(data)) return false;
   toast('Enter the net price (what the shop paid) for this part — it cannot be ₱0','err');
   var el=document.getElementById('lnNet'), box=(el && el.closest) ? el.closest('.fld') : null;
@@ -3270,7 +3311,8 @@ function lineChargeFields(prev, on, to, n){
 function saveLine(){
   var j=jobById(lineCtx.job); var data=readLine();
   if(!data.desc){ toast(data.type==='part'?'Part name required':'Description required','err'); return; }
-  if(blockMissingNet(data)) return;
+  var prevLine=lineCtx.line ? (j.lines||[]).find(function(x){return x.id===lineCtx.line;}) : null;
+  if(blockMissingNet(data, prevLine)) return;
   var saved=data;
   if(lineCtx.line){ saved=j.lines.find(function(x){return x.id===lineCtx.line;}); Object.assign(saved,data,noBillFromForm(saved)); }
   else { Object.assign(data, noBillFromForm(null)); data.id=uid('ln'); j.lines.push(data); }
@@ -4571,7 +4613,8 @@ function saveEstLineMore(){
 function saveEstLine(){
   var e=estById(estLineCtx.est); var data=readLine();
   if(!data.desc){ toast(data.type==='part'?'Part name required':'Description required','err'); return; }
-  if(blockMissingNet(data)) return;   // parts always carry a net price (part4)
+  var prevLine=estLineCtx.line ? e.lines.find(function(x){return x.id===estLineCtx.line;}) : null;
+  if(blockMissingNet(data, prevLine)) return;   // parts always carry a net price (part4)
   if(estLineCtx.line){ var l=e.lines.find(function(x){return x.id===estLineCtx.line;}); Object.assign(l,data); }
   else { data.id=uid('ln'); e.lines.push(data); }
   persist(); closeModal(); render();
@@ -7365,6 +7408,9 @@ if (typeof module!=='undefined' && module.exports){
        so a direct reference would capture null. */
     skuLookup:function(){ return skuLookup(); },
     setCatalog:function(map){ CATALOG=map; CATALOG_STATE='ready'; },
+    catalogLookup:catalogLookup, canSeeCost:canSeeCost, partFields:partFields, blockMissingNet:blockMissingNet,
+    jobProfitPanel:jobProfitPanel, laborFields:laborFields, costLogHTML:costLogHTML,
+    syncCollectionsNow:function(){ return syncCollections(); },
     orSeriesRows:orSeriesRows, joSeriesRows:joSeriesRows, seriesGaps:seriesGaps,
     docJoSeries:docJoSeries, docOrSeries:docOrSeries,
     jobVoided:jobVoided, jobCancelled:jobCancelled, jobLive:jobLive,
@@ -7673,7 +7719,11 @@ function renderCloudLoading(){
    - Writes go through cloudPersist(): diff S vs last snapshot, upsert/delete.
    - Job photos are uploaded to Firebase Storage so docs stay under 1 MB.
    ========================================================================== */
-var COLLECTIONS = ['staff','bays','parts','labor','vehicles','estimates','jobs','appointments','purchaseOrders','cashcounts','commadj','payouts'];
+var COLLECTIONS = ['staff','bays','parts','labor','vehicles','estimates','jobs','appointments','cashcounts','commadj','payouts'];
+/* Purchase orders carry supplier costs: readable only by roles with "Parts /
+   Labor / PO" (firestore.rules), so synced only for them — a listener the rules
+   deny would fail the whole load. */
+var PO_COLLECTIONS = ['purchaseOrders'];
 /* Finance data (expenses, base pay) is readable only by admins and the Secretary
    (firestore.rules). It is synced only for those users: for anyone else the
    listener would be denied and the load would fail. */
@@ -7682,6 +7732,7 @@ var FINANCE_COLLECTIONS = ['expenses'];
 var PAYROLL_COLLECTIONS = ['payroll'];
 function syncCollections(){
   var cols = (typeof canFinance==='function' && canFinance()) ? COLLECTIONS.concat(FINANCE_COLLECTIONS) : COLLECTIONS;
+  if (typeof can!=='function' || can('parts_manage')) cols = cols.concat(PO_COLLECTIONS);
   if (typeof canSeePay==='function' && canSeePay()) cols = cols.concat(PAYROLL_COLLECTIONS);
   return cols;
 }
@@ -7859,7 +7910,7 @@ function onCollectionSnapshot(c, snap, merged){
 }
 
 function ensureStateShape(){
-  COLLECTIONS.concat(FINANCE_COLLECTIONS, PAYROLL_COLLECTIONS).forEach(function(c){ if(!Array.isArray(S[c])) S[c]=[]; });
+  COLLECTIONS.concat(FINANCE_COLLECTIONS, PAYROLL_COLLECTIONS, PO_COLLECTIONS).forEach(function(c){ if(!Array.isArray(S[c])) S[c]=[]; });
   if (typeof billBaseline==='function') billBaseline();   // bill totals as loaded (part18)
   if(!S.counters) S.counters={ est:0, jo:0, or:1000, po:0 };
   if(!S.shop) S.shop=seedState().shop;
@@ -7874,8 +7925,9 @@ function ensureStateShape(){
 async function cloudMigrate(base){
   await bcol('meta').doc('shop').set(plain(base.shop||{}));
   await bcol('meta').doc('counters').set(plain(base.counters||{est:0,jo:0,or:1000,po:0}));
-  for (var i=0;i<COLLECTIONS.length;i++){
-    var c = COLLECTIONS[i]; var arr = base[c]||[];
+  var MIG = COLLECTIONS.concat(PO_COLLECTIONS);
+  for (var i=0;i<MIG.length;i++){
+    var c = MIG[i]; var arr = base[c]||[];
     for (var j=0;j<arr.length;j++){
       var rec = arr[j];
       if (c==='jobs'){
@@ -8266,7 +8318,7 @@ async function localLoadAll(){
   var res = await fetch(branchBase()+'/data', { headers: authHeaders() });
   if(!res.ok) throw new Error('branch server HTTP '+res.status);
   var d = await res.json();
-  var empty = !d.shop && COLLECTIONS.every(function(c){ return !((d.collections&&d.collections[c])||[]).length; });
+  var empty = !d.shop && COLLECTIONS.concat(PO_COLLECTIONS).every(function(c){ return !((d.collections&&d.collections[c])||[]).length; });
   if (empty){
     // First run for this branch: seed the server from current local data (or defaults).
     var raw = await Storage.get(STORE_KEY); var base=null; try{ base = raw?JSON.parse(raw):null; }catch(e){}
@@ -10302,6 +10354,7 @@ function premisesCard(){
     '<div class="row gap mt8">'+
       '<button class="btn primary" onclick="trustShopNetwork()">＋ Trust this network</button>'+
       '<button class="btn ghost" onclick="openAccessLog()">Access log</button>'+
+      '<button class="btn ghost" onclick="openCostLog()">Cost lookups</button>'+
       '<button class="btn ghost" onclick="togglePremisesEnforce('+(on?'false':'true')+')">'+
         (on?'Turn enforcement OFF':'Turn enforcement ON')+'</button>'+
     '</div>'+
@@ -10337,6 +10390,42 @@ function openAccessLog(){
 }
 function toggleAccessLogOutside(on){ ACCESS_LOG_OUTSIDE = !!on; _renderAccessLog(); }
 function _renderAccessLog(){ openModal('Access log · last '+ACCESS_LOG_DAYS+' days', accessLogHTML(ACCESS_LOG, ACCESS_LOG_OUTSIDE), { width:'860px', footer:'<button class="btn ghost" onclick="closeModal()">Close</button>' }); }
+/* ---- Cost lookups (admin only) -------------------------------------------
+   The partCost function (functions/costs.js) logs every part-cost lookup in
+   branches/{b}/costlog: one row per person per day — how many SKUs, how many
+   calls, first/last time. More than COST_FLAG_DAILY SKUs in a day is flagged.
+   Detection only: nothing is blocked. Server-written, admin-read. */
+var COST_LOG_DAYS = 30, COST_FLAG_DAILY = 200, COST_LOG = null;
+function loadCostLog(){
+  var from = todayISO(new Date(Date.now() - (COST_LOG_DAYS-1)*86400000));
+  return bcol('costlog').where('day','>=',from).get().then(function(snap){
+    return snap.docs.map(function(d){ return d.data()||{}; });
+  });
+}
+function openCostLog(){
+  if(!isAdminUser()){ toast('Admins only','err'); return; }
+  COST_LOG = null; _renderCostLog();
+  loadCostLog().then(function(list){ COST_LOG = list; _renderCostLog(); })
+    .catch(function(){ COST_LOG = []; _renderCostLog(); toast('Could not load the cost lookups','err'); });
+}
+function _renderCostLog(){ openModal('Cost lookups · last '+COST_LOG_DAYS+' days', costLogHTML(COST_LOG), { width:'760px', footer:'<button class="btn ghost" onclick="closeModal()">Close</button>' }); }
+/* Testable: the table for a list of costlog docs, flagged and newest first. */
+function costLogHTML(list){
+  if(list===null) return '<div class="muted small">Loading…</div>';
+  var rows = (list||[]).slice().sort(function(a,b){ return (b.flagged?1:0)-(a.flagged?1:0) || String(b.day).localeCompare(String(a.day)) || (b.lookups||0)-(a.lookups||0); });
+  var flagged = rows.filter(function(r){ return r.flagged; }).length;
+  var t = function(v){ var d=_alTime(v); return d ? esc(fmtDateTime(d.toISOString())) : '—'; };
+  return '<p class="muted small">Every time someone with <b>Part cost &amp; margin</b> looks up a part’s cost, the server notes who and how many. '+
+      'One row per person per day. More than '+COST_FLAG_DAILY+' parts in a day is flagged — normal encoding is a few dozen.</p>'+
+    (flagged ? '<div class="lg-msg err" style="margin:0 0 10px">'+flagged+' day'+(flagged===1?'':'s')+' with an unusually large number of cost lookups.</div>' : '')+
+    (rows.length ? '<div class="card pad0"><table class="tbl sm"><thead><tr><th>Day</th><th>User</th><th class="r">Parts looked up</th><th class="r">Lookups</th><th>First</th><th>Last</th></tr></thead><tbody>'+
+      rows.map(function(r){
+        return '<tr'+(r.flagged?' class="st-bad-t"':'')+'><td>'+esc(fmtDate(r.day))+'</td><td><b>'+esc(r.name||'—')+'</b> <span class="muted small">'+esc(r.role||'')+'</span></td>'+
+          '<td class="r">'+num(r.lookups||0)+(r.flagged?' <span class="chip due">Flagged</span>':'')+'</td><td class="r">'+num(r.calls||0)+'</td>'+
+          '<td>'+t(r.firstAt)+'</td><td>'+t(r.lastAt)+'</td></tr>';
+      }).join('')+'</tbody></table></div>'
+      : '<div class="muted small">No cost lookups in the last '+COST_LOG_DAYS+' days.</div>');
+}
 /* Testable: the log table for a list of accesslog docs. */
 /* Staff who opened BASIC on a device that is not registered: who the device
    lock would refuse there. Administrators are left out — the lock exempts them.
