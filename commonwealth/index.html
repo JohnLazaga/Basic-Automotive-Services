@@ -690,7 +690,7 @@ var BRANCH = {"id":"commonwealth","slug":"commonwealth","name":"Basic by JMSI �
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-11-15 · 0f1f290';
+var APP_VERSION = 'v1.3.0 · 2026-11-16 · 4226180';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -7762,6 +7762,7 @@ var PO_COLLECTIONS = ['purchaseOrders'];
 var FINANCE_COLLECTIONS = ['expenses'];
 /* Base pay (part17) — admins only, in the database rule and here. */
 var PAYROLL_COLLECTIONS = ['payroll'];
+var OPTIONAL_COLLECTIONS = ['purchaseOrders','expenses','payroll'];
 function syncCollections(){
   var cols = (typeof canFinance==='function' && canFinance()) ? COLLECTIONS.concat(FINANCE_COLLECTIONS) : COLLECTIONS;
   if (typeof can!=='function' || can('parts_manage')) cols = cols.concat(PO_COLLECTIONS);
@@ -7850,6 +7851,11 @@ function jobCutoffISO(){ return new Date(Date.now() - JOB_RECENT_DAYS*86400000).
 function cloudListenCollections(st){
   _jobParts = {}; JOBS_FULL = false; JOBS_HIST_ERR = null;
   var cut = jobCutoffISO();
+  // can() reads the role matrix from S.shop: use THIS branch's saved matrix
+  // (just read from the server), not the defaults of a not-yet-loaded state —
+  // otherwise e.g. a Parts Salesman whose branch switched off "Parts / Labor /
+  // PO" would open a purchaseOrders listener the database refuses.
+  if (st && st.shop){ if (!S || typeof S!=='object') S = seedState(); S.shop = st.shop; }
   return new Promise(function(resolve, reject){
     var sources = [];
     syncCollections().forEach(function(c){
@@ -7860,6 +7866,16 @@ function cloudListenCollections(st){
     var got = {}, pending = sources.length, loading = true, offlineTimer = null;
     function fail(err){
       if (!loading) return; loading = false; clearTimeout(offlineTimer); cloudUnsub(); reject(err);
+    }
+    function arrived(key){
+      if (!got[key]){ got[key] = true; pending--; }
+      if (pending===0 && loading){
+        loading = false; clearTimeout(offlineTimer);
+        st.jobs = jobsUnion();
+        S = st; ensureStateShape(); rememberSnap();
+        resolve();
+        setTimeout(function(){ startJobHistory(cut); }, 0);   // after the first screen is drawn
+      }
     }
     sources.forEach(function(src){
       var isJobs = src.coll==='jobs';
@@ -7873,19 +7889,18 @@ function cloudListenCollections(st){
             return;
           }
           if (!isJobs) st[src.coll] = snap.docs.map(function(d){ return d.data(); });
-          if (!got[src.key]){ got[src.key] = true; pending--; }
-          if (pending===0){
-            loading = false; clearTimeout(offlineTimer);
-            st.jobs = jobsUnion();
-            S = st; ensureStateShape(); rememberSnap();
-            resolve();
-            setTimeout(function(){ startJobHistory(cut); }, 0);   // after the first screen is drawn
-          }
+          arrived(src.key);
           return;
         }
         if (!snap.docChanges().length) return;                  // metadata-only: nothing new
         onCollectionSnapshot(src.coll, snap, isJobs ? jobsUnion() : null);
       }, function(err){
+        // An optional collection (purchase orders, finance, base pay) refused by
+        // the database must not lock the person out: load without it.
+        if (loading && OPTIONAL_COLLECTIONS.indexOf(src.coll)>=0 && err && err.code==='permission-denied'){
+          console.warn('No access to '+src.coll+' — loading without it.');
+          st[src.coll] = []; arrived(src.key); return;
+        }
         if (loading) fail(err); else console.error('listener '+src.key, err);
       });
       _cloudSubs.push(u);
