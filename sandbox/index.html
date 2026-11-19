@@ -690,7 +690,7 @@ var BRANCH = {"id":"sandbox","slug":"sandbox","name":"Basic by JMSI — Sandbox 
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-11-16 · 4226180';
+var APP_VERSION = 'v1.3.0 · 2026-11-19 · 56d11da';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -7436,6 +7436,7 @@ if (typeof module!=='undefined' && module.exports){
        so a direct reference would capture null. */
     skuLookup:function(){ return skuLookup(); },
     setCatalog:function(map){ CATALOG=map; CATALOG_STATE='ready'; },
+    pmsReopen:pmsReopen, pmsReportPanel:pmsReportPanel, jobHasOpenPMS:jobHasOpenPMS,
     catalogLookup:catalogLookup, canSeeCost:canSeeCost, partFields:partFields, blockMissingNet:blockMissingNet,
     jobProfitPanel:jobProfitPanel, laborFields:laborFields, costLogHTML:costLogHTML,
     syncCollectionsNow:function(){ return syncCollections(); },
@@ -9516,6 +9517,35 @@ function requestPMS(id, scheduledAt){
 /* Who may remove a PMS queue ticket: Admin or Supervisor (SV). Local / pre-auth
    (dev build, mini-PC) allows it too, matching the app's can() convention. */
 function canDeletePMS(){ return (typeof isAdminOrSV==='function') ? isAdminOrSV() : true; }
+/* Reopen a completed PMS for correction (Admin or Supervisor). Every answer,
+   photo and signature stays; the ticket goes back on the PMS Queue as in
+   progress, the Post Job Report locks again until it is re-completed, and the
+   reopen is logged on the Job Order. Pure core (testable) + dialog wrapper. */
+function canReopenPMS(){ return canDeletePMS(); }
+function pmsReopen(j, who){
+  if(!j || !j.pms || j.pms.status!=='done') return false;
+  var now=new Date().toISOString();
+  j.pms.report=j.pms.report||{values:{}};
+  if(j.pms.report.completedAt) j.pms.report.prevCompletedAt=j.pms.report.completedAt;
+  j.pms.status='in_progress';
+  j.pms.reopenedAt=now; j.pms.reopenedBy=who||'';
+  j.pms.reopenLog=(j.pms.reopenLog||[]).concat([{ at:now, by:who||'' }]);
+  pmsLog(j, 'PMS inspection reopened for correction'+(who?' by '+who:'')+'.');
+  return true;
+}
+function reopenPMS(id){
+  if(!canReopenPMS()){ toast('Only a supervisor or admin can reopen a completed PMS','err'); return; }
+  var j=jobById(id); if(!j || !j.pms || j.pms.status!=='done'){ toast('This PMS is not completed','err'); return; }
+  confirmModal('Reopen PMS',
+    'Reopen the completed PMS for '+j.plate+' (JO '+j.no+')? All answers, photos and signatures are kept. '+
+    'It goes back on the PMS Queue; correct it there and tap “Complete PMS” again. '+
+    'Until then the Post Job Report is locked again.',
+    function(){
+      var who=(typeof CURRENT_USER!=='undefined'&&CURRENT_USER&&CURRENT_USER.name)||'';
+      if(!pmsReopen(j, who)) return;
+      persist(); toast('PMS reopened — it is back on the PMS Queue'); render();
+    }, 'Reopen');
+}
 function deletePMSQueueItem(id){
   if(!canDeletePMS()){ toast('Only a supervisor or admin can remove PMS tickets','err'); return; }
   var j=jobById(id); if(!j) return;
@@ -10090,7 +10120,9 @@ function pmsReportPanel(j){
     : '<li class="muted">All inspected items OK.</li>';
   return '<div class="card"><div class="card-head"><h2>PMS Inspection</h2><div class="row gap">'+
     '<button class="btn sm ghost" onclick="printPMSSummary(\''+j.id+'\')">⎙ Summary</button>'+
-    '<button class="btn sm ghost" onclick="printPMS(\''+j.id+'\')">⎙ Report</button></div></div>'+
+    '<button class="btn sm ghost" onclick="printPMS(\''+j.id+'\')">⎙ Report</button>'+
+    ((j.pms&&j.pms.status==='done'&&canReopenPMS())?'<button class="btn sm ghost" onclick="reopenPMS(\''+j.id+'\')">↺ Reopen</button>':'')+
+    '</div></div>'+
     '<div class="muted small">Completed '+esc(fmtDateTime(r.completedAt))+' · by '+esc(pmsMechNames(r)||'—')+'</div>'+
     '<ul class="pms-flags">'+rows+'</ul></div>';
 }
