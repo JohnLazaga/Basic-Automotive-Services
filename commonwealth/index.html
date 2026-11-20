@@ -690,7 +690,7 @@ var BRANCH = {"id":"commonwealth","slug":"commonwealth","name":"Basic by JMSI �
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-11-19 · 56d11da';
+var APP_VERSION = 'v1.3.0 · 2026-11-20 · 4508e48';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -7437,6 +7437,7 @@ if (typeof module!=='undefined' && module.exports){
     skuLookup:function(){ return skuLookup(); },
     setCatalog:function(map){ CATALOG=map; CATALOG_STATE='ready'; },
     pmsReopen:pmsReopen, pmsReportPanel:pmsReportPanel, jobHasOpenPMS:jobHasOpenPMS,
+    janiceLinkHTML:function(d,l){ return janiceLinkHTML(d,l); },
     catalogLookup:catalogLookup, canSeeCost:canSeeCost, partFields:partFields, blockMissingNet:blockMissingNet,
     jobProfitPanel:jobProfitPanel, laborFields:laborFields, costLogHTML:costLogHTML,
     syncCollectionsNow:function(){ return syncCollections(); },
@@ -10536,6 +10537,7 @@ function premisesCard(){
       '<button class="btn primary" onclick="trustShopNetwork()">＋ Trust this network</button>'+
       '<button class="btn ghost" onclick="openAccessLog()">Access log</button>'+
       '<button class="btn ghost" onclick="openCostLog()">Cost lookups</button>'+
+      '<button class="btn ghost" onclick="openJaniceLink()">Janice link</button>'+
       '<button class="btn ghost" onclick="togglePremisesEnforce('+(on?'false':'true')+')">'+
         (on?'Turn enforcement OFF':'Turn enforcement ON')+'</button>'+
     '</div>'+
@@ -13654,6 +13656,73 @@ function docGenericForm(j, f, blank){
   }
   var copies=(blank ? ['customer'] : (def.copies||['customer','shop'])).map(function(k){ return copy(k==='shop'?L.shopCopy:k==='employee'?L.employeeCopy:L.customerCopy); });
   return docShell(def.title+' '+j.no, copies.map(function(h,i){ return i<copies.length-1 ? '<div class="pagebreak">'+h+'</div>' : h; }).join(''));
+}
+
+
+/* ===== */
+
+/* ============================================================================
+   part23 — Janice link panel (admins)
+   ----------------------------------------------------------------------------
+   Every BASIC OR posts itself to the paired Janice branch (server function
+   janiceSync, password-reset-kit/functions/janice.js). This panel shows how
+   that is going for this branch: how many posted, which failed and why (with
+   Retry), which Janice cannot take exactly (held), and last night's check of
+   every OR against Janice. Data: branches/{b}/janicesync (server-written).
+   ========================================================================== */
+var JANICE_DOCS = null;
+function loadJaniceLink(){
+  return bcol('janicesync').get().then(function(snap){
+    return snap.docs.map(function(d){ return Object.assign({ id:d.id }, d.data()||{}); });
+  });
+}
+function openJaniceLink(){
+  if(!isAdminUser()){ toast('Admins only','err'); return; }
+  JANICE_DOCS = null; _renderJaniceLink();
+  loadJaniceLink().then(function(list){ JANICE_DOCS = list; _renderJaniceLink(); })
+    .catch(function(){ JANICE_DOCS = []; _renderJaniceLink(); toast('Could not load the Janice link status','err'); });
+}
+function _renderJaniceLink(){
+  openModal('Janice link', JANICE_DOCS===null ? '<div class="muted small">Loading…</div>' : janiceLinkHTML(JANICE_DOCS, S.shop && S.shop.janiceLiveFrom),
+    { width:'780px', footer:'<button class="btn ghost" onclick="closeModal()">Close</button>' });
+}
+function janiceRetryNow(jobId){
+  if(typeof firebase==='undefined' || !firebase.functions){ toast('Not available offline','err'); return; }
+  toast('Retrying…');
+  firebase.functions().httpsCallable('janiceRetryNow')({ branch:branchId(), jobId:jobId })
+    .then(function(r){ var d=(r&&r.data)||{}; toast(d.state==='posted' ? 'Posted to Janice' : 'Still '+(d.state||'not posted')+(d.error?': '+d.error:''), d.state==='posted'?undefined:'err'); openJaniceLink(); })
+    .catch(function(e){ toast((e&&e.message)||'Retry failed','err'); });
+}
+/* Testable: the panel for this branch's janicesync docs and its go date. */
+function janiceLinkHTML(docs, liveFrom){
+  if(!liveFrom) return '<p class="muted">The Janice link is <b>not switched on</b> for this branch yet. Until it is, the cashier keeps encoding BASIC ORs in Janice.</p>';
+  var jobs = (docs||[]).filter(function(d){ return d.id!=='_reconcile'; });
+  var rec = (docs||[]).filter(function(d){ return d.id==='_reconcile'; })[0] || null;
+  var count = function(st){ return jobs.filter(function(d){ return d.state===st; }).length; };
+  var failed = jobs.filter(function(d){ return d.state==='failed'; }), held = jobs.filter(function(d){ return d.state==='held'; });
+  var orOf = function(d){ return esc(d.invNo || d.orNumber || (d.lastSale && d.lastSale.inv_no) || d.id); };
+  var h = '<p class="muted small">Since <b>'+esc(fmtDate(liveFrom))+'</b> ('+esc(liveFrom)+') every OR from this branch posts itself to Janice. '+
+    'Changes after posting wait for the Janice cashier\'s approval.</p>'+
+    '<div class="row gap" style="margin:0 0 12px"><span class="chip paid">Posted '+count('posted')+'</span>'+
+      '<span class="chip '+(failed.length?'due':'')+'">Failed '+failed.length+'</span>'+
+      '<span class="chip '+(held.length?'due':'')+'">Held '+held.length+'</span></div>';
+  if(failed.length) h += '<h3>Failed — retried every 15 minutes</h3><div class="card pad0"><table class="tbl sm"><thead><tr><th>OR / job</th><th>Why</th><th class="r">Tries</th><th></th></tr></thead><tbody>'+
+    failed.map(function(d){ return '<tr><td><b>'+orOf(d)+'</b></td><td>'+esc(d.error||'—')+'</td><td class="r">'+num(d.tries||0)+'</td>'+
+      '<td><button class="btn sm ghost" onclick="janiceRetryNow(\''+esc(d.id)+'\')">Retry</button></td></tr>'; }).join('')+'</tbody></table></div>';
+  if(held.length) h += '<h3>Held — Janice cannot take these exactly; fix in BASIC or ask the cashier to encode</h3><div class="card pad0"><table class="tbl sm"><tbody>'+
+    held.map(function(d){ return '<tr><td><b>'+orOf(d)+'</b></td><td>'+(d.problems||[]).map(esc).join('<br>')+'</td></tr>'; }).join('')+'</tbody></table></div>';
+  if(rec){
+    var lines = [];
+    (rec.missing||[]).forEach(function(o){ lines.push('<b>'+esc(o)+'</b> missing in Janice'); });
+    (rec.totalDiffers||[]).forEach(function(x){ lines.push('<b>'+esc(x.or)+'</b> total BASIC '+peso(x.basic)+' vs Janice '+peso(x.janice)); });
+    (rec.voidDiffers||[]).forEach(function(x){ lines.push('<b>'+esc(x.or)+'</b> '+(x.cancelledInJanice?'cancelled in Janice but not voided in BASIC':'voided in BASIC but still live in Janice')); });
+    (rec.paymentDiffers||[]).forEach(function(x){ lines.push('<b>'+esc(x.or)+'</b> paid BASIC '+peso(x.basic)+' vs Janice '+peso(x.janice)); });
+    h += '<h3>Last night\'s check</h3><p class="small">'+esc(fmtDateTime(rec.at))+' · '+num(rec.ors||0)+' ORs checked · '+
+      (rec.count ? '<b>'+num(rec.count)+' difference'+(rec.count===1?'':'s')+'</b>' : 'everything matches')+
+      ((rec.waiting||[]).length ? ' · '+num(rec.waiting.length)+' waiting on the Janice cashier' : '')+'</p>'+
+      (lines.length ? '<ul class="small">'+lines.map(function(l){ return '<li>'+l+'</li>'; }).join('')+'</ul>' : '');
+  }
+  return h;
 }
 
 </script>
