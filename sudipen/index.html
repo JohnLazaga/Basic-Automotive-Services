@@ -690,7 +690,7 @@ var BRANCH = {"id":"sudipen","slug":"sudipen","name":"Basic by JMSI — Sudipen"
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-11-20 · 4508e48';
+var APP_VERSION = 'v1.3.0 · 2026-11-21 · 7031e84';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -3194,7 +3194,7 @@ function skuLookup(){
     setVal('lnDesc',hit.name); setVal('lnPrice',hit.srp);
     _skuFill={ desc:String(hit.name), net:null, srp:String(hit.srp) };
     if(seeCost && hit.net!=null){ setVal('lnNet',hit.net); _skuFill.net=String(hit.net); }
-    else if(seeCost) fetchSkuCost(sku);          // split catalog: ask the server (logged)
+    else if(seeCost) skuCostSoon(sku, sku in _skuCostCache);   // split catalog: ask the server (logged), once typing stops
     if(msg){ msg.textContent='✓ '+hit.name+(seeCost?'':' · cost filled in by the system'); msg.className='ok small'; }
     return;
   }
@@ -3222,6 +3222,20 @@ function clearSkuFill(){
 /* Cost of one SKU from the server, for roles with cost access (every lookup is
    logged server-side). Cached for the session so re-typing a SKU is free. */
 var _skuCostCache={};
+/* The lookup runs on every keystroke and a long SKU passes real shorter SKUs on
+   the way (103474 → 10, 103, 1034…). Asking the server for each one started a
+   cold server copy per keystroke, each loading the whole cost list — the net
+   price took seconds. Ask once, when the SKU has stopped changing; a SKU already
+   looked up this session fills at once. */
+function makeSkuCostDebounce(fetch, ms){
+  var t=null;
+  return function(sku, cached){
+    if(t){ clearTimeout(t); t=null; }
+    if(cached){ fetch(sku); return; }
+    t=setTimeout(function(){ t=null; fetch(sku); }, ms);
+  };
+}
+var skuCostSoon=makeSkuCostDebounce(function(sku){ fetchSkuCost(sku); }, 300);
 function partCostCall(skus){
   return firebase.functions().httpsCallable('partCost')({ branch:branchId(), skus:skus })
     .then(function(r){ return (r && r.data && r.data.costs) || {}; });
@@ -7438,7 +7452,7 @@ if (typeof module!=='undefined' && module.exports){
     setCatalog:function(map){ CATALOG=map; CATALOG_STATE='ready'; },
     pmsReopen:pmsReopen, pmsReportPanel:pmsReportPanel, jobHasOpenPMS:jobHasOpenPMS,
     janiceLinkHTML:function(d,l){ return janiceLinkHTML(d,l); },
-    catalogLookup:catalogLookup, canSeeCost:canSeeCost, partFields:partFields, blockMissingNet:blockMissingNet,
+    catalogLookup:catalogLookup, makeSkuCostDebounce:makeSkuCostDebounce, canSeeCost:canSeeCost, partFields:partFields, blockMissingNet:blockMissingNet,
     jobProfitPanel:jobProfitPanel, laborFields:laborFields, costLogHTML:costLogHTML,
     syncCollectionsNow:function(){ return syncCollections(); },
     lineCostTotal:lineCostTotal, partsChargeSources:partsChargeSources, costStripLines:costStripLines, costStripLabor:costStripLabor,
