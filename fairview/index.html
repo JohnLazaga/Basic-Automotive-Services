@@ -690,7 +690,7 @@ var BRANCH = {"id":"main","slug":"fairview","name":"Basic by JMSI — Fairview (
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-11-23 · b56e3bb';
+var APP_VERSION = 'v1.3.0 · 2026-11-23 · 5541dfb';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -5942,6 +5942,9 @@ function arFilter(custList, q){
   });
   return out;
 }
+/* Admins can click a receivable (or written-off) row to open its job order. */
+function arOpenable(){ return canSettleAccounts(); }
+function arRowOpen(j){ return arOpenable() ? ' onclick="go(\'job\',\''+j.id+'\')" title="Open job order"' : ''; }
 function arSearch(v){ AR_Q=v; var el=document.getElementById('arBody'); if(el) el.innerHTML=arBodyHTML(arSummary().custList); }
 function arBodyHTML(all){
   var custList=arFilter(all, AR_Q);
@@ -5950,11 +5953,11 @@ function arBodyHTML(all){
   return custList.map(function(c){
     return '<div class="card"><div class="card-head"><h2>'+esc(c.name)+'</h2><div class="row gap"><b>'+peso(c.total)+'</b>'+
       '<button class="btn sm ghost" onclick="printStatement(\''+attr(encodeURIComponent(c.name))+'\')">⎙ Statement</button></div></div>'+
-      '<table class="tbl sm"><thead><tr><th>JO #</th><th>Billed</th><th>Age</th><th>Bucket</th><th class="r">Balance</th><th></th></tr></thead><tbody>'+
-      c.jobs.map(function(x){return '<tr><td>'+esc(x.j.no)+(x.j.charge?' '+chip('on charge',''):'')+'</td><td>'+esc(fmtDate(x.j.billedAt))+'</td><td>'+x.days+'d</td><td>'+chip(x.bucket,x.bucket==='90+'?'due':'')+'</td>'+
-        '<td class="r">'+peso(x.bal)+'</td><td class="r"><button class="btn xs primary" onclick="collectAR(\''+x.j.id+'\')">Collect</button>'+
-        (canSettleAccounts()?' <button class="btn xs ghost" onclick="adminSettleDialog(\''+x.j.id+'\')">Admin settlement</button>'+
-          ' <button class="btn xs ghost" onclick="writeOffDialog(\''+x.j.id+'\')">Write off</button>':'')+'</td></tr>';}).join('')+
+      '<table class="tbl'+(arOpenable()?' click':'')+' sm"><thead><tr><th>JO #</th><th>Billed</th><th>Age</th><th>Bucket</th><th class="r">Balance</th><th></th></tr></thead><tbody>'+
+      c.jobs.map(function(x){return '<tr'+arRowOpen(x.j)+'><td>'+esc(x.j.no)+(x.j.charge?' '+chip('on charge',''):'')+'</td><td>'+esc(fmtDate(x.j.billedAt))+'</td><td>'+x.days+'d</td><td>'+chip(x.bucket,x.bucket==='90+'?'due':'')+'</td>'+
+        '<td class="r">'+peso(x.bal)+'</td><td class="r"><button class="btn xs primary" onclick="event.stopPropagation();collectAR(\''+x.j.id+'\')">Collect</button>'+
+        (canSettleAccounts()?' <button class="btn xs ghost" onclick="event.stopPropagation();adminSettleDialog(\''+x.j.id+'\')">Admin settlement</button>'+
+          ' <button class="btn xs ghost" onclick="event.stopPropagation();writeOffDialog(\''+x.j.id+'\')">Write off</button>':'')+'</td></tr>';}).join('')+
       '</tbody></table></div>';
   }).join('');
 }
@@ -6127,11 +6130,11 @@ function writtenOffCard(){
   var admin=canSettleAccounts();
   return '<div class="card"><div class="card-head"><h2>Written off</h2><span class="muted small">'+list.length+' · '+
       peso(round2(list.reduce(function(s,j){ return s+jobWrittenOff(j); },0)))+'</span></div>'+
-    '<table class="tbl sm"><thead><tr><th>OR # / JO #</th><th>Customer</th><th>Type</th><th>Reason</th><th>When / by</th><th class="r">Amount</th><th></th></tr></thead><tbody>'+
+    '<table class="tbl'+(arOpenable()?' click':'')+' sm"><thead><tr><th>OR # / JO #</th><th>Customer</th><th>Type</th><th>Reason</th><th>When / by</th><th class="r">Amount</th><th></th></tr></thead><tbody>'+
     list.map(function(j){ var w=j.writeOff;
-      return '<tr><td>'+eodRefHTML(j)+'</td><td>'+esc(custName(j))+'</td><td>'+esc(WRITEOFF_TYPES[w.type]||w.type)+'</td><td>'+esc(w.reason)+'</td>'+
+      return '<tr'+arRowOpen(j)+'><td>'+eodRefHTML(j)+'</td><td>'+esc(custName(j))+'</td><td>'+esc(WRITEOFF_TYPES[w.type]||w.type)+'</td><td>'+esc(w.reason)+'</td>'+
         '<td>'+esc(fmtDate(w.at))+' <span class="muted small">'+esc(w.byName||'')+'</span></td><td class="r">'+peso(w.amount)+'</td>'+
-        '<td class="r">'+(admin?'<button class="btn xs ghost" onclick="undoWriteOffUI(\''+j.id+'\')">Undo</button>':'')+'</td></tr>';
+        '<td class="r">'+(admin?'<button class="btn xs ghost" onclick="event.stopPropagation();undoWriteOffUI(\''+j.id+'\')">Undo</button>':'')+'</td></tr>';
     }).join('')+'</tbody></table></div>';
 }
 var woCtx=null;
