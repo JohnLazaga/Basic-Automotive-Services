@@ -690,7 +690,7 @@ var BRANCH = {"id":"commonwealth","slug":"commonwealth","name":"Basic by JMSI �
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-11-23 · 7c01fcf';
+var APP_VERSION = 'v1.3.0 · 2026-11-23 · b68eedf';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -3086,6 +3086,9 @@ function jobLinesPanel(j){
   var billed = (j.stage==='Final Billing' || j.stage==='Released');
   var locked = billed && !can('billing_edit');
   var showPrice = canSeeJobPrices();
+  // VAT-inclusive amount beside each line's Total (VAT-registered shops only; prices are VAT-exclusive)
+  var showVat = showPrice && !!(S && S.shop && S.shop.vatReg);
+  var cols = 3 + (showPrice?2:0) + (showVat?1:0);
   function tbl(type, title){
     var list=(j.lines||[]).filter(function(l){return l.type===type;});
     var rows = list.map(function(l){
@@ -3094,13 +3097,14 @@ function jobLinesPanel(j){
           (laborSubcontracted(l)?' <span class="chip">Subcontracted'+(can('part_cost')?' · net '+peso(l.netPrice):'')+'</span>':'')+
           (lineNoBill(l)?' <span class="chip gold">Not billed'+(l.chargeTo?' · charged to '+esc(staffName(l.chargeTo)):' · shop absorbs')+'</span>':'')+'</td><td class="r">'+num(l.qty)+'</td>'+
         (showPrice?'<td class="r">'+peso(l.price)+'</td><td class="r">'+peso(lineTotal(l))+'</td>':'')+
+        (showVat?'<td class="r">'+peso(vatSplit(lineTotal(l),S).gross)+'</td>':'')+
         '<td class="r">'+(locked?'':'<button class="ic" onclick="editLine(\''+j.id+'\',\''+l.id+'\')">✎</button>'+
           '<button class="ic" onclick="delLine(\''+j.id+'\',\''+l.id+'\')">✕</button>')+'</td></tr>';
-    }).join('') || '<tr><td colspan="'+(showPrice?5:3)+'" class="muted center">No '+(type==='part'?'parts':'labor')+' yet.</td></tr>';
+    }).join('') || '<tr><td colspan="'+cols+'" class="muted center">No '+(type==='part'?'parts':'labor')+' yet.</td></tr>';
     return '<div class="card"><div class="card-head"><h2>'+title+'</h2>'+
       (locked?'':'<button class="btn sm primary" onclick="addLine(\''+j.id+'\',\''+type+'\')">＋ Add '+(type==='part'?'part':'labor')+'</button>')+'</div>'+
       '<table class="tbl"><thead><tr><th>'+(type==='part'?'Part':'Description')+'</th><th class="r">Qty</th>'+
-        (showPrice?'<th class="r">Price</th><th class="r">Total</th>':'')+'<th></th></tr></thead>'+
+        (showPrice?'<th class="r">Price</th><th class="r">Total</th>':'')+(showVat?'<th class="r">VAT incl.</th>':'')+'<th></th></tr></thead>'+
       '<tbody>'+rows+'</tbody></table></div>';
   }
   return tbl('part','Parts') + tbl('labor','Labor');
@@ -7557,7 +7561,7 @@ if (typeof module!=='undefined' && module.exports){
     runningBill:runningBill, commissionTable:commissionTable, agingBucket:agingBucket,
     VIEWS:function(){ return VIEWS; },
     isOwnerEmail:isOwnerEmail, ownerLinkHTML:ownerLinkHTML,
-    siText:siText, billingEditBlock:billingEditBlock,
+    siText:siText, billingEditBlock:billingEditBlock, jobLinesPanel:jobLinesPanel,
     allocateOrNumber:allocateOrNumber, orNoLabel:orNoLabel,
     writeOffJob:writeOffJob, undoWriteOff:undoWriteOff, opexForRange:opexForRange, localDay:localDay,
     go:go, goBack:goBack, getRoute:function(){ return ROUTE; }, resetNav:function(){ NAV_STACK.length=0; ROUTE.view='board'; ROUTE.arg=null; },
