@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Basic by JMSI — All branches</title>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<style>
+  :root{ --bar:#1D1D1F; --gold:#FFC000; --ink:#1D1D1F; --bg:#F5F5F7; --card:#fff; --muted:#6E6E73; --line:#D2D2D7; --err:#CC0F0F; }
+  @media (prefers-color-scheme: dark){ :root{ --ink:#F5F5F7; --bg:#111113; --card:#1C1C1E; --muted:#98989D; --line:#38383A; } }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; height:100%; background:var(--bg); color:var(--ink);
+    font:14px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+  #bar{ position:fixed; top:0; left:0; right:0; height:46px; background:var(--bar); color:#fff;
+    display:flex; align-items:center; gap:10px; padding:0 12px; z-index:10; }
+  #bar .brand{ font-weight:700; letter-spacing:.02em; white-space:nowrap; }
+  #bar .brand b{ color:var(--gold); }
+  #tabs{ display:flex; gap:6px; overflow-x:auto; flex:1; scrollbar-width:none; }
+  #tabs::-webkit-scrollbar{ display:none; }
+  #tabs button{ border:1px solid #48484A; background:transparent; color:#E5E5EA; border-radius:8px;
+    padding:6px 12px; font:600 12px inherit; letter-spacing:.04em; text-transform:uppercase; cursor:pointer; white-space:nowrap; }
+  #tabs button:hover{ border-color:var(--gold); }
+  #tabs button.on{ background:var(--gold); border-color:var(--gold); color:#1D1D1F; }
+  #out{ border:0; background:transparent; color:#AEAEB2; font:12px inherit; cursor:pointer; white-space:nowrap; }
+  #out:hover{ color:#fff; }
+  #frames iframe{ position:fixed; top:46px; left:0; width:100%; height:calc(100% - 46px); border:0; background:var(--bg); display:none; }
+  #frames iframe.on{ display:block; }
+  .center{ min-height:100%; display:flex; align-items:center; justify-content:center; padding:16px; }
+  .card{ width:100%; max-width:360px; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:24px; }
+  .card h1{ font-size:18px; margin:0 0 4px; }
+  .card p{ color:var(--muted); margin:0 0 16px; }
+  .card label{ display:block; font-size:12px; color:var(--muted); margin:10px 0 4px; }
+  .card input{ width:100%; padding:10px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--ink); font:inherit; }
+  .card button{ width:100%; margin-top:16px; padding:11px; border:0; border-radius:8px; background:var(--gold); color:#1D1D1F; font:700 14px inherit; cursor:pointer; }
+  .card a{ display:block; padding:10px 0; color:var(--ink); border-bottom:1px solid var(--line); text-decoration:none; }
+  .msg{ color:var(--err); font-size:13px; margin-top:10px; min-height:1em; }
+  [hidden]{ display:none !important; }
+</style>
+</head>
+<body>
+<div id="bar" hidden>
+  <div class="brand">BASIC <b>·</b> Owner</div>
+  <div id="tabs" role="tablist"></div>
+  <button id="out" type="button">Sign out</button>
+</div>
+<div id="frames"></div>
+<div id="view" class="center"><div class="card"><p>Loading…</p></div></div>
+<script>
+/* Owner page: every branch in one place. Each branch runs as its own copy of the
+   app in a frame (same site, so one sign-in covers them all). A frame loads the
+   first time its branch is picked and then stays live, so switching is instant.
+   Built by build.js from src/owner_shell.html — version v1.3.0 · 2026-11-23 · a3e1d9a. */
+(function(){
+  var CFG = {
+  apiKey: "AIzaSyBrgR-4Tkp6juJAKhcurfXWERMy5nI73FA",
+  authDomain: "basic-automotive-services.firebaseapp.com",
+  projectId: "basic-automotive-services",
+  storageBucket: "basic-automotive-services.firebasestorage.app",
+  messagingSenderId: "990774465290",
+  appId: "1:990774465290:web:392e9a649ded875a2c60f3"
+};
+  var BR = [{"slug":"fairview","label":"Fairview"},{"slug":"commonwealth","label":"Commonwealth"},{"slug":"sudipen","label":"Sudipen"},{"slug":"sandbox","label":"Sandbox"}];
+  var OWNER = 'e9c4fe422d35f5eae376c34fc5292e23feabf719faaf82f4bbe1efe863a3772f';
+  var frames = {}, current = null;
+  var $ = function(id){ return document.getElementById(id); };
+  var esc = function(s){ return String(s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); };
+
+  function sha256(s){
+    return crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)).then(function(b){
+      return Array.prototype.map.call(new Uint8Array(b), function(x){ return (x<16?'0':'')+x.toString(16); }).join('');
+    });
+  }
+  function known(slug){ return BR.some(function(b){ return b.slug===slug; }); }
+  function remembered(){
+    var q = new URLSearchParams(location.search).get('b');
+    if (q && known(q)) return q;
+    try { var l = localStorage.getItem('basic.owner.branch'); if (l && known(l)) return l; } catch(e){}
+    return BR[0].slug;
+  }
+
+  function show(slug){
+    current = slug;
+    if (!frames[slug]){
+      var f = document.createElement('iframe');
+      f.src = '../' + slug + '/';
+      f.title = slug;
+      $('frames').appendChild(f);
+      frames[slug] = f;
+    }
+    Object.keys(frames).forEach(function(k){ frames[k].className = k===slug ? 'on' : ''; });
+    Array.prototype.forEach.call($('tabs').children, function(b){
+      var on = b.getAttribute('data-b')===slug; b.className = on ? 'on' : ''; b.setAttribute('aria-selected', on);
+    });
+    var label = (BR.filter(function(b){ return b.slug===slug; })[0] || {}).label || slug;
+    document.title = label + ' — Basic by JMSI (Owner)';
+    try { localStorage.setItem('basic.owner.branch', slug); } catch(e){}
+    try { history.replaceState(null, '', '?b=' + encodeURIComponent(slug)); } catch(e){}
+  }
+  function clearFrames(){ $('frames').innerHTML = ''; frames = {}; current = null; }
+
+  function ownerUI(){
+    $('view').hidden = true; $('bar').hidden = false;
+    $('tabs').innerHTML = BR.map(function(b){
+      return '<button type="button" role="tab" data-b="'+esc(b.slug)+'">'+esc(b.label)+'</button>';
+    }).join('');
+    Array.prototype.forEach.call($('tabs').children, function(b){
+      b.onclick = function(){ show(b.getAttribute('data-b')); };
+    });
+    show(remembered());
+  }
+  function loginUI(msg){
+    clearFrames(); $('bar').hidden = true; $('view').hidden = false;
+    $('view').innerHTML = '<form class="card" id="lf"><h1>All branches</h1><p>Owner sign-in</p>'+
+      '<label for="em">Email</label><input id="em" type="email" autocomplete="username" required>'+
+      '<label for="pw">Password</label><input id="pw" type="password" autocomplete="current-password" required>'+
+      '<button type="submit">Sign in</button><div class="msg" id="lm">'+esc(msg||'')+'</div></form>';
+    $('lf').onsubmit = function(e){
+      e.preventDefault(); $('lm').textContent = '';
+      firebase.auth().signInWithEmailAndPassword($('em').value.trim(), $('pw').value).catch(function(){
+        $('lm').textContent = 'Wrong email or password.';
+      });
+    };
+  }
+  function notOwnerUI(){
+    clearFrames(); $('bar').hidden = true; $('view').hidden = false;
+    $('view').innerHTML = '<div class="card"><h1>Owner only</h1><p>This page is for the shop owner. Open your branch:</p>'+
+      BR.map(function(b){ return '<a href="../'+esc(b.slug)+'/">'+esc(b.label)+'</a>'; }).join('')+'</div>';
+  }
+
+  firebase.initializeApp(CFG);
+  $('out').onclick = function(){ firebase.auth().signOut(); };
+  firebase.auth().onAuthStateChanged(function(u){
+    if (!u){ loginUI(); return; }
+    sha256(String(u.email||'').trim().toLowerCase()).then(function(h){
+      if (h===OWNER){ if ($('bar').hidden) ownerUI(); } else notOwnerUI();
+    });
+  });
+})();
+</script>
+</body>
+</html>

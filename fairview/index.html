@@ -690,7 +690,7 @@ var BRANCH = {"id":"main","slug":"fairview","name":"Basic by JMSI — Fairview (
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-11-21 · 7031e84';
+var APP_VERSION = 'v1.3.0 · 2026-11-23 · a3e1d9a';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -1618,7 +1618,8 @@ function topbarHTML(){
       '<span id="saveState" class="savestate" data-st="saved">All changes saved</span>'+
       '<button class="iconbtn" id="themeBtn" onclick="toggleTheme()" title="Toggle dark mode" aria-label="Toggle dark mode">'+(THEME==='dark'?'☀':'☾')+'</button>'+
       ((typeof cloudOn==='function' && cloudOn() && FB && FB.user)
-        ? (CURRENT_USER ? '<span class="rolebadge'+(CURRENT_USER.isAdmin?' admin':'')+'">'+esc(CURRENT_USER.isAdmin?'Admin':roleLabel(CURRENT_USER.role))+'</span>' : '')+
+        ? ((typeof ownerLinkHTML==='function') ? ownerLinkHTML(IS_OWNER, inOwnerFrame(), (typeof BRANCH!=='undefined'&&BRANCH&&BRANCH.slug)||'') : '')+
+          (CURRENT_USER ? '<span class="rolebadge'+(CURRENT_USER.isAdmin?' admin':'')+'">'+esc(CURRENT_USER.isAdmin?'Admin':roleLabel(CURRENT_USER.role))+'</span>' : '')+
           '<span class="userchip" id="userChip" title="Signed in">'+esc(FB.user.email||'')+'</span>'+
           '<button class="iconbtn" onclick="doLogout()" title="Sign out" aria-label="Sign out">⎋</button>'
         : '')+
@@ -5350,6 +5351,12 @@ function eodRangeControls(r){
     '<button class="btn sm ghost" onclick="eodRangePreset(\'month\')">This month</button>';
 }
 
+/* EOD transactions: OR # first, then the JO # under it; a job not billed yet
+   (a deposit or part payment) shows its JO # alone. */
+function eodRefHTML(j){
+  return j.orNumber ? esc(j.orNumber)+'<br><span class="muted small jo">'+esc(j.no)+'</span>' : esc(j.no);
+}
+
 /* ---- OR numbers by series (with corresponding JO #s) ---------------------- */
 /* Every issued Official Receipt, ordered by its numeric series, paired with the
    Job Order it billed. Detects gaps (missing numbers) in the sequence. */
@@ -5667,10 +5674,10 @@ VIEWS.dailyclose = function(){
     '<div class="kpis">'+kpi('Collections',peso(d.collections))+kpi('Net sales (billed)',peso(d.net))+
       kpi('Output VAT',peso(d.vs.vat))+kpi('Discounts',peso(d.disc))+kpi('Transactions',d.txns.length)+'</div>'+
     '<div class="cols"><div class="colmain"><div class="card"><h2>Transactions · '+esc(fmtDate(date))+'</h2>'+
-      (d.txns.length?'<table class="tbl"><thead><tr><th>JO #</th><th>Customer</th><th>Method</th><th class="r">Amount</th></tr></thead><tbody>'+
+      (d.txns.length?'<table class="tbl"><thead><tr><th>OR # / JO #</th><th>Customer</th><th>Method</th><th class="r">Amount</th></tr></thead><tbody>'+
       d.txns.map(function(t){
         var isR=t.p.amount<0;
-        return '<tr'+(isR?' class="void-row"':'')+'><td>'+esc(t.job.no)+
+        return '<tr'+(isR?' class="void-row"':'')+'><td>'+eodRefHTML(t.job)+
           (isR?' <span class="chip">REFUND</span>':'')+'</td><td>'+esc(t.job.owner)+
           (isR&&t.p.reason?' <span class="muted small">'+esc(t.p.reason)+'</span>':'')+
           '</td><td>'+esc(t.p.method)+(t.p.ref?' <span class="muted small">#'+esc(t.p.ref)+'</span>':'')+'</td><td class="r">'+peso(t.p.amount)+'</td></tr>';
@@ -6419,6 +6426,7 @@ function printCSS(){
     '.eod th,.eod td{padding:3px 6px;vertical-align:top}'+
     '.eod thead{display:table-header-group}'+          /* column heads repeat on every page of a long range */
     '.eod tr{page-break-inside:avoid}'+
+    '.eod .jo{color:#555;font-size:9.5px}'+
     '.eod .vd,.eod .up{color:#CC0F0F;font-weight:700;font-size:9.5px;letter-spacing:.03em}'+
     '.eod .vd i,.eod .up i{color:#6E6E73;font-weight:500;font-style:normal;letter-spacing:0}'+
     '.eod tr.due td{font-weight:700;color:#CC0F0F}'+
@@ -6955,12 +6963,12 @@ function docEodBody(d, title, withDate, coversDay){
        as negative lines and net into that total. */
     '<div class="eod-h">Transactions<span>'+d.txns.length+' payment'+(d.txns.length===1?'':'s')+
       (d.refunds?' · incl. refunds':'')+'</span></div>'+
-    '<table><thead><tr><th>JO #</th>'+(withDate?'<th>Date</th>':'')+
+    '<table><thead><tr><th>OR # / JO #</th>'+(withDate?'<th>Date</th>':'')+
       '<th>Customer</th><th>Method</th><th class="r">Amount</th></tr></thead><tbody>'+
     (d.txns.length
       ? d.txns.map(function(t){
           var isR=t.p.amount<0;
-          return '<tr><td>'+esc(t.job.no)+
+          return '<tr><td>'+eodRefHTML(t.job)+
             (isR?'<br><span class="vd">REFUND'+(t.p.reason?' <i>'+esc(t.p.reason)+'</i>':'')+'</span>':'')+'</td>'+
             (withDate?'<td>'+esc(fmtDate(t.day))+'</td>':'')+
             '<td>'+esc(t.job.owner)+'</td><td>'+esc(t.p.method)+'</td><td class="r">'+peso(t.p.amount)+'</td></tr>';
@@ -7416,6 +7424,7 @@ if (typeof module!=='undefined' && module.exports){
     laborTotal:laborTotal, partsTotal:partsTotal, jobGross:jobGross, jobBalance:jobBalance,
     runningBill:runningBill, commissionTable:commissionTable, agingBucket:agingBucket,
     VIEWS:function(){ return VIEWS; },
+    isOwnerEmail:isOwnerEmail, ownerLinkHTML:ownerLinkHTML,
     go:go, goBack:goBack, getRoute:function(){ return ROUTE; }, resetNav:function(){ NAV_STACK.length=0; ROUTE.view='board'; ROUTE.arg=null; },
     backFabShown:backFabShown, backFabHTML:backFabHTML,
     docJobOrder:docJobOrder, docPostJob:docPostJob, docBilling:docBilling, docEstimate:docEstimate,
@@ -7748,6 +7757,7 @@ async function onSignedIn(user){
   subscribePortalClaims();          // customer portal PIN claims (if rules deployed)
   render();
   updateUserChip();
+  if (typeof ownerCheck==='function') ownerCheck();   // owner sees the ⇄ All branches link
   if (typeof loadCatalog==='function') loadCatalog();   // preload parts catalog in the background
 }
 
@@ -13737,6 +13747,52 @@ function janiceLinkHTML(docs, liveFrom){
       (lines.length ? '<ul class="small">'+lines.map(function(l){ return '<li>'+l+'</li>'; }).join('')+'</ul>' : '');
   }
   return h;
+}
+
+
+/* ===== */
+
+/* ============================================================================
+   Owner view — the shop owner sees every branch from ONE page (/owner/), the
+   way Janice switches branches. The /owner/ page (src/owner_shell.html, built
+   by build.js) runs each branch's app in its own frame: switching is instant
+   and each branch's data stays in its own frame's memory, so one branch's
+   numbers can never show under another's name.
+
+   Who is the owner: the same email firestore.rules names in isOwner(). The
+   public build carries only its SHA-256 fingerprint (injected by build.js),
+   never the address. This only decides what the owner SEES; the database rules
+   still decide what anyone can READ.
+   ========================================================================== */
+var OWNER_SHA256 = 'e9c4fe422d35f5eae376c34fc5292e23feabf719faaf82f4bbe1efe863a3772f';
+var IS_OWNER = false;
+
+function _sha256Hex(s){
+  var c = (typeof crypto!=='undefined' && crypto && crypto.subtle) ? crypto : null;
+  if (!c) return Promise.resolve('');
+  return c.subtle.digest('SHA-256', new TextEncoder().encode(s)).then(function(buf){
+    return Array.prototype.map.call(new Uint8Array(buf), function(x){ return (x<16?'0':'')+x.toString(16); }).join('');
+  });
+}
+function isOwnerEmail(email){
+  email = String(email||'').trim().toLowerCase();
+  if (!email) return Promise.resolve(false);
+  return _sha256Hex(email).then(function(h){ return !!h && h===OWNER_SHA256; });
+}
+/* Inside the /owner/ page the branch switcher is already on top. */
+function inOwnerFrame(){
+  try { return typeof window!=='undefined' && window.self!==window.top; } catch(e){ return true; }
+}
+function ownerLinkHTML(isOwner, inFrame, slug){
+  if (!isOwner || inFrame) return '';
+  return '<a class="btn sm ghost ownerlink" href="../owner/?b='+encodeURIComponent(slug||'')+'" title="See every branch from one page">⇄ All branches</a>';
+}
+/* Called once the user is signed in: show the link if this is the owner. */
+function ownerCheck(){
+  if (typeof FB==='undefined' || !FB || !FB.user) return;
+  isOwnerEmail(FB.user.email).then(function(yes){
+    if (yes!==IS_OWNER){ IS_OWNER=yes; if (typeof render==='function') render(); }
+  });
 }
 
 </script>
