@@ -690,7 +690,7 @@ var BRANCH = {"id":"commonwealth","slug":"commonwealth","name":"Basic by JMSI �
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-11-23 · 5541dfb';
+var APP_VERSION = 'v1.3.0 · 2026-11-23 · 7c01fcf';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -2116,7 +2116,7 @@ VIEWS.board = function(){
       var on=BOARD_MODE===m?' on':''; var lab={kanban:'Kanban',list:'List',bays:'Service Bays',mechs:'Mechanics'}[m];
       return '<button class="seg-b'+on+'" onclick="setBoardMode(\''+m+'\')">'+lab+'</button>';
     }).join('')+'</div>';
-  var search='<input class="searchbox" id="boardSearch" value="'+attr(BOARD_Q)+'" oninput="boardSearch(this.value)" placeholder="Search JO # / OR # / plate / owner / make / model / mechanic…" autocomplete="off">';
+  var search='<input class="searchbox" id="boardSearch" value="'+attr(BOARD_Q)+'" oninput="boardSearch(this.value)" placeholder="Search JO # / FB # / plate / owner / make / model / mechanic…" autocomplete="off">';
   return '<div class="page">'+
     '<div class="page-head"><h1>Operations Board</h1><div class="row gap wrap">'+search+toggle+'</div></div>'+
     messageStrip()+ alertStrip()+ boardKPIs()+ '<div id="boardBody">'+boardBody()+'</div>'+
@@ -2767,7 +2767,7 @@ function jobMatch(j){
      year → variant so "2022 Mitsubishi" and "Montero 2.4" both match; the
      contact # and chassis # are what the search box hint promises. */
   var vehTxt=[j.year,j.make,j.model,j.variant].join(' ');
-  return [j.no,j.plate,j.owner,j.contactPerson,j.contactNumber,j.chassis,vehTxt,j.orNumber,j.siRef,j.pmsRef,staffTxt].some(function(x){
+  return [j.no,j.plate,j.owner,j.contactPerson,j.contactNumber,j.chassis,vehTxt,j.orNumber,j.siRef,j.siParts,j.siLabor,j.pmsRef,staffTxt].some(function(x){
     var s=String(x||'').toLowerCase();
     if(s.indexOf(q)>=0) return true;
     return !!qLoose && s.replace(/[^a-z0-9]/g,'').indexOf(qLoose)>=0;
@@ -2798,7 +2798,7 @@ function jobsBodyHTML(){
 }
 function jobsSearch(v){ JOB_Q=v; var el=document.getElementById('jobsBody'); if(el) el.innerHTML=jobsBodyHTML(); }
 VIEWS.jobs = function(){
-  var search='<input class="searchbox" id="jobsSearch" value="'+attr(JOB_Q)+'" oninput="jobsSearch(this.value)" placeholder="Search JO# / OR# / plate / owner / contact / vehicle…" autocomplete="off">';
+  var search='<input class="searchbox" id="jobsSearch" value="'+attr(JOB_Q)+'" oninput="jobsSearch(this.value)" placeholder="Search JO# / FB# / plate / owner / contact / vehicle…" autocomplete="off">';
   return '<div class="page"><div class="page-head"><h1>Job Orders</h1><div class="row gap wrap">'+search+
     '<button class="btn primary" onclick="openIntake()">＋ New Ingress</button></div></div>'+
     '<div id="jobsBody">'+jobsBodyHTML()+'</div>'+
@@ -3446,7 +3446,7 @@ function voidReceiptDialog(id){
   if(jobVoided(j)){ toast('Receipt '+j.orNumber+' is already void'); return; }
   openModal('Void receipt '+esc(j.orNumber)+'?',
     '<p class="muted small">The job order and the receipt number are <b>kept on purpose</b>. '+
-      esc(j.orNumber)+' stays listed in the OR series marked <b>VOID</b>, so the number is still '+
+      esc(j.orNumber)+' stays listed in the final billing series marked <b>VOID</b>, so the number is still '+
       'accounted for and your series keeps no hole.</p>'+
     '<p class="muted small">The sale is removed from revenue, receivables and commissions. '+
       'Payments already recorded are left alone, because the cash really was collected. '+
@@ -3482,7 +3482,7 @@ function deleteJobConfirm(id){
   openModal('Cannot delete '+esc(j.no||'this job order'),
     (j.orNumber
       ? '<p>Official receipt <b>'+esc(j.orNumber)+'</b> was issued against this job order, so the record has to be kept. '+
-        'Deleting it would leave an unexplained hole in your OR series.</p>'+
+        'Deleting it would leave an unexplained hole in your final billing series.</p>'+
         (jobVoided(j)
           ? '<p class="muted small">This receipt is already voided ('+esc((j.orVoid&&j.orVoid.reason)||'')+'). It stays on file so the number remains accounted for.</p>'
           : '<p class="muted small">If the sale should not stand, <b>void the receipt</b> instead — the number stays accounted for and the sale comes out of revenue.</p>')
@@ -3945,7 +3945,7 @@ function jobDetailsPanel(j){
       kv('Service Adviser', esc(staffName(j.saId)))+ kv('Mechanic(s)', esc(mechName(j.mechanicIds)))+
       kv('Service Bay', esc(bayName(j.bayId)))+ kv('Parts Salesman', esc(staffName(j.partsSalesman)))+
       kv('Job hours', num(j.jobHours))+ kv('Assessed by', esc(staffName(j.assessedBy)))+
-      kv('SI ref', esc(j.siRef||'—'))+ kv('PMS ref', esc(j.pmsRef||'—'))+
+      kv('SI #', esc(siText(j).replace(/^SI /,'')||'—'))+ kv('PMS ref', esc(j.pmsRef||'—'))+
     '</div>'+
     /* The text itself lives in the Job Description card under the clipboard log. */
     (j.notes? '<div class="notes"><b>Concerns / reported issues</b><p class="muted small">Shown in full under Job Description.</p></div>':'')+
@@ -3975,7 +3975,9 @@ function editJobDetails(id){
     field('Fuel level %','<input id="jdFuel" type="number" min="0" max="100" value="'+attr(isFinite((j.inspection||{}).fuel)?(j.inspection||{}).fuel:'')+'" placeholder="e.g. 50">')+
     field('Condition','<input id="jdCond" value="'+attr((j.inspection||{}).condition||'')+'">')+
     field('Assessed by (Senior Mechanic)','<select id="jdAssess">'+optionList(staffByRole('SM'),j.assessedBy,true)+'</select>')+
-    field('SI reference #','<input id="jdSI" value="'+attr(j.siRef||'')+'">')+
+    field('Parts SI #','<input id="jdSIP" value="'+attr(j.siParts||'')+'" autocomplete="off">')+
+    field('Labor SI #','<input id="jdSIL" value="'+attr(j.siLabor||'')+'" autocomplete="off">')+
+    (String(j.siRef||'').trim() ? field('Old SI reference #','<input id="jdSI" value="'+attr(j.siRef||'')+'">','Typed before Parts / Labor SI were split.') : '')+
     field('PMS reference #','<input id="jdPMS" value="'+attr(j.pmsRef||'')+'">')+
     '</div>'+ field('Service notes','<textarea id="jdNotes" rows="3">'+esc(j.notes||'')+'</textarea>'),
     { onOk:'saveJobDetails', width:'700px' });
@@ -3989,7 +3991,9 @@ function saveJobDetails(){
   j.customerTin=val('jdTin'); j.chassis=val('jdChassis'); j.year=val('jdYear'); j.make=val('jdMake'); j.model=val('jdModel'); j.variant=val('jdVariant'); j.dateIn=val('jdDateIn'); j.etd=val('jdEtd');
   j.odometer=Number(val('jdOdo'))||0; j.lastServiceOdo=val('jdLastOdo')===''?'':Number(val('jdLastOdo'))||0; j.jobHours=Number(val('jdHours'))||0; j.assessedBy=val('jdAssess');
   j.inspection=j.inspection||{}; j.inspection.fuel=(val('jdFuel')===''?'':Number(val('jdFuel'))||0); j.inspection.condition=val('jdCond');
-  j.siRef=val('jdSI'); j.pmsRef=val('jdPMS'); j.notes=val('jdNotes');
+  j.siParts=String(val('jdSIP')||'').trim(); j.siLabor=String(val('jdSIL')||'').trim();
+  if(typeof document!=='undefined' && document.getElementById('jdSI')) j.siRef=val('jdSI');
+  j.pmsRef=val('jdPMS'); j.notes=val('jdNotes');
   var v=vehicleById(j.vehicleId)||vehicleByPlate(j.plate);
   var vChanged=fillVehicleBlanks(v, j);
   persist(); if(vChanged && typeof publishPortalDoc==='function') publishPortalDoc(v.id);
@@ -4014,11 +4018,11 @@ function jobStagePanel(j,b){
       '<div class="grid2 mt8">'+
       field('Approved for release by (Supervisor)','<select onchange="setJobField(\''+j.id+'\',\'approvedReleaseBy\',this.value)">'+optionList(staffByRole('SV'),j.approvedReleaseBy,true)+'</select>')+
       field('Payment received by (Secretary)','<select onchange="setJobField(\''+j.id+'\',\'paymentReceivedBy\',this.value)">'+optionList(staffByRole('Secretary'),j.paymentReceivedBy,true)+'</select>')+'</div>'+
-      '<button class="btn primary full mt8" onclick="advanceBilling(\''+j.id+'\')">Create Final Billing (assign OR #) →</button>';
+      '<button class="btn primary full mt8" onclick="advanceBilling(\''+j.id+'\')">Create Final Billing (assign FB #) →</button>';
   } else if (j.stage==='Final Billing'){
     html+= afterServiceBlock(j) + billingEditBlock(j) + jobPaymentBlock(j,b);
   } else {
-    html+='<div class="released">✓ Released'+(j.orNumber?' · OR '+esc(j.orNumber):'')+'<div class="muted small">'+esc(fmtDateTime(j.billedAt))+'</div></div>'+
+    html+='<div class="released">✓ Released'+(j.orNumber?' · '+esc(j.orNumber):'')+'<div class="muted small">'+esc(fmtDateTime(j.billedAt))+'</div></div>'+
       chargeNoteHTML(j) + releasedPaymentsBlock(j) + afterServiceBlock(j) + billingEditBlock(j);
   }
   html+='</div>';
@@ -4082,7 +4086,9 @@ function billingEditBlock(j){
     field('Approved for release by (Supervisor)','<select onchange="setJobField(\''+j.id+'\',\'approvedReleaseBy\',this.value)">'+optionList(staffByRole('SV'),j.approvedReleaseBy,true)+'</select>')+
     field('Payment received by (Secretary)','<select onchange="setJobField(\''+j.id+'\',\'paymentReceivedBy\',this.value)">'+optionList(staffByRole('Secretary'),j.paymentReceivedBy,true)+'</select>')+'</div>'+
     discountEditor(j,'bd')+
-    field('SI reference #','<input id="bdSI" value="'+attr(j.siRef||'')+'" placeholder="appears on Final Billing">')+
+    '<div class="grid2">'+field('Parts SI #','<input id="bdSIP" value="'+attr(j.siParts||'')+'" placeholder="appears on Final Billing" autocomplete="off">')+
+    field('Labor SI #','<input id="bdSIL" value="'+attr(j.siLabor||'')+'" placeholder="appears on Final Billing" autocomplete="off">')+'</div>'+
+    (String(j.siRef||'').trim() ? field('Old SI reference #','<input id="bdSI" value="'+attr(j.siRef||'')+'">','Typed before Parts / Labor SI were split.') : '')+
     '<button class="btn primary sm" onclick="saveBillingEdits(\''+j.id+'\')">Apply changes</button>'+
     '<p class="muted small">Recomputes the Total Amount Due; the balance updates to match. Edit line items above with the ✎ buttons.</p>'+
   '</details>';
@@ -4094,7 +4100,8 @@ function saveBillingEdits(id){
   if(dm){ toast(dm,'err'); return; }
   if(JSON.stringify(dd)!==JSON.stringify(j.discount||{})) stampDiscount(j);
   j.discount=dd;
-  j.siRef=val('bdSI');
+  j.siParts=String(val('bdSIP')||'').trim(); j.siLabor=String(val('bdSIL')||'').trim();
+  if(typeof document!=='undefined' && document.getElementById('bdSI')) j.siRef=val('bdSI');
   persist(); toast('Billing updated'); render();
 }
 /* Value-based discount editor: consolidated Parts, Labor and Other buckets
@@ -4206,6 +4213,35 @@ function orSeed(){
    meta/orcounter hands out each number exactly once — even with several cashiers
    billing at the same instant there can be NO duplicates. Offline falls back to a
    local monotonic counter. */
+/* Final billing number prefix. Was "OR-" until 2026-11-23; John moved new
+   numbers to "FB-" (Final Billing). The NUMBER series carries on unchanged
+   (orSeed reads the digits), and numbers already issued keep their OR- prefix. */
+var BILL_PREFIX = 'FB-';
+/* SI (sales invoice) numbers. Since 2026-11-24 a job carries a Parts SI # and a
+   Labor SI # (siParts / siLabor). Older jobs have one free-text siRef, often
+   both numbers typed together in either order — it is shown as typed, never
+   guessed apart. Reports and printouts show this text beside the FB number. */
+function siText(j){
+  var c=function(x){ return String(x||'').trim(); };
+  var p=c(j&&j.siParts), l=c(j&&j.siLabor);
+  if(p||l) return 'SI '+[p?'Parts '+p:'', l?'Labor '+l:''].filter(Boolean).join(' · ');
+  var o=c(j&&j.siRef); return o?'SI '+o:'';
+}
+function orSIHTML(or, si){ return esc(or||'')+(si?' <span class="muted small si">'+esc(si)+'</span>':''); }
+/* Label a series number that may not be on any job (a gap): it takes the prefix
+   of the issued number just below it (the next one up if none), so a hole in
+   the old range reads OR-, one after the switch FB-. */
+function orNoLabel(n){
+  n=Number(n)||0; var below=null, above=null;
+  (S.jobs||[]).forEach(function(x){
+    var m=x&&x.orNumber&&/^(\D*?)(\d+)/.exec(String(x.orNumber)); if(!m) return;
+    var v=Number(m[2]);
+    if(v<n && (!below || v>below.v)) below={v:v,p:m[1]};
+    if(v>n && (!above || v<above.v)) above={v:v,p:m[1]};
+  });
+  var pre=(below||above||{p:BILL_PREFIX}).p;
+  return (pre||BILL_PREFIX)+String(n);
+}
 function allocateOrNumber(jobId){
   var seed = orSeed();
   if (typeof cloudOn==='function' && cloudOn() && typeof FB!=='undefined' && FB && FB.ready && FB.db && FB.user){
@@ -4228,7 +4264,7 @@ function allocateOrNumber(jobId){
         return t.get(ref).then(function(doc){
           var stored = (doc.exists && Number(doc.data().next)>0) ? Number(doc.data().next) : 0;
           var issue = Math.max(stored, seed);               // never reuse / never go backward
-          var orNo = 'OR-'+String(issue);
+          var orNo = BILL_PREFIX+String(issue);
           t.set(ref, { next: issue+1, updatedAt:new Date().toISOString() }, { merge:true });
           t.set(claimRef, { jobId:String(jobId||''), orNumber:orNo, issue:issue,
                             at:new Date().toISOString(),
@@ -4248,7 +4284,7 @@ function allocateOrNumber(jobId){
   if(!S.counters) S.counters={};
   var n = Math.max(Number(S.counters.or)||0, seed);
   S.counters.or = n; S.shop.orNext = n+1;
-  return Promise.resolve('OR-'+String(n));
+  return Promise.resolve(BILL_PREFIX+String(n));
 }
 var _issuingOR={};
 function advanceBilling(id){
@@ -4289,7 +4325,7 @@ function advanceBilling(id){
     toast('Final Billing issued · '+orNo); render();
   }).catch(function(err){
     delete _issuingOR[id];
-    toast('Could not assign OR number — please try again.'+(err&&err.message?' ('+err.message+')':''),'err');
+    toast('Could not assign a final billing number — please try again.'+(err&&err.message?' ('+err.message+')':''),'err');
   });
 }
 
@@ -5289,13 +5325,13 @@ VIEWS.reports = function(){
 function overpaidJobs(){
   return billedJobs().filter(function(j){ return !jobCancelled(j) && jobBalance(j) < -0.009; })
     .map(function(j){ var due=jobGross(j), paid=jobPaid(j);
-      return { id:j.id, no:j.no, or:j.orNumber||'', plate:j.plate, stage:j.stage, billedAt:j.billedAt, due:due, paid:paid, over:round2(paid-due) }; })
+      return { id:j.id, no:j.no, or:j.orNumber||'', si:siText(j), plate:j.plate, stage:j.stage, billedAt:j.billedAt, due:due, paid:paid, over:round2(paid-due) }; })
     .sort(function(a,b){ return String(b.billedAt||'').localeCompare(String(a.billedAt||'')); });
 }
 function paymentCorrections(){
   var out=[];
   (S.jobs||[]).forEach(function(j){ (j.payments||[]).forEach(function(p){ (p.corrections||[]).forEach(function(c){
-    out.push({ id:j.id, no:j.no, or:j.orNumber||'', plate:j.plate, payDate:p.date, at:c.at, from:c.from||{}, to:c.to||{}, byName:c.byName||'', reason:c.reason||'' });
+    out.push({ id:j.id, no:j.no, or:j.orNumber||'', si:siText(j), plate:j.plate, payDate:p.date, at:c.at, from:c.from||{}, to:c.to||{}, byName:c.byName||'', reason:c.reason||'' });
   }); }); });
   return out.sort(function(a,b){ return String(b.at||'').localeCompare(String(a.at||'')); });
 }
@@ -5358,16 +5394,16 @@ function eodRangeControls(r){
 /* EOD transactions: OR # first, then the JO # under it; a job not billed yet
    (a deposit or part payment) shows its JO # alone. */
 function eodRefHTML(j){
-  return j.orNumber ? esc(j.orNumber)+'<br><span class="muted small jo">'+esc(j.no)+'</span>' : esc(j.no);
+  return j.orNumber ? orSIHTML(j.orNumber, siText(j))+'<br><span class="muted small jo">'+esc(j.no)+'</span>' : esc(j.no);
 }
 
-/* ---- OR numbers by series (with corresponding JO #s) ---------------------- */
+/* ---- Final billing numbers by series (with corresponding JO #s) ---------------------- */
 /* Every issued Official Receipt, ordered by its numeric series, paired with the
    Job Order it billed. Detects gaps (missing numbers) in the sequence. */
 function orSeriesRows(){
   return (S.jobs||[]).filter(function(j){ return j.orNumber; }).map(function(j){
     var m=/(\d+)/.exec(String(j.orNumber));
-    return { n:m?Number(m[1]):0, or:j.orNumber, jo:j.no, date:j.billedAt||j.dateIn||'',
+    return { n:m?Number(m[1]):0, or:j.orNumber, si:siText(j), jo:j.no, date:j.billedAt||j.dateIn||'',
              owner:j.owner||'', plate:j.plate||'', amount:jobGross(j), id:j.id,
              voided:jobVoided(j), voidReason:(j.orVoid&&j.orVoid.reason)||'' };
   }).sort(function(a,b){ return a.n-b.n || String(a.or).localeCompare(String(b.or)); });
@@ -5393,7 +5429,7 @@ function gapNoteHTML(gaps, label, hint){
 var OR_Q='';
 function orSeriesMatch(r){
   if(!OR_Q) return true; var q=OR_Q.toLowerCase();
-  return [r.or,r.jo,r.owner,r.plate].some(function(x){ return String(x||'').toLowerCase().indexOf(q)>=0; });
+  return [r.or,r.si,r.jo,r.owner,r.plate].some(function(x){ return String(x||'').toLowerCase().indexOf(q)>=0; });
 }
 function orSeriesInRange(){ var r=rptRange('or'); return orSeriesRows().filter(function(x){ return inRptRange(localDay(x.date), r); }); }
 function orSeriesFiltered(){ return orSeriesInRange().filter(orSeriesMatch); }
@@ -5413,12 +5449,12 @@ function orRangeGaps(rows){
 }
 function orSeriesRowsHTML(){
   var rows=orSeriesFiltered();
-  if(!rows.length) return '<tr><td colspan="5" class="muted center">No OR numbers match “'+esc(OR_Q)+'”.</td></tr>';
+  if(!rows.length) return '<tr><td colspan="5" class="muted center">No final billing numbers match “'+esc(OR_Q)+'”.</td></tr>';
   return rows.map(function(r){
     /* A voided receipt keeps its row — that is what keeps the series gapless —
        but reads as cancelled and contributes nothing to the total. */
     return '<tr onclick="go(\'job\',\''+r.id+'\')" style="cursor:pointer"'+(r.voided?' class="void-row"':'')+'>'+
-      '<td><b>'+esc(r.or)+'</b>'+(r.voided?' <span class="chip">VOID</span>':'')+'</td><td>'+esc(r.jo)+'</td>'+
+      '<td><b>'+orSIHTML(r.or, r.si)+'</b>'+(r.voided?' <span class="chip">VOID</span>':'')+'</td><td>'+esc(r.jo)+'</td>'+
       '<td>'+esc(fmtDate(r.date))+'</td>'+
       '<td>'+esc(r.owner)+(r.plate?' <span class="muted small">'+esc(r.plate)+'</span>':'')+
         (r.voided&&r.voidReason?'<div class="muted small">'+esc(r.voidReason)+'</div>':'')+'</td>'+
@@ -5427,26 +5463,26 @@ function orSeriesRowsHTML(){
 }
 function orSeriesSearch(v){ OR_Q=v; var el=document.getElementById('orSeriesBody'); if(el) el.innerHTML=orSeriesRowsHTML(); }
 function orSeriesCard(){
-  if (!orSeriesRows().length) return '<div class="card"><h2>OR numbers by series</h2>'+emptyState('No OR numbers issued yet.')+'</div>';
-  return '<div class="card"><div class="card-head"><h2>OR numbers by series</h2>'+
+  if (!orSeriesRows().length) return '<div class="card"><h2>Final billing numbers by series</h2>'+emptyState('No final billing numbers issued yet.')+'</div>';
+  return '<div class="card"><div class="card-head"><h2>Final billing numbers by series</h2>'+
     '<button class="btn sm ghost" onclick="printOrSeries()">⎙ Print</button></div>'+
     rangeControls('or')+
-    '<input class="searchbox" id="orSeriesSearch" value="'+attr(OR_Q)+'" oninput="orSeriesSearch(this.value)" placeholder="Search OR # / JO # / customer / plate…" autocomplete="off">'+
+    '<input class="searchbox" id="orSeriesSearch" value="'+attr(OR_Q)+'" oninput="orSeriesSearch(this.value)" placeholder="Search FB # / JO # / customer / plate…" autocomplete="off">'+
     '<div id="orBody">'+orSeriesBodyHTML()+'</div></div>';
 }
 function orSeriesBodyHTML(){
   var rows=orSeriesInRange();
-  if (!rows.length) return '<div class="mt8">'+emptyState('No OR numbers issued — '+rptRangeLabel(rptRange('or'))+'.')+'</div>';
+  if (!rows.length) return '<div class="mt8">'+emptyState('No final billing numbers issued — '+rptRangeLabel(rptRange('or'))+'.')+'</div>';
   var gaps=orRangeGaps(rows);
   var gapNote = gaps.length
     ? '<div class="muted small" style="color:var(--brand)">⚠ '+gaps.reduce(function(s,g){return s+g.count;},0)+
-      ' missing OR number(s): '+gaps.map(function(g){ return g.count===1?('OR-'+g.from):('OR-'+g.from+'–OR-'+g.to); }).join(', ')+'</div>'
+      ' missing final billing number(s): '+gaps.map(function(g){ return g.count===1?orNoLabel(g.from):(orNoLabel(g.from)+'–'+orNoLabel(g.to)); }).join(', ')+'</div>'
     : '<div class="muted small">✓ No gaps — series is continuous.</div>';
   return '<div class="muted small mt8 mb8">'+esc(rptRangeLabel(rptRange('or')))+' · '+rows.length+' receipts'+
       (rows.filter(function(r){return r.voided;}).length?' ('+rows.filter(function(r){return r.voided;}).length+' void)':'')+
       ' · '+esc(rows[0].or)+' → '+esc(rows[rows.length-1].or)+'</div>'+
     gapNote+
-    '<div class="card pad0 mt8"><table class="tbl click"><thead><tr><th>OR #</th><th>JO #</th><th>Date</th><th>Sold to</th><th class="r">Amount</th></tr></thead>'+
+    '<div class="card pad0 mt8"><table class="tbl click"><thead><tr><th>FB #</th><th>JO #</th><th>Date</th><th>Sold to</th><th class="r">Amount</th></tr></thead>'+
     '<tbody id="orSeriesBody">'+orSeriesRowsHTML()+'</tbody></table></div>';
 }
 function docOrSeries(){
@@ -5457,11 +5493,11 @@ function docOrSeries(){
   var body=docHeader('OR Numbers by Series · '+rptRangeLabel(rptRange('or')))+
     '<div class="meta"><div><b>Receipts</b>'+rows.length+(voided?' ('+voided+' void)':'')+'</div>'+
       '<div><b>Range</b>'+(rows.length?esc(rows[0].or)+' → '+esc(rows[rows.length-1].or):'—')+'</div></div>'+
-    '<table><thead><tr><th>OR #</th><th>JO #</th><th>Date</th><th>Sold to</th><th class="r">Amount</th></tr></thead><tbody>'+
-    rows.map(function(r){ return '<tr><td>'+esc(r.or)+(r.voided?' — VOID':'')+'</td><td>'+esc(r.jo)+'</td><td>'+esc(fmtDate(r.date))+'</td><td>'+esc(r.owner)+(r.voided&&r.voidReason?' ('+esc(r.voidReason)+')':'')+'</td><td class="r">'+(r.voided?'—':peso(r.amount))+'</td></tr>'; }).join('')+
+    '<table><thead><tr><th>FB #</th><th>JO #</th><th>Date</th><th>Sold to</th><th class="r">Amount</th></tr></thead><tbody>'+
+    rows.map(function(r){ return '<tr><td>'+orSIHTML(r.or, r.si)+(r.voided?' — VOID':'')+'</td><td>'+esc(r.jo)+'</td><td>'+esc(fmtDate(r.date))+'</td><td>'+esc(r.owner)+(r.voided&&r.voidReason?' ('+esc(r.voidReason)+')':'')+'</td><td class="r">'+(r.voided?'—':peso(r.amount))+'</td></tr>'; }).join('')+
     '<tr class="tot"><td></td><td></td><td></td><td class="r">Total</td><td class="r">'+peso(tot)+'</td></tr>'+
     '</tbody></table>';
-  return docShell('OR numbers by series', body);
+  return docShell('Final billing numbers by series', body);
 }
 function printOrSeries(){ printDoc(docOrSeries()); }
 
@@ -5478,7 +5514,7 @@ function joGapLabels(gaps){
 function joSeriesRows(){
   return (S.jobs||[]).filter(function(j){ return j && j.no; }).map(function(j){
     var m=/(\d+)/.exec(String(j.no));
-    return { n:m?Number(m[1]):0, jo:j.no, or:j.orNumber||'', stage:j.stage||'',
+    return { n:m?Number(m[1]):0, jo:j.no, or:j.orNumber||'', si:siText(j), stage:j.stage||'',
              date:j.dateIn||'', owner:j.owner||'', plate:j.plate||'',
              amount:jobGross(j), id:j.id,
              cancelled:jobCancelled(j), cancelReason:(j.joCancel&&j.joCancel.reason)||'',
@@ -5488,7 +5524,7 @@ function joSeriesRows(){
 var JOSER_Q='';
 function joSeriesMatch(r){
   if(!JOSER_Q) return true; var q=JOSER_Q.toLowerCase();
-  return [r.jo,r.or,r.owner,r.plate,r.stage].some(function(x){ return String(x||'').toLowerCase().indexOf(q)>=0; });
+  return [r.jo,r.or,r.si,r.owner,r.plate,r.stage].some(function(x){ return String(x||'').toLowerCase().indexOf(q)>=0; });
 }
 function joSeriesFiltered(){ return joSeriesRows().filter(joSeriesMatch); }
 function joSeriesRowsHTML(){
@@ -5499,7 +5535,7 @@ function joSeriesRowsHTML(){
        gapless — but reads as retired and contributes no bill. */
     return '<tr onclick="go(\'job\',\''+r.id+'\')" style="cursor:pointer"'+(r.cancelled||r.voided?' class="void-row"':'')+'>'+
       '<td><b>'+esc(r.jo)+'</b>'+(r.cancelled?' <span class="chip">CANCELLED</span>':'')+'</td>'+
-      '<td>'+esc(r.or||'—')+(r.voided?' <span class="chip">VOID</span>':'')+'</td>'+
+      '<td>'+orSIHTML(r.or||'—', r.si)+(r.voided?' <span class="chip">VOID</span>':'')+'</td>'+
       '<td>'+esc(fmtDate(r.date))+'</td>'+
       '<td>'+esc(r.owner)+(r.plate?' <span class="muted small">'+esc(r.plate)+'</span>':'')+
         (r.cancelled&&r.cancelReason?'<div class="muted small">'+esc(r.cancelReason)+'</div>':'')+'</td>'+
@@ -5520,8 +5556,8 @@ function joSeriesCard(){
     '<button class="btn sm ghost" onclick="printJoSeries()">⎙ Print</button></div>'+
     '<div class="muted small mb8">'+rows.length+' job orders · '+esc(rows[0].jo)+' → '+esc(rows[rows.length-1].jo)+'</div>'+
     gapNote+
-    '<input class="searchbox mt8" id="joSeriesSearch" value="'+attr(JOSER_Q)+'" oninput="joSeriesSearch(this.value)" placeholder="Search JO # / OR # / customer / plate / stage…" autocomplete="off">'+
-    '<div class="card pad0 mt8"><table class="tbl click"><thead><tr><th>JO #</th><th>OR #</th><th>Date in</th><th>Customer</th><th class="r">Bill</th></tr></thead>'+
+    '<input class="searchbox mt8" id="joSeriesSearch" value="'+attr(JOSER_Q)+'" oninput="joSeriesSearch(this.value)" placeholder="Search JO # / FB # / customer / plate / stage…" autocomplete="off">'+
+    '<div class="card pad0 mt8"><table class="tbl click"><thead><tr><th>JO #</th><th>FB #</th><th>Date in</th><th>Customer</th><th class="r">Bill</th></tr></thead>'+
     '<tbody id="joSeriesBody">'+joSeriesRowsHTML()+'</tbody></table></div></div>';
 }
 function docJoSeries(){
@@ -5533,8 +5569,8 @@ function docJoSeries(){
       '<div><b>Range</b>'+(rows.length?esc(rows[0].jo)+' → '+esc(rows[rows.length-1].jo):'—')+'</div>'+
       '<div><b>Missing</b>'+(gaps.length?gaps.reduce(function(s,g){return s+g.count;},0)+' ('+
         esc(joGapLabels(gaps))+')':'none')+'</div></div>'+
-    '<table><thead><tr><th>JO #</th><th>OR #</th><th>Date in</th><th>Customer</th><th class="r">Bill</th></tr></thead><tbody>'+
-    rows.map(function(r){ return '<tr><td>'+esc(r.jo)+'</td><td>'+esc(r.or||'—')+'</td><td>'+esc(fmtDate(r.date))+'</td><td>'+esc(r.owner)+'</td><td class="r">'+peso(r.amount)+'</td></tr>'; }).join('')+
+    '<table><thead><tr><th>JO #</th><th>FB #</th><th>Date in</th><th>Customer</th><th class="r">Bill</th></tr></thead><tbody>'+
+    rows.map(function(r){ return '<tr><td>'+esc(r.jo)+'</td><td>'+orSIHTML(r.or||'—', r.si)+'</td><td>'+esc(fmtDate(r.date))+'</td><td>'+esc(r.owner)+'</td><td class="r">'+peso(r.amount)+'</td></tr>'; }).join('')+
     '<tr class="tot"><td></td><td></td><td></td><td class="r">Total</td><td class="r">'+peso(tot)+'</td></tr>'+
     '</tbody></table>';
   return docShell('JO numbers by series', body);
@@ -5601,7 +5637,7 @@ function eodData(from, to){
        Without that, a reader has to cross-check every number against the
        Transactions list to tell billings from cash. */
     var gross=jobGross(j), pd=jobPaid(j), due=round2(gross-pd), vd=jobVoided(j);
-    return { n:m?Number(m[1]):0, or:j.orNumber, jo:j.no, owner:j.owner||'', plate:j.plate||'',
+    return { n:m?Number(m[1]):0, or:j.orNumber, si:siText(j), jo:j.no, owner:j.owner||'', plate:j.plate||'',
              day:localDay(j.billedAt), amount:gross, voided:vd,
              paid:pd, due:due,
              status: vd ? 'void' : (due<=0.001 ? 'paid' : (jobWrittenOff(j)>0 && due-jobWrittenOff(j)<=0.001 ? 'writeoff' : (pd>0.001 ? 'part' : 'unpaid'))),
@@ -5631,7 +5667,7 @@ function eodReceiptRowsHTML(d, withDate, clickable){
   if(!d.receipts.length) return '<tr><td colspan="'+(withDate?6:5)+'" class="muted center">No receipts issued.</td></tr>';
   return d.receipts.map(function(r){
     return '<tr'+(clickable?' onclick="go(\'job\',\''+r.id+'\')" style="cursor:pointer"':'')+(r.voided?' class="void-row"':'')+'>'+
-      '<td><b>'+esc(r.or)+'</b></td>'+
+      '<td><b>'+orSIHTML(r.or, r.si)+'</b></td>'+
       (withDate?'<td>'+esc(fmtDate(r.day))+'</td>':'')+
       '<td>'+esc(r.jo)+'</td>'+
       '<td>'+esc(r.owner)+(r.plate?' <span class="muted small">'+esc(r.plate)+'</span>':'')+'</td>'+
@@ -5653,15 +5689,15 @@ function eodReceiptsCard(d, withDate){
     : 'None issued';
   /* Amounts here are BILLED, not collected — the cash figure is the Collections
      KPI. Saying so on the card is what stops the two being read as one. */
-  return '<div class="card"><h2>OR numbers by series</h2>'+
+  return '<div class="card"><h2>Final billing numbers by series</h2>'+
     '<div class="muted small mb8">'+head+'</div>'+
     (d.receipts.length?'<div class="muted small mb8">Amounts are <b>billed</b>, not collected'+
       (d.unpaidTotal?' — '+peso(d.unpaidTotal)+' of this is still uncollected':'')+'.</div>':'')+
     (d.missing.length
       ? '<div class="muted small" style="color:var(--brand)">⚠ '+d.missing.length+
-        ' number(s) in this range are on no job order: '+d.missing.map(function(n){return 'OR-'+n;}).join(', ')+'</div>'
+        ' number(s) in this range are on no job order: '+d.missing.map(function(n){return orNoLabel(n);}).join(', ')+'</div>'
       : (d.receipts.length?'<div class="muted small">✓ Series is continuous for this range.</div>':''))+
-    '<div class="card pad0 mt8"><table class="tbl'+(d.receipts.length?' click':'')+'"><thead><tr><th>OR #</th>'+
+    '<div class="card pad0 mt8"><table class="tbl'+(d.receipts.length?' click':'')+'"><thead><tr><th>FB #</th>'+
       (withDate?'<th>Date</th>':'')+'<th>JO #</th><th>Sold to</th><th>Status</th><th class="r">Amount</th></tr></thead>'+
     '<tbody>'+eodReceiptRowsHTML(d, withDate, true)+'</tbody></table></div></div>';
 }
@@ -5679,7 +5715,7 @@ VIEWS.dailyclose = function(){
     '<div class="kpis">'+kpi('Collections',peso(d.collections))+kpi('Net sales (billed)',peso(d.net))+
       kpi('Output VAT',peso(d.vs.vat))+kpi('Discounts',peso(d.disc))+kpi('Transactions',d.txns.length)+'</div>'+
     '<div class="cols"><div class="colmain"><div class="card"><h2>Transactions · '+esc(fmtDate(date))+'</h2>'+
-      (d.txns.length?'<table class="tbl"><thead><tr><th>OR # / JO #</th><th>Customer</th><th>Method</th><th class="r">Amount</th></tr></thead><tbody>'+
+      (d.txns.length?'<table class="tbl"><thead><tr><th>FB # / JO #</th><th>Customer</th><th>Method</th><th class="r">Amount</th></tr></thead><tbody>'+
       d.txns.map(function(t){
         var isR=t.p.amount<0;
         return '<tr'+(isR?' class="void-row"':'')+'><td>'+eodRefHTML(t.job)+
@@ -5953,8 +5989,8 @@ function arBodyHTML(all){
   return custList.map(function(c){
     return '<div class="card"><div class="card-head"><h2>'+esc(c.name)+'</h2><div class="row gap"><b>'+peso(c.total)+'</b>'+
       '<button class="btn sm ghost" onclick="printStatement(\''+attr(encodeURIComponent(c.name))+'\')">⎙ Statement</button></div></div>'+
-      '<table class="tbl'+(arOpenable()?' click':'')+' sm"><thead><tr><th>JO #</th><th>Billed</th><th>Age</th><th>Bucket</th><th class="r">Balance</th><th></th></tr></thead><tbody>'+
-      c.jobs.map(function(x){return '<tr'+arRowOpen(x.j)+'><td>'+esc(x.j.no)+(x.j.charge?' '+chip('on charge',''):'')+'</td><td>'+esc(fmtDate(x.j.billedAt))+'</td><td>'+x.days+'d</td><td>'+chip(x.bucket,x.bucket==='90+'?'due':'')+'</td>'+
+      '<table class="tbl'+(arOpenable()?' click':'')+' sm"><thead><tr><th>FB # / JO #</th><th>Billed</th><th>Age</th><th>Bucket</th><th class="r">Balance</th><th></th></tr></thead><tbody>'+
+      c.jobs.map(function(x){return '<tr'+arRowOpen(x.j)+'><td>'+eodRefHTML(x.j)+(x.j.charge?' '+chip('on charge',''):'')+'</td><td>'+esc(fmtDate(x.j.billedAt))+'</td><td>'+x.days+'d</td><td>'+chip(x.bucket,x.bucket==='90+'?'due':'')+'</td>'+
         '<td class="r">'+peso(x.bal)+'</td><td class="r"><button class="btn xs primary" onclick="event.stopPropagation();collectAR(\''+x.j.id+'\')">Collect</button>'+
         (canSettleAccounts()?' <button class="btn xs ghost" onclick="event.stopPropagation();adminSettleDialog(\''+x.j.id+'\')">Admin settlement</button>'+
           ' <button class="btn xs ghost" onclick="event.stopPropagation();writeOffDialog(\''+x.j.id+'\')">Write off</button>':'')+'</td></tr>';}).join('')+
@@ -6130,7 +6166,7 @@ function writtenOffCard(){
   var admin=canSettleAccounts();
   return '<div class="card"><div class="card-head"><h2>Written off</h2><span class="muted small">'+list.length+' · '+
       peso(round2(list.reduce(function(s,j){ return s+jobWrittenOff(j); },0)))+'</span></div>'+
-    '<table class="tbl'+(arOpenable()?' click':'')+' sm"><thead><tr><th>OR # / JO #</th><th>Customer</th><th>Type</th><th>Reason</th><th>When / by</th><th class="r">Amount</th><th></th></tr></thead><tbody>'+
+    '<table class="tbl'+(arOpenable()?' click':'')+' sm"><thead><tr><th>FB # / JO #</th><th>Customer</th><th>Type</th><th>Reason</th><th>When / by</th><th class="r">Amount</th><th></th></tr></thead><tbody>'+
     list.map(function(j){ var w=j.writeOff;
       return '<tr'+arRowOpen(j)+'><td>'+eodRefHTML(j)+'</td><td>'+esc(custName(j))+'</td><td>'+esc(WRITEOFF_TYPES[w.type]||w.type)+'</td><td>'+esc(w.reason)+'</td>'+
         '<td>'+esc(fmtDate(w.at))+' <span class="muted small">'+esc(w.byName||'')+'</span></td><td class="r">'+peso(w.amount)+'</td>'+
@@ -6147,7 +6183,7 @@ function writeOffDialog(id){
       '<option value="company">Company vehicle — maintenance on our own car</option>'+
       '<option value="baddebt">Bad debt — customer will not pay</option></select>')+
     field('Reason','<input id="woReason" value="Company vehicle maintenance" autocomplete="off">','Shown on the Written off list.')+
-    '<p class="muted small">The OR and the sale stay as billed and no payment is recorded. The balance goes to zero and the amount goes to Expenses &amp; P&amp;L. '+
+    '<p class="muted small">The final billing and the sale stay as billed and no payment is recorded. The balance goes to zero and the amount goes to Expenses &amp; P&amp;L. '+
       'Janice is not changed — its invoice still shows this balance until the accountant adjusts it there. An admin can undo this.</p>',
     { onOk:'saveWriteOff', okText:'Write off' });
 }
@@ -6441,7 +6477,7 @@ function clearAllData(){
     openModal('Cannot clear all data',
       '<p>'+b.orCount+' job order'+(b.orCount===1?'':'s')+' carry an issued official receipt ('+
         esc(b.firstOr)+(b.orCount>1?' → '+esc(b.lastOr):'')+'). Wiping them would destroy '+
-        'BIR-accountable records and leave your OR series unexplainable.</p>'+
+        'BIR-accountable records and leave your final billing series unexplainable.</p>'+
       '<p class="muted small">Clearing is meant for setting up a fresh shop, not for live books. '+
         'Use <b>Export JSON backup</b> if you need a copy of everything, or void individual '+
         'receipts from their job order if a sale should not stand.</p>',
@@ -6521,6 +6557,7 @@ function printCSS(){
     '.eod thead{display:table-header-group}'+          /* column heads repeat on every page of a long range */
     '.eod tr{page-break-inside:avoid}'+
     '.eod .jo{color:#555;font-size:9.5px}'+
+    '.si{color:#555;font-size:9.5px;font-weight:400}'+
     '.eod .vd,.eod .up{color:#CC0F0F;font-weight:700;font-size:9.5px;letter-spacing:.03em}'+
     '.eod .vd i,.eod .up i{color:#6E6E73;font-weight:500;font-style:normal;letter-spacing:0}'+
     '.eod tr.due td{font-weight:700;color:#CC0F0F}'+
@@ -6739,8 +6776,8 @@ function billingBody(j, rel){
       [['Plate', esc(j.plate)],['Owner', esc(j.owner)],['Contact', esc(j.contactPerson+' · '+j.contactNumber)],
        ['Vehicle', esc((j.year+' '+j.make+' '+j.model).trim()+(j.variant?' '+j.variant:''))],['Chassis #', esc(j.chassis)],
        ['JO #', esc(j.no)]],
-      [['Date', fmtDate(j.billedAt)],['TIN', esc(j.customerTin||'—')],['SI reference', esc(j.siRef||'—')],
-       ['Ingress Odo', num(j.odometer)+' km'],['Last Service Odo', j.lastServiceOdo?num(j.lastServiceOdo)+' km':'—']] )+
+      [['Date', fmtDate(j.billedAt)],['TIN', esc(j.customerTin||'—')],].concat((String(j.siParts||'').trim()||String(j.siLabor||'').trim()) ? [['Parts SI', esc(j.siParts||'—')],['Labor SI', esc(j.siLabor||'—')]] : [['SI reference', esc(j.siRef||'—')]]).concat([
+       ['Ingress Odo', num(j.odometer)+' km'],['Last Service Odo', j.lastServiceOdo?num(j.lastServiceOdo)+' km':'—']]) )+
     comebackNote(j)+
     pricedLinesTable(j,{sku:true})+ totalsBox(j,{discount:true})+
     paymentsDoc(j)+
@@ -6827,8 +6864,8 @@ function docStatement(who){
   var total=round2(ar.reduce(function(s,j){return s+jobBalance(j);},0));
   var body=docHeader('Statement of Account')+
     metaRows([['Customer', esc(who)],['Date', fmtDate(todayISO())],['Total outstanding', peso(total)]])+
-    '<table><thead><tr><th>JO #</th><th>Plate</th><th>Billed</th><th>OR #</th><th class="r">Total</th><th class="r">Paid</th><th class="r">Balance</th></tr></thead><tbody>'+
-    ar.map(function(j){return '<tr><td>'+esc(j.no)+'</td><td>'+esc(j.plate||'')+'</td><td>'+fmtDate(j.billedAt)+'</td><td>'+esc(j.orNumber||'—')+'</td>'+
+    '<table><thead><tr><th>JO #</th><th>Plate</th><th>Billed</th><th>FB #</th><th class="r">Total</th><th class="r">Paid</th><th class="r">Balance</th></tr></thead><tbody>'+
+    ar.map(function(j){return '<tr><td>'+esc(j.no)+'</td><td>'+esc(j.plate||'')+'</td><td>'+fmtDate(j.billedAt)+'</td><td>'+orSIHTML(j.orNumber||'—', siText(j))+'</td>'+
       '<td class="r">'+peso(jobGross(j))+'</td><td class="r">'+peso(jobPaid(j))+'</td><td class="r">'+peso(jobBalance(j))+'</td></tr>';}).join('')+'</tbody></table>'+
     '<div class="totbox"><div class="l2 grand"><span>Total Amount Due</span><span>'+peso(total)+'</span></div></div>'+
     '<div class="foot">Please settle the outstanding balance at your earliest convenience. Thank you.</div>';
@@ -6845,11 +6882,11 @@ function docReceivables(){
     return '<tr><td colspan="5"><b>'+esc(c.name)+'</b> <span style="color:#666">('+c.jobs.length+' job order'+(c.jobs.length===1?'':'s')+')</span></td>'+
         '<td class="r"><b>'+peso(c.total)+'</b></td></tr>'+
       c.jobs.map(function(x){ return '<tr><td style="padding-left:16px">'+esc(x.j.no)+(x.j.charge?' · on charge':'')+'</td><td>'+esc(x.j.plate||'')+'</td>'+
-        '<td>'+esc(x.j.orNumber||'—')+'</td><td>'+fmtDate(x.j.billedAt)+'</td><td class="r">'+x.days+'d</td><td class="r">'+peso(x.bal)+'</td></tr>'; }).join('');
+        '<td>'+orSIHTML(x.j.orNumber||'—', siText(x.j))+'</td><td>'+fmtDate(x.j.billedAt)+'</td><td class="r">'+x.days+'d</td><td class="r">'+peso(x.bal)+'</td></tr>'; }).join('');
   }).join('');
   var body=docHeader('Receivables (A/R)')+
     metaRows([['Date', fmtDate(todayISO())],['Customers', String(sm.custList.length)],['Job orders', String(sm.count)],['Total outstanding', peso(sm.total)]])+
-    '<table><thead><tr><th>Customer / JO #</th><th>Plate</th><th>OR #</th><th>Billed</th><th class="r">Age</th><th class="r">Balance</th></tr></thead><tbody>'+
+    '<table><thead><tr><th>Customer / JO #</th><th>Plate</th><th>FB #</th><th>Billed</th><th class="r">Age</th><th class="r">Balance</th></tr></thead><tbody>'+
       (rows||'<tr><td colspan="6">No outstanding receivables.</td></tr>')+'</tbody></table>'+
     '<div class="totbox">'+
       '<div class="l2"><span>0–30 days</span><span>'+peso(b['0-30'])+'</span></div>'+
@@ -7033,14 +7070,14 @@ function docEodBody(d, title, withDate, coversDay){
     /* OR numbers in series, voids shown in place — this is what gets ticked off
        against the receipt booklet during reconciliation. The void and its reason
        sit under the number they belong to, which retires the Status column. */
-    '<div class="eod-h">OR numbers by series<span>'+series+'</span></div>'+
-    (d.missing.length?'<div class="notes"><b>Unaccounted:</b> '+d.missing.map(function(n){return 'OR-'+n;}).join(', ')+
+    '<div class="eod-h">Final billing numbers by series<span>'+series+'</span></div>'+
+    (d.missing.length?'<div class="notes"><b>Unaccounted:</b> '+d.missing.map(function(n){return orNoLabel(n);}).join(', ')+
       ' — issued in this range but on no job order.</div>':'')+
-    '<table><thead><tr><th>OR #</th>'+(withDate?'<th>Date</th>':'')+'<th>JO #</th><th>Sold to</th><th class="r">Amount</th></tr></thead><tbody>'+
+    '<table><thead><tr><th>FB #</th>'+(withDate?'<th>Date</th>':'')+'<th>JO #</th><th>Sold to</th><th class="r">Amount</th></tr></thead><tbody>'+
     (d.receipts.length
       ? d.receipts.map(function(r){
           var tag=recTag(r);
-          return '<tr><td><b>'+esc(r.or)+'</b>'+(tag?'<br>'+tag:'')+'</td>'+
+          return '<tr><td><b>'+esc(r.or)+'</b>'+(r.si?' <span class="si">'+esc(r.si)+'</span>':'')+(tag?'<br>'+tag:'')+'</td>'+
             (withDate?'<td>'+esc(fmtDate(r.day))+'</td>':'')+
             '<td>'+esc(r.jo)+'</td><td>'+esc(r.owner)+'</td>'+
             '<td class="r">'+(r.voided?'—':peso(r.amount))+'</td></tr>';
@@ -7058,7 +7095,7 @@ function docEodBody(d, title, withDate, coversDay){
        as negative lines and net into that total. */
     '<div class="eod-h">Transactions<span>'+d.txns.length+' payment'+(d.txns.length===1?'':'s')+
       (d.refunds?' · incl. refunds':'')+'</span></div>'+
-    '<table><thead><tr><th>OR # / JO #</th>'+(withDate?'<th>Date</th>':'')+
+    '<table><thead><tr><th>FB # / JO #</th>'+(withDate?'<th>Date</th>':'')+
       '<th>Customer</th><th>Method</th><th class="r">Amount</th></tr></thead><tbody>'+
     (d.txns.length
       ? d.txns.map(function(t){
@@ -7233,7 +7270,7 @@ function portalDataForVehicle(v){
         odo:Number(j.lastServiceOdo)||Number(j.odometer)||0,
         amount:b.gross, warranty:!!j.warranty,
         report:{
-          orNumber:j.orNumber||'', jo:j.no||'', tin:j.customerTin||'', siRef:j.siRef||'',
+          orNumber:j.orNumber||'', jo:j.no||'', tin:j.customerTin||'', siRef:j.siRef||'', siParts:j.siParts||'', siLabor:j.siLabor||'',
           ingressOdo:Number(j.odometer)||0, lastOdo:Number(j.lastServiceOdo)||0,
           warranty:!!j.warranty, comeback:(j.comebackOf?((jobById(j.comebackOf)||{}).no||''):''),
           workAuth:(j.workAuth||[]).map(function(a){ return { desc:a.desc||'', amount:Number(a.amount)||0, approvedBy:a.approvedBy||'', method:a.method||'', at:a.at||'' }; }),
@@ -7333,8 +7370,8 @@ function portalReportHTML(h, d){
   var cbBanner=(r.warranty||r.comeback)? '<div class="p-card" style="background:#fff4d6;border-color:#ffdf8a"><b>'+(r.warranty?'⚠ Warranty service — no charge':'Comeback')+'.</b>'+(r.comeback?' Rework of '+esc(r.comeback)+'.':'')+'</div>':'';
   function kvp(k,v){ return '<div class="p-kv"><span>'+esc(k)+'</span><span>'+esc(v)+'</span></div>'; }
   var meta='<div class="p-meta">'+
-    kvp('OR #', r.orNumber||'—')+ kvp('JO #', r.jo||h.no||'—')+
-    kvp('Date', fmtDate(h.dateISO))+ kvp('SI reference', r.siRef||'—')+
+    kvp('FB #', r.orNumber||'—')+ kvp('JO #', r.jo||h.no||'—')+
+    kvp('Date', fmtDate(h.dateISO))+ kvp('SI', siText(r).replace(/^SI /,'')||'—')+
     kvp('Vehicle', (d.year+' '+d.make+' '+d.model).trim()+(d.variant?' '+d.variant:''))+ kvp('Plate', d.plate)+
     kvp('Ingress Odo', num(r.ingressOdo)+' km')+ kvp('Last Service Odo', r.lastOdo?num(r.lastOdo)+' km':'—')+
     (r.tin?kvp('TIN', r.tin):'')+
@@ -7347,7 +7384,7 @@ function portalReportHTML(h, d){
     '<div class="p-head"><img class="p-lockup" src="'+LOGO_LOCKUP+'" alt="Basic by JMSI"/></div>'+
     '<button class="p-back" onclick="portalViewHome()">‹ Back to history</button>'+
     '<div class="p-veh"><div class="p-plate">Final Billing Receipt</div>'+
-      '<div class="p-model">'+esc(h.no||'')+(r.orNumber?' · OR '+esc(r.orNumber):'')+'</div>'+
+      '<div class="p-model">'+esc(h.no||'')+(r.orNumber?' · '+esc(r.orNumber):'')+'</div>'+
       '<div class="p-owner">'+esc(d.owner||'')+'</div></div>'+
     cbBanner+
     '<div class="p-card"><div class="p-card-t">Details</div>'+meta+'</div>'+
@@ -7520,6 +7557,8 @@ if (typeof module!=='undefined' && module.exports){
     runningBill:runningBill, commissionTable:commissionTable, agingBucket:agingBucket,
     VIEWS:function(){ return VIEWS; },
     isOwnerEmail:isOwnerEmail, ownerLinkHTML:ownerLinkHTML,
+    siText:siText, billingEditBlock:billingEditBlock,
+    allocateOrNumber:allocateOrNumber, orNoLabel:orNoLabel,
     writeOffJob:writeOffJob, undoWriteOff:undoWriteOff, opexForRange:opexForRange, localDay:localDay,
     go:go, goBack:goBack, getRoute:function(){ return ROUTE; }, resetNav:function(){ NAV_STACK.length=0; ROUTE.view='board'; ROUTE.arg=null; },
     backFabShown:backFabShown, backFabHTML:backFabHTML,
@@ -8913,7 +8952,7 @@ var CAPS = [
   { key:'prices',       label:'See prices / running bill' },
   { key:'part_cost',    label:'Part cost & margin' },
   { key:'discounts',    label:'Apply discounts' },
-  { key:'billing',      label:'Final billing / OR #' },
+  { key:'billing',      label:'Final billing / FB #' },
   { key:'billing_edit', label:'Edit billing after it is done' },
   { key:'refunds',      label:'Record refunds' },
   { key:'receivables',  label:'Receivables (A/R)' },
@@ -11819,7 +11858,7 @@ function trackBillChanges(){
 function billChanges(){
   var out=[];
   (S.jobs||[]).forEach(function(j){ (j.billLog||[]).forEach(function(c){
-    out.push({ id:j.id, no:j.no, or:j.orNumber||'', plate:j.plate, at:c.at, byName:c.byName, from:c.from, to:c.to, paid:c.paid });
+    out.push({ id:j.id, no:j.no, or:j.orNumber||'', si:siText(j), plate:j.plate, at:c.at, byName:c.byName, from:c.from, to:c.to, paid:c.paid });
   }); });
   return out.sort(function(a,b){ return String(b.at||'').localeCompare(String(a.at||'')); });
 }
@@ -11861,7 +11900,7 @@ function discountRows(r){
        was labelled, so the months before the button are grouped too. */
     var beyond=j.warranty ? disc : round2(Math.max(0, disc-vat));
     var lessVat=!j.warranty && vat>0 && Math.abs(disc-vat)<1;
-    return { id:j.id, no:j.no, or:j.orNumber||'', plate:j.plate, owner:j.owner, billedAt:j.billedAt,
+    return { id:j.id, no:j.no, or:j.orNumber||'', si:siText(j), plate:j.plate, owner:j.owner, billedAt:j.billedAt,
       parts:Number(d.parts)||0, labor:Number(d.labor)||0, other:Number(d.other)||0, disc:disc, vat:vat, beyond:beyond, lessVat:lessVat,
       pct: (due+disc)>0 ? Math.round(disc/(due+disc)*100) : 0, reason:reason || (lessVat?'LESS VAT':''), byName:(j.discountBy&&j.discountBy.byName)||'',
       /* A discount beyond the VAT whose reason only says VAT: the extra is unexplained. */
@@ -11884,10 +11923,10 @@ function discountsBodyHTML(r){
       (noReason?' · <b class="st-bad-t">'+noReason+' with no reason</b>':'')+
       ' · '+vatRows.length+' Less VAT only ('+peso(vatTot)+' VAT taken off in all)</div>'+
     '<label class="chk small mb8"><input type="checkbox"'+(DISC_SHOW_VAT?' checked':'')+' onchange="DISC_SHOW_VAT=this.checked;render()"> Show Less VAT-only jobs too</label>'+
-    (rows.length ? '<div class="card pad0"><table class="tbl click sm"><thead><tr><th>Billed</th><th>JO # / OR #</th><th>Customer</th>'+
+    (rows.length ? '<div class="card pad0"><table class="tbl click sm"><thead><tr><th>Billed</th><th>JO # / FB #</th><th>Customer</th>'+
         '<th class="r">Parts</th><th class="r">Labor</th><th class="r">Other</th><th class="r">Total</th><th class="r">Beyond VAT</th><th class="r">% of bill</th><th>Reason</th><th>By</th></tr></thead><tbody>'+
       rows.map(function(r){ return '<tr onclick="go(\'job\',\''+r.id+'\')"><td>'+esc(fmtDate(r.billedAt))+'</td>'+
-        '<td><b>'+esc(r.no)+'</b>'+(r.or?' <span class="muted small">'+esc(r.or)+'</span>':'')+'</td>'+
+        '<td><b>'+esc(r.no)+'</b>'+(r.or?' <span class="muted small">'+orSIHTML(r.or, r.si)+'</span>':'')+'</td>'+
         '<td>'+esc(r.owner||'')+' <span class="muted small">'+esc(r.plate)+'</span></td>'+
         '<td class="r">'+(r.parts?peso(r.parts):'—')+'</td><td class="r">'+(r.labor?peso(r.labor):'—')+'</td><td class="r">'+(r.other?peso(r.other):'—')+'</td>'+
         '<td class="r">'+peso(r.disc)+'</td><td class="r"><b>'+(r.beyond?peso(r.beyond):'—')+'</b></td><td class="r'+(r.pct>=20?' st-bad-t':'')+'">'+r.pct+'%</td>'+
@@ -11902,8 +11941,8 @@ function docDiscounts(){
   return docShell('Discounts', docHeader('Discounts · '+rptRangeLabel(rg))+
     '<div class="eod-stamp">Printed <b>'+esc(fmtDateTime(new Date().toISOString()))+'</b> · '+rows.length+' jobs · '+peso(beyond)+' beyond VAT'+
       (DISC_SHOW_VAT?'':' · Less VAT-only jobs not listed')+'</div>'+
-    (rows.length?'<table><thead><tr><th>Billed</th><th>JO # / OR #</th><th>Customer</th><th class="r">Total</th><th class="r">Beyond VAT</th><th class="r">%</th><th>Reason</th><th>By</th></tr></thead><tbody>'+
-      rows.map(function(r){ return '<tr><td>'+esc(fmtDate(r.billedAt))+'</td><td>'+esc(r.no)+(r.or?' / '+esc(r.or):'')+'</td><td>'+esc(r.owner||'')+' '+esc(r.plate)+'</td>'+
+    (rows.length?'<table><thead><tr><th>Billed</th><th>JO # / FB #</th><th>Customer</th><th class="r">Total</th><th class="r">Beyond VAT</th><th class="r">%</th><th>Reason</th><th>By</th></tr></thead><tbody>'+
+      rows.map(function(r){ return '<tr><td>'+esc(fmtDate(r.billedAt))+'</td><td>'+esc(r.no)+(r.or?' / '+orSIHTML(r.or, r.si):'')+'</td><td>'+esc(r.owner||'')+' '+esc(r.plate)+'</td>'+
         '<td class="r">'+peso(r.disc)+'</td><td class="r">'+(r.beyond?peso(r.beyond):'—')+'</td><td class="r">'+r.pct+'%</td><td>'+(r.reason?esc(r.reason):'<b>NO REASON</b>')+(r.reason&&r.extraUnexplained?' <b>(extra not explained)</b>':'')+'</td><td>'+esc(r.byName||'—')+'</td></tr>'; }).join('')+
       '</tbody></table>':'<p>None.</p>'));
 }
@@ -11973,7 +12012,7 @@ function paymentsMissingRef(){
   (S.jobs||[]).forEach(function(j){ (j.payments||[]).forEach(function(p, i){
     if(Number(p.amount)<=0 || PAYREF_METHODS.indexOf(p.method)<0 || String(p.ref||'').trim()) return;
     if(localDay(p.date)<PAYREF_SINCE) return;
-    out.push({ id:j.id, idx:i, no:j.no, or:j.orNumber||'', plate:j.plate, date:p.date, method:p.method, amount:p.amount });
+    out.push({ id:j.id, idx:i, no:j.no, or:j.orNumber||'', si:siText(j), plate:j.plate, date:p.date, method:p.method, amount:p.amount });
   }); });
   return out.sort(function(a,b){ return String(b.date).localeCompare(String(a.date)); });
 }
@@ -11981,7 +12020,7 @@ function paymentsMissingRef(){
 /* ---- 5. Released with balance owed --------------------------------------- */
 function releasedOwing(){
   return releasedJobs().filter(function(j){ return !jobCancelled(j) && jobBalance(j) > 0.009; })
-    .map(function(j){ return { id:j.id, no:j.no, or:j.orNumber||'', plate:j.plate, billedAt:j.billedAt, due:jobGross(j), paid:jobPaid(j), owed:jobBalance(j) }; })
+    .map(function(j){ return { id:j.id, no:j.no, or:j.orNumber||'', si:siText(j), plate:j.plate, billedAt:j.billedAt, due:jobGross(j), paid:jobPaid(j), owed:jobBalance(j) }; })
     .sort(function(a,b){ return String(b.billedAt||'').localeCompare(String(a.billedAt||'')); });
 }
 
@@ -12012,32 +12051,32 @@ function moneyChecksBodyHTML(rg){
         '<td class="r">'+(r.counted===null?'<span class="chip due">NOT COUNTED</span>':peso(r.counted))+'</td>'+
         '<td class="r'+(r.variance!==null?' st-bad-t':'')+'">'+(r.variance===null?'—':'<b>'+peso(r.variance)+'</b>')+'</td><td>'+esc(r.byName||'—')+'</td><td>'+esc(r.note||'')+'</td></tr>'; }).join('')),
       'Every day with cash collections was counted and balanced.')+
-    mcSection('Voided or cancelled, money still held', d.held.length, mcTable('<th>What</th><th>JO # / OR #</th><th>Customer</th><th>When</th><th class="r">Collected</th><th class="r">Still held</th><th>Reason</th>',
-      d.held.map(function(x){ return '<tr'+mcRowOpen(x.id)+'><td>'+esc(x.kind)+'</td><td><b>'+esc(x.no)+'</b>'+(x.or?' <span class="muted small">'+esc(x.or)+'</span>':'')+'</td>'+
+    mcSection('Voided or cancelled, money still held', d.held.length, mcTable('<th>What</th><th>JO # / FB #</th><th>Customer</th><th>When</th><th class="r">Collected</th><th class="r">Still held</th><th>Reason</th>',
+      d.held.map(function(x){ return '<tr'+mcRowOpen(x.id)+'><td>'+esc(x.kind)+'</td><td><b>'+esc(x.no)+'</b>'+(x.or?' <span class="muted small">'+orSIHTML(x.or, x.si)+'</span>':'')+'</td>'+
         '<td>'+esc(x.owner)+' <span class="muted small">'+esc(x.plate)+'</span></td><td>'+esc(fmtDate(x.at))+'</td><td class="r">'+peso(x.collected)+'</td>'+
         '<td class="r st-bad-t"><b>'+peso(x.held)+'</b></td><td>'+esc(x.reason)+'</td></tr>'; }).join(''))+
       '<p class="muted small">Refund it on the job, or if the job was re-billed, the payment belongs on the new job order.</p>',
       'No voided receipt or cancelled job order is holding money.')+
-    mcSection('Paid more than due', d.over.length, mcTable('<th>JO #</th><th>OR #</th><th>Plate</th><th>Billed</th><th class="r">Due</th><th class="r">Paid</th><th class="r">Over</th>',
-      d.over.map(function(r){ return '<tr'+mcRowOpen(r.id)+'><td><b>'+esc(r.no)+'</b></td><td>'+esc(r.or)+'</td><td>'+esc(r.plate)+'</td><td>'+esc(fmtDate(r.billedAt))+'</td>'+
+    mcSection('Paid more than due', d.over.length, mcTable('<th>JO #</th><th>FB #</th><th>Plate</th><th>Billed</th><th class="r">Due</th><th class="r">Paid</th><th class="r">Over</th>',
+      d.over.map(function(r){ return '<tr'+mcRowOpen(r.id)+'><td><b>'+esc(r.no)+'</b></td><td>'+orSIHTML(r.or, r.si)+'</td><td>'+esc(r.plate)+'</td><td>'+esc(fmtDate(r.billedAt))+'</td>'+
         '<td class="r">'+peso(r.due)+'</td><td class="r">'+peso(r.paid)+'</td><td class="r st-bad-t"><b>'+peso(r.over)+'</b></td></tr>'; }).join(''))+
       '<p class="muted small">Usually cash tendered encoded instead of the amount due, or a discount applied after payment. Open the job and use <b>Correct</b>, or record a refund.</p>',
       'No job has more paid than due.')+
-    mcSection('Released with balance owed', d.owing.length, mcTable('<th>JO #</th><th>OR #</th><th>Plate</th><th>Billed</th><th class="r">Due</th><th class="r">Paid</th><th class="r">Owed</th>',
-      d.owing.map(function(r){ return '<tr'+mcRowOpen(r.id)+'><td><b>'+esc(r.no)+'</b></td><td>'+esc(r.or)+'</td><td>'+esc(r.plate)+'</td><td>'+esc(fmtDate(r.billedAt))+'</td>'+
+    mcSection('Released with balance owed', d.owing.length, mcTable('<th>JO #</th><th>FB #</th><th>Plate</th><th>Billed</th><th class="r">Due</th><th class="r">Paid</th><th class="r">Owed</th>',
+      d.owing.map(function(r){ return '<tr'+mcRowOpen(r.id)+'><td><b>'+esc(r.no)+'</b></td><td>'+orSIHTML(r.or, r.si)+'</td><td>'+esc(r.plate)+'</td><td>'+esc(fmtDate(r.billedAt))+'</td>'+
         '<td class="r">'+peso(r.due)+'</td><td class="r">'+peso(r.paid)+'</td><td class="r st-bad-t"><b>'+peso(r.owed)+'</b></td></tr>'; }).join('')),
       'No released job has money still owed.')+
-    mcSection('Bill changed after payment', d.bill.length, mcTable('<th>Changed</th><th>JO # / OR #</th><th class="r">Bill was</th><th class="r">Bill now</th><th class="r">Already paid</th><th>By</th>',
-      d.bill.map(function(r){ return '<tr'+mcRowOpen(r.id)+'><td>'+esc(fmtDateTime(r.at))+'</td><td><b>'+esc(r.no)+'</b>'+(r.or?' <span class="muted small">'+esc(r.or)+'</span>':'')+'</td>'+
+    mcSection('Bill changed after payment', d.bill.length, mcTable('<th>Changed</th><th>JO # / FB #</th><th class="r">Bill was</th><th class="r">Bill now</th><th class="r">Already paid</th><th>By</th>',
+      d.bill.map(function(r){ return '<tr'+mcRowOpen(r.id)+'><td>'+esc(fmtDateTime(r.at))+'</td><td><b>'+esc(r.no)+'</b>'+(r.or?' <span class="muted small">'+orSIHTML(r.or, r.si)+'</span>':'')+'</td>'+
         '<td class="r">'+peso(r.from)+'</td><td class="r"><b>'+peso(r.to)+'</b></td><td class="r">'+peso(r.paid)+'</td><td>'+esc(r.byName||'—')+'</td></tr>'; }).join('')),
       'No bill has been changed after money was collected.')+
-    mcSection('GCash / bank / card / check payments with no reference #', d.refs.length, mcTable('<th>Paid</th><th>JO # / OR #</th><th>Method</th><th class="r">Amount</th>',
-      d.refs.map(function(r){ return '<tr'+mcRowOpen(r.id)+'><td>'+esc(fmtDateTime(r.date))+'</td><td><b>'+esc(r.no)+'</b>'+(r.or?' <span class="muted small">'+esc(r.or)+'</span>':'')+'</td>'+
+    mcSection('GCash / bank / card / check payments with no reference #', d.refs.length, mcTable('<th>Paid</th><th>JO # / FB #</th><th>Method</th><th class="r">Amount</th>',
+      d.refs.map(function(r){ return '<tr'+mcRowOpen(r.id)+'><td>'+esc(fmtDateTime(r.date))+'</td><td><b>'+esc(r.no)+'</b>'+(r.or?' <span class="muted small">'+orSIHTML(r.or, r.si)+'</span>':'')+'</td>'+
         '<td>'+esc(r.method)+'</td><td class="r">'+peso(r.amount)+'</td></tr>'; }).join(''))+
       '<p class="muted small">Add the reference with <b>Correct</b> on the payment, so it can be matched against the GCash / bank statement.</p>',
       'Every non-cash payment since '+fmtDate(PAYREF_SINCE)+' has a reference #.')+
-    mcSection('Payment corrections', d.corr.length, mcTable('<th>Corrected</th><th>JO # / OR #</th><th>Payment of</th><th class="r">Was</th><th class="r">Now</th><th>By</th><th>Reason</th>',
-      d.corr.map(function(r){ return '<tr'+mcRowOpen(r.id)+'><td>'+esc(fmtDateTime(r.at))+'</td><td><b>'+esc(r.no)+'</b>'+(r.or?' <span class="muted small">'+esc(r.or)+'</span>':'')+'</td>'+
+    mcSection('Payment corrections', d.corr.length, mcTable('<th>Corrected</th><th>JO # / FB #</th><th>Payment of</th><th class="r">Was</th><th class="r">Now</th><th>By</th><th>Reason</th>',
+      d.corr.map(function(r){ return '<tr'+mcRowOpen(r.id)+'><td>'+esc(fmtDateTime(r.at))+'</td><td><b>'+esc(r.no)+'</b>'+(r.or?' <span class="muted small">'+orSIHTML(r.or, r.si)+'</span>':'')+'</td>'+
         '<td>'+esc(fmtDate(r.payDate))+'</td><td class="r">'+peso(r.from.amount)+' <span class="muted small">'+esc(r.from.method||'')+'</span></td>'+
         '<td class="r">'+peso(r.to.amount)+' <span class="muted small">'+esc(r.to.method||'')+'</span></td><td>'+esc(r.byName||'—')+'</td><td>'+esc(r.reason)+'</td></tr>'; }).join('')),
       'No payments have been corrected.');
@@ -12052,18 +12091,18 @@ function docMoneyChecks(){
     sec('Cash count', cashOff.length, '<th>Date</th><th class="r">Expected</th><th class="r">Counted</th><th class="r">Short / over</th><th>Note</th>',
       cashOff.map(function(r){ return '<tr><td>'+esc(fmtDate(r.date))+'</td><td class="r">'+peso(r.expected)+'</td><td class="r">'+(r.counted===null?'NOT COUNTED':peso(r.counted))+'</td>'+
         '<td class="r">'+(r.variance===null?'—':peso(r.variance))+'</td><td>'+esc(r.note||'')+'</td></tr>'; }).join(''))+
-    sec('Voided or cancelled, money still held', d.held.length, '<th>What</th><th>JO # / OR #</th><th>Customer</th><th class="r">Still held</th><th>Reason</th>',
-      d.held.map(function(x){ return '<tr><td>'+esc(x.kind)+'</td><td>'+esc(x.no)+(x.or?' / '+esc(x.or):'')+'</td><td>'+esc(x.owner)+' '+esc(x.plate)+'</td><td class="r">'+peso(x.held)+'</td><td>'+esc(x.reason)+'</td></tr>'; }).join(''))+
-    sec('Paid more than due', d.over.length, '<th>JO #</th><th>OR #</th><th>Plate</th><th class="r">Due</th><th class="r">Paid</th><th class="r">Over</th>',
-      d.over.map(function(r){ return '<tr><td>'+esc(r.no)+'</td><td>'+esc(r.or)+'</td><td>'+esc(r.plate)+'</td><td class="r">'+peso(r.due)+'</td><td class="r">'+peso(r.paid)+'</td><td class="r">'+peso(r.over)+'</td></tr>'; }).join(''))+
-    sec('Released with balance owed', d.owing.length, '<th>JO #</th><th>OR #</th><th>Plate</th><th class="r">Due</th><th class="r">Paid</th><th class="r">Owed</th>',
-      d.owing.map(function(r){ return '<tr><td>'+esc(r.no)+'</td><td>'+esc(r.or)+'</td><td>'+esc(r.plate)+'</td><td class="r">'+peso(r.due)+'</td><td class="r">'+peso(r.paid)+'</td><td class="r">'+peso(r.owed)+'</td></tr>'; }).join(''))+
-    sec('Bill changed after payment', d.bill.length, '<th>Changed</th><th>JO # / OR #</th><th class="r">Was</th><th class="r">Now</th><th class="r">Paid</th><th>By</th>',
-      d.bill.map(function(r){ return '<tr><td>'+esc(fmtDateTime(r.at))+'</td><td>'+esc(r.no)+(r.or?' / '+esc(r.or):'')+'</td><td class="r">'+peso(r.from)+'</td><td class="r">'+peso(r.to)+'</td><td class="r">'+peso(r.paid)+'</td><td>'+esc(r.byName||'—')+'</td></tr>'; }).join(''))+
-    sec('Non-cash payments with no reference #', d.refs.length, '<th>Paid</th><th>JO # / OR #</th><th>Method</th><th class="r">Amount</th>',
-      d.refs.map(function(r){ return '<tr><td>'+esc(fmtDateTime(r.date))+'</td><td>'+esc(r.no)+(r.or?' / '+esc(r.or):'')+'</td><td>'+esc(r.method)+'</td><td class="r">'+peso(r.amount)+'</td></tr>'; }).join(''))+
-    sec('Payment corrections', d.corr.length, '<th>Corrected</th><th>JO # / OR #</th><th class="r">Was</th><th class="r">Now</th><th>By</th><th>Reason</th>',
-      d.corr.map(function(r){ return '<tr><td>'+esc(fmtDateTime(r.at))+'</td><td>'+esc(r.no)+(r.or?' / '+esc(r.or):'')+'</td><td class="r">'+peso(r.from.amount)+' '+esc(r.from.method||'')+'</td>'+
+    sec('Voided or cancelled, money still held', d.held.length, '<th>What</th><th>JO # / FB #</th><th>Customer</th><th class="r">Still held</th><th>Reason</th>',
+      d.held.map(function(x){ return '<tr><td>'+esc(x.kind)+'</td><td>'+esc(x.no)+(x.or?' / '+orSIHTML(x.or, x.si):'')+'</td><td>'+esc(x.owner)+' '+esc(x.plate)+'</td><td class="r">'+peso(x.held)+'</td><td>'+esc(x.reason)+'</td></tr>'; }).join(''))+
+    sec('Paid more than due', d.over.length, '<th>JO #</th><th>FB #</th><th>Plate</th><th class="r">Due</th><th class="r">Paid</th><th class="r">Over</th>',
+      d.over.map(function(r){ return '<tr><td>'+esc(r.no)+'</td><td>'+orSIHTML(r.or, r.si)+'</td><td>'+esc(r.plate)+'</td><td class="r">'+peso(r.due)+'</td><td class="r">'+peso(r.paid)+'</td><td class="r">'+peso(r.over)+'</td></tr>'; }).join(''))+
+    sec('Released with balance owed', d.owing.length, '<th>JO #</th><th>FB #</th><th>Plate</th><th class="r">Due</th><th class="r">Paid</th><th class="r">Owed</th>',
+      d.owing.map(function(r){ return '<tr><td>'+esc(r.no)+'</td><td>'+orSIHTML(r.or, r.si)+'</td><td>'+esc(r.plate)+'</td><td class="r">'+peso(r.due)+'</td><td class="r">'+peso(r.paid)+'</td><td class="r">'+peso(r.owed)+'</td></tr>'; }).join(''))+
+    sec('Bill changed after payment', d.bill.length, '<th>Changed</th><th>JO # / FB #</th><th class="r">Was</th><th class="r">Now</th><th class="r">Paid</th><th>By</th>',
+      d.bill.map(function(r){ return '<tr><td>'+esc(fmtDateTime(r.at))+'</td><td>'+esc(r.no)+(r.or?' / '+orSIHTML(r.or, r.si):'')+'</td><td class="r">'+peso(r.from)+'</td><td class="r">'+peso(r.to)+'</td><td class="r">'+peso(r.paid)+'</td><td>'+esc(r.byName||'—')+'</td></tr>'; }).join(''))+
+    sec('Non-cash payments with no reference #', d.refs.length, '<th>Paid</th><th>JO # / FB #</th><th>Method</th><th class="r">Amount</th>',
+      d.refs.map(function(r){ return '<tr><td>'+esc(fmtDateTime(r.date))+'</td><td>'+esc(r.no)+(r.or?' / '+orSIHTML(r.or, r.si):'')+'</td><td>'+esc(r.method)+'</td><td class="r">'+peso(r.amount)+'</td></tr>'; }).join(''))+
+    sec('Payment corrections', d.corr.length, '<th>Corrected</th><th>JO # / FB #</th><th class="r">Was</th><th class="r">Now</th><th>By</th><th>Reason</th>',
+      d.corr.map(function(r){ return '<tr><td>'+esc(fmtDateTime(r.at))+'</td><td>'+esc(r.no)+(r.or?' / '+orSIHTML(r.or, r.si):'')+'</td><td class="r">'+peso(r.from.amount)+' '+esc(r.from.method||'')+'</td>'+
         '<td class="r">'+peso(r.to.amount)+' '+esc(r.to.method||'')+'</td><td>'+esc(r.byName||'—')+'</td><td>'+esc(r.reason)+'</td></tr>'; }).join('')));
 }
 
@@ -12090,7 +12129,7 @@ function vcMoney(j){
 function voidedReceipts(r){
   return (S.jobs||[]).filter(function(j){ return jobVoided(j) && inRptRange(localDay(j.orVoid.at), r||{from:'',to:''}); })
     .map(function(j){ var m=vcMoney(j);
-      return { id:j.id, no:j.no, or:j.orNumber||'', owner:j.owner||'', plate:j.plate||'', billed:jobGross(j), billedAt:j.billedAt,
+      return { id:j.id, no:j.no, or:j.orNumber||'', si:siText(j), owner:j.owner||'', plate:j.plate||'', billed:jobGross(j), billedAt:j.billedAt,
         at:j.orVoid.at, byName:j.orVoid.byName||'', reason:j.orVoid.reason||'', collected:m.collected, refunded:m.refunded, held:m.held }; })
     .sort(function(a,b){ return String(b.at).localeCompare(String(a.at)); });
 }
@@ -12130,8 +12169,8 @@ function voidsBodyHTML(rg){
   return '<div class="muted small mb8">'+esc(rptRangeLabel(rg))+' · '+v.length+' voided receipt'+(v.length===1?'':'s')+
       ' · '+c.length+' cancelled job order'+(c.length===1?'':'s')+
       (held.length?' · <b class="st-bad-t">'+held.length+' still holding '+peso(heldTot)+'</b>':'')+'</div>'+
-    mcSection('Voided receipts', v.length, mcTable('<th>Voided</th><th>OR # / JO #</th><th>Customer</th><th class="r">Billed</th><th class="r">Collected</th><th class="r">Still held</th><th>By</th><th>Reason</th>',
-      v.map(function(x){ return '<tr'+mcRowOpen(x.id)+'><td>'+esc(fmtDateTime(x.at))+'</td><td><b>'+esc(x.or)+'</b> <span class="muted small">'+esc(x.no)+'</span></td>'+
+    mcSection('Voided receipts', v.length, mcTable('<th>Voided</th><th>FB # / JO #</th><th>Customer</th><th class="r">Billed</th><th class="r">Collected</th><th class="r">Still held</th><th>By</th><th>Reason</th>',
+      v.map(function(x){ return '<tr'+mcRowOpen(x.id)+'><td>'+esc(fmtDateTime(x.at))+'</td><td><b>'+orSIHTML(x.or, x.si)+'</b> <span class="muted small">'+esc(x.no)+'</span></td>'+
         '<td>'+esc(x.owner)+' <span class="muted small">'+esc(x.plate)+'</span></td><td class="r">'+peso(x.billed)+'</td>'+
         '<td class="r">'+(x.collected?peso(x.collected):'—')+'</td><td class="r">'+vcHeldCell(x)+'</td><td>'+esc(x.byName||'—')+'</td><td>'+esc(x.reason)+'</td></tr>'; }).join(''))+
       (held.some(function(x){ return x.kind==='Voided receipt'; })?'<p class="muted small">A voided receipt still holding money: either refund it (Record refund on the job), or — if the job was re-billed — the payment belongs on the new job order.</p>':''),
@@ -12150,8 +12189,8 @@ function docVoids(){
     (n?'<table><thead><tr>'+head+'</tr></thead><tbody>'+rows+'</tbody></table>':'<p>None.</p>'); }
   return docShell('Voids & Cancellations', docHeader('Voids & Cancellations · '+rptRangeLabel(rg))+
     '<div class="eod-stamp">Printed <b>'+esc(fmtDateTime(new Date().toISOString()))+'</b></div>'+
-    sec('Voided receipts', v.length, '<th>Voided</th><th>OR # / JO #</th><th>Customer</th><th class="r">Billed</th><th class="r">Still held</th><th>By</th><th>Reason</th>',
-      v.map(function(x){ return '<tr><td>'+esc(fmtDateTime(x.at))+'</td><td>'+esc(x.or)+' / '+esc(x.no)+'</td><td>'+esc(x.owner)+' '+esc(x.plate)+'</td>'+
+    sec('Voided receipts', v.length, '<th>Voided</th><th>FB # / JO #</th><th>Customer</th><th class="r">Billed</th><th class="r">Still held</th><th>By</th><th>Reason</th>',
+      v.map(function(x){ return '<tr><td>'+esc(fmtDateTime(x.at))+'</td><td>'+orSIHTML(x.or, x.si)+' / '+esc(x.no)+'</td><td>'+esc(x.owner)+' '+esc(x.plate)+'</td>'+
         '<td class="r">'+peso(x.billed)+'</td><td class="r">'+(x.held>0.009?'<b>'+peso(x.held)+'</b>':'—')+'</td><td>'+esc(x.byName||'—')+'</td><td>'+esc(x.reason)+'</td></tr>'; }).join(''))+
     sec('Cancelled job orders', c.length, '<th>Cancelled</th><th>JO #</th><th>Customer</th><th class="r">Still held</th><th>By</th><th>Reason</th>',
       c.map(function(x){ return '<tr><td>'+esc(fmtDateTime(x.at))+'</td><td>'+esc(x.no)+'</td><td>'+esc(x.owner)+' '+esc(x.plate)+'</td>'+
@@ -13063,7 +13102,7 @@ function updateReleaseCore(jobId, formId, data){
 
 var RELEASE_TEXT = {
   en: {
-    title:'Vehicle Release Form', or:'OR #', relOdo:'Odometer at release', relDate:'Date released',
+    title:'Vehicle Release Form', or:'FB #', relOdo:'Odometer at release', relDate:'Date released',
     work:'Work done', type:'Type', desc:'Description', qty:'Qty', part:'Part', labor:'Labor',
     belong:'Belongings returned', noBelong:'No belongings were listed at intake.', notBack:'not returned',
     pay:'Payment', paid:'Paid in full', onCharge:function(b){ return 'Released on charge — '+b+' still owing'; }, owing:function(b){ return 'Balance '+b; },
@@ -13082,7 +13121,7 @@ var RELEASE_TEXT = {
       'Signed on <b>'+when+'</b>.'; }
   },
   fil: {
-    title:'Vehicle Release Form · Katibayan ng Pagtanggap ng Sasakyan', or:'OR #', relOdo:'Odometer sa paglabas', relDate:'Petsa ng paglabas',
+    title:'Vehicle Release Form · Katibayan ng Pagtanggap ng Sasakyan', or:'FB #', relOdo:'Odometer sa paglabas', relDate:'Petsa ng paglabas',
     work:'Mga gawaing isinagawa', type:'Uri', desc:'Paglalarawan', qty:'Dami', part:'Piyesa', labor:'Labor',
     belong:'Mga gamit na naibalik', noBelong:'Walang gamit na nakalista sa pagpasok ng sasakyan.', notBack:'hindi naibalik',
     pay:'Bayad', paid:'Bayad nang buo', onCharge:function(b){ return 'Inilabas nang naka-charge — '+b+' pa ang balanse'; }, owing:function(b){ return 'Balanse '+b; },
@@ -13291,7 +13330,7 @@ FORM_DEFS.promissory = {
   text:{
     en:{ title:'Promissory Note',
       body:function(c){ return '<p style="font-size:15px"><b>'+c.peso('amount')+'</b></p>'+
-        '<p>For value received — the repair and service of the vehicle described above under Job Order <b>'+c.jo()+'</b>'+(c.or()?', OR <b>'+c.or()+'</b>':'')+
+        '<p>For value received — the repair and service of the vehicle described above under Job Order <b>'+c.jo()+'</b>'+(c.or()?', Final Billing <b>'+c.or()+'</b>':'')+
           ' — I, <b>'+c.e('customer')+'</b>, promise to pay <b>'+c.shop+'</b> the sum of <b>'+c.peso('amount')+'</b> on or before <b>'+c.date('due')+'</b>.</p>'+
         (c.d.terms?'<p><b>Terms:</b> '+c.e('terms')+'</p>':'')+
         '<p>If this amount is not paid when due, the whole unpaid amount becomes immediately payable, and '+c.shop+' may collect it by any lawful means.</p>'+
@@ -13299,7 +13338,7 @@ FORM_DEFS.promissory = {
       sigs:function(c){ return [['Customer — '+_FD_SIG.en, '<b>'+c.e('customer')+'</b>'],['Witness (Service Adviser)', c.staff('adviserId')],['Approved by (Supervisor)', c.staff('supervisorId')]]; } },
     fil:{ title:'Promissory Note (Pangakong Pagbabayad)',
       body:function(c){ return '<p style="font-size:15px"><b>'+c.peso('amount')+'</b></p>'+
-        '<p>Bilang kapalit ng serbisyong natanggap — ang pagkukumpuni at serbisyo sa sasakyang nakalarawan sa itaas sa ilalim ng Job Order <b>'+c.jo()+'</b>'+(c.or()?', OR <b>'+c.or()+'</b>':'')+
+        '<p>Bilang kapalit ng serbisyong natanggap — ang pagkukumpuni at serbisyo sa sasakyang nakalarawan sa itaas sa ilalim ng Job Order <b>'+c.jo()+'</b>'+(c.or()?', Final Billing <b>'+c.or()+'</b>':'')+
           ' — ako, si <b>'+c.e('customer')+'</b>, ay nangangakong babayaran ang <b>'+c.shop+'</b> ng halagang <b>'+c.peso('amount')+'</b> sa o bago ang <b>'+c.date('due')+'</b>.</p>'+
         (c.d.terms?'<p><b>Kasunduan:</b> '+c.e('terms')+'</p>':'')+
         '<p>Kung hindi mabayaran sa takdang araw, ang buong natitirang halaga ay agad nang babayaran, at maaari itong singilin ng '+c.shop+' sa anumang paraang naaayon sa batas.</p>'+
@@ -13386,7 +13425,7 @@ FORM_DEFS.warranty = {
   text:{
     en:{ title:'Warranty Certificate',
       body:function(c){ var w=_fdWarrantyEnd(c);
-        return '<p><b>'+c.shop+'</b> warrants the parts it supplied and the labor it performed on the vehicle described above under Job Order <b>'+c.jo()+'</b>'+(c.or()?' / OR <b>'+c.or()+'</b>':'')+
+        return '<p><b>'+c.shop+'</b> warrants the parts it supplied and the labor it performed on the vehicle described above under Job Order <b>'+c.jo()+'</b>'+(c.or()?' / Final Billing <b>'+c.or()+'</b>':'')+
           ', listed below, against defects in materials and workmanship for <b>'+c.n('days')+' days or '+c.n('km')+' km</b> from release, whichever comes first — until <b>'+w.date+'</b> or <b>'+w.odo+'</b>.</p>'+
         _fdWorkTable(c, 'Covered work and parts')+
         '<p><b>To claim:</b> bring the vehicle and this certificate to the shop within the warranty period. The shop will inspect it and repair or replace a covered part or redo covered work at no charge.</p>'+
@@ -13394,7 +13433,7 @@ FORM_DEFS.warranty = {
       sigs:function(c){ return [['Service Adviser', c.staff('adviserId')],['Issued by (Supervisor)', c.staff('supervisorId')],['Customer — '+_FD_SIG.en, '<b>'+c.e('customer')+'</b>']]; } },
     fil:{ title:'Sertipiko ng Warranty',
       body:function(c){ var w=_fdWarrantyEnd(c);
-        return '<p>Ginagarantiyahan ng <b>'+c.shop+'</b> ang mga piyesang ibinigay nito at ang labor na isinagawa nito sa sasakyang nakalarawan sa itaas sa ilalim ng Job Order <b>'+c.jo()+'</b>'+(c.or()?' / OR <b>'+c.or()+'</b>':'')+
+        return '<p>Ginagarantiyahan ng <b>'+c.shop+'</b> ang mga piyesang ibinigay nito at ang labor na isinagawa nito sa sasakyang nakalarawan sa itaas sa ilalim ng Job Order <b>'+c.jo()+'</b>'+(c.or()?' / Final Billing <b>'+c.or()+'</b>':'')+
           ', na nakalista sa ibaba, laban sa depekto sa materyales at pagkakagawa sa loob ng <b>'+c.n('days')+' araw o '+c.n('km')+' km</b> mula sa paglabas, alinman ang mauna — hanggang <b>'+w.date+'</b> o <b>'+w.odo+'</b>.</p>'+
         _fdWorkTable(c, 'Saklaw na gawain at piyesa')+
         '<p><b>Paano mag-claim:</b> dalhin ang sasakyan at ang sertipikong ito sa shop sa loob ng panahon ng warranty. Susuriin ito ng shop at aayusin o papalitan nang libre ang saklaw na piyesa o gawain.</p>'+
@@ -13828,7 +13867,7 @@ function janiceLinkHTML(docs, liveFrom){
     '<div class="row gap" style="margin:0 0 12px"><span class="chip paid">Posted '+count('posted')+'</span>'+
       '<span class="chip '+(failed.length?'due':'')+'">Failed '+failed.length+'</span>'+
       '<span class="chip '+(held.length?'due':'')+'">Held '+held.length+'</span></div>';
-  if(failed.length) h += '<h3>Failed — retried every 15 minutes</h3><div class="card pad0"><table class="tbl sm"><thead><tr><th>OR / job</th><th>Why</th><th class="r">Tries</th><th></th></tr></thead><tbody>'+
+  if(failed.length) h += '<h3>Failed — retried every 15 minutes</h3><div class="card pad0"><table class="tbl sm"><thead><tr><th>FB / job</th><th>Why</th><th class="r">Tries</th><th></th></tr></thead><tbody>'+
     failed.map(function(d){ return '<tr><td><b>'+orOf(d)+'</b></td><td>'+esc(d.error||'—')+'</td><td class="r">'+num(d.tries||0)+'</td>'+
       '<td><button class="btn sm ghost" onclick="janiceRetryNow(\''+esc(d.id)+'\')">Retry</button></td></tr>'; }).join('')+'</tbody></table></div>';
   if(held.length) h += '<h3>Held — Janice cannot take these exactly; fix in BASIC or ask the cashier to encode</h3><div class="card pad0"><table class="tbl sm"><tbody>'+
