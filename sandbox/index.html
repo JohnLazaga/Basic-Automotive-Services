@@ -690,7 +690,7 @@ var BRANCH = {"id":"sandbox","slug":"sandbox","name":"Basic by JMSI — Sandbox 
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-11-23 · a3e1d9a';
+var APP_VERSION = 'v1.3.0 · 2026-11-23 · b56e3bb';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -988,7 +988,11 @@ function fmtHrs(h){ var m=Math.max(0,Math.round((Number(h)||0)*60)); return Math
 
 /* ---- Payment helpers ------------------------------------------------------ */
 function jobPaid(job){ return round2(((job.payments)||[]).reduce(function(s,p){return s+(Number(p.amount)||0);},0)); }
-function jobBalance(job){ return round2(jobGross(job) - jobPaid(job)); }
+/* A receivable an admin wrote off (company vehicle or bad debt, part7). Not a
+   payment and not a discount: the sale and the cash stay as they were; only
+   what is still owed goes to zero. An undone write-off counts for nothing. */
+function jobWrittenOff(job){ var w=job&&job.writeOff; return (w && !w.undoneAt) ? round2(Number(w.amount)||0) : 0; }
+function jobBalance(job){ return round2(jobGross(job) - jobPaid(job) - jobWrittenOff(job)); }
 
 /* ---- Storage adapter ------------------------------------------------------
    Tries window.storage (async get/set) -> localStorage -> in-memory.        */
@@ -5600,7 +5604,7 @@ function eodData(from, to){
     return { n:m?Number(m[1]):0, or:j.orNumber, jo:j.no, owner:j.owner||'', plate:j.plate||'',
              day:localDay(j.billedAt), amount:gross, voided:vd,
              paid:pd, due:due,
-             status: vd ? 'void' : (due<=0.001 ? 'paid' : (pd>0.001 ? 'part' : 'unpaid')),
+             status: vd ? 'void' : (due<=0.001 ? 'paid' : (jobWrittenOff(j)>0 && due-jobWrittenOff(j)<=0.001 ? 'writeoff' : (pd>0.001 ? 'part' : 'unpaid'))),
              voidReason:(j.orVoid&&j.orVoid.reason)||'', id:j.id };
   }).sort(function(a,b){ return a.n-b.n; });
   var voidCount=receipts.filter(function(r){ return r.voided; }).length;
@@ -5634,6 +5638,7 @@ function eodReceiptRowsHTML(d, withDate, clickable){
       '<td>'+(r.voided
         ? '<span class="chip">VOID</span>'+(r.voidReason?' <span class="muted small">'+esc(r.voidReason)+'</span>':'')
         : r.status==='unpaid' ? '<span class="chip due">UNPAID</span> <span class="muted small">'+peso(r.due)+' due</span>'
+        : r.status==='writeoff' ? '<span class="chip">WRITTEN OFF</span>'
         : r.status==='part'   ? '<span class="chip due">PART-PAID</span> <span class="muted small">'+peso(r.due)+' still due</span>'
         : '<span class="muted small">Paid</span>')+'</td>'+
       '<td class="r">'+(r.voided?'<span class="muted">—</span>':peso(r.amount))+'</td></tr>';
@@ -5948,7 +5953,8 @@ function arBodyHTML(all){
       '<table class="tbl sm"><thead><tr><th>JO #</th><th>Billed</th><th>Age</th><th>Bucket</th><th class="r">Balance</th><th></th></tr></thead><tbody>'+
       c.jobs.map(function(x){return '<tr><td>'+esc(x.j.no)+(x.j.charge?' '+chip('on charge',''):'')+'</td><td>'+esc(fmtDate(x.j.billedAt))+'</td><td>'+x.days+'d</td><td>'+chip(x.bucket,x.bucket==='90+'?'due':'')+'</td>'+
         '<td class="r">'+peso(x.bal)+'</td><td class="r"><button class="btn xs primary" onclick="collectAR(\''+x.j.id+'\')">Collect</button>'+
-        (canSettleAccounts()?' <button class="btn xs ghost" onclick="adminSettleDialog(\''+x.j.id+'\')">Admin settlement</button>':'')+'</td></tr>';}).join('')+
+        (canSettleAccounts()?' <button class="btn xs ghost" onclick="adminSettleDialog(\''+x.j.id+'\')">Admin settlement</button>'+
+          ' <button class="btn xs ghost" onclick="writeOffDialog(\''+x.j.id+'\')">Write off</button>':'')+'</td></tr>';}).join('')+
       '</tbody></table></div>';
   }).join('');
 }
@@ -5962,7 +5968,7 @@ VIEWS.receivables = function(){
   return '<div class="page"><div class="page-head"><h1>Receivables (A/R)</h1>'+tools+'</div>'+
     '<div class="kpis">'+kpi('Total A/R',peso(total))+kpi('0–30',peso(buckets['0-30']))+kpi('31–60',peso(buckets['31-60']))+
       kpi('61–90',peso(buckets['61-90']))+kpi('90+',peso(buckets['90+']),buckets['90+']>0?'<span class="amber">overdue</span>':'')+'</div>'+
-    custHTML+'</div>';
+    custHTML+writtenOffCard()+'</div>';
 };
 function collectAR(id){
   var j=jobById(id); var bal=jobBalance(j);
@@ -6071,6 +6077,91 @@ function settleWarn(){
   if(typeof document==='undefined') return; var el=document.getElementById('stWarn'); if(!el) return;
   var t=settleWarnText(val('stDate'), val('stMethod'));
   el.innerHTML=t?'<div class="lock mt8">'+esc(t)+'</div>':'';
+}
+
+/* ---- Write off a receivable ------------------------------------------------
+   (Receivables → "Write off" on a job order; admins only.)
+   Two kinds, because they are different things:
+     • company — maintenance on the shop's own cars that was billed like a
+       customer's (the job was not encoded as a company car). Nobody owes it.
+     • baddebt — a real customer who will not pay.
+   The OR, the sale and the VAT stay exactly as billed and no payment is made
+   (Collections and the cash count never see it). What is still owed goes to
+   zero, and the amount lands in Expenses & P&L, ex-VAT, on the day it was
+   written off. An admin can undo it (e.g. the customer pays after all).
+   Janice is not told: its invoice still shows the balance (said in the
+   dialog). Testable without a DOM: returns {ok, amount} or {ok:false, err}. */
+var WRITEOFF_TYPES = { company:'Company vehicle', baddebt:'Bad debt' };
+var WRITEOFF_CATEGORY = { company:'Company vehicles (written off)', baddebt:'Bad debts (written off)' };
+function writeOffJob(j, o){
+  o=o||{};
+  if(!canSettleAccounts()) return { ok:false, err:'Only an admin can write off a receivable' };
+  if(!j || !j.billedAt || jobVoided(j) || jobCancelled(j)) return { ok:false, err:'Only a billed, not-voided job order can be written off' };
+  if(!WRITEOFF_TYPES[o.type]) return { ok:false, err:'Pick Company vehicle or Bad debt' };
+  var reason=String(o.reason||'').trim();
+  if(!reason) return { ok:false, err:'Enter the reason' };
+  var bal=jobBalance(j);
+  if(bal<=0.009) return { ok:false, err:'Nothing is owed on '+j.no };
+  var u=(typeof CURRENT_USER!=='undefined' && CURRENT_USER) || {};
+  if(j.writeOff && j.writeOff.undoneAt) j.writeOffHistory=[j.writeOff].concat(j.writeOffHistory||[]);
+  j.writeOff={ type:o.type, amount:round2(bal), reason:reason, at:new Date().toISOString(), by:u.uid||'', byName:u.name||u.username||u.email||'' };
+  return { ok:true, amount:round2(bal) };
+}
+function undoWriteOff(j){
+  if(!canSettleAccounts()) return { ok:false, err:'Only an admin can undo a write-off' };
+  if(!jobWrittenOff(j)) return { ok:false, err:'This job order is not written off' };
+  var u=(typeof CURRENT_USER!=='undefined' && CURRENT_USER) || {};
+  j.writeOff.undoneAt=new Date().toISOString(); j.writeOff.undoneBy=u.name||u.username||u.email||'';
+  return { ok:true };
+}
+/* Ex-VAT, so it lines up with the ex-VAT revenue the P&L already counted. */
+function writeOffExVat(j){
+  var amt=jobWrittenOff(j); if(!amt) return 0;
+  var vat=(S.shop && S.shop.vatReg) ? (Number(S.shop.vatRate)||12)/100 : 0;
+  return round2(amt/(1+vat));
+}
+function writtenOffJobs(){ return (S.jobs||[]).filter(function(j){ return jobWrittenOff(j)>0 && !jobVoided(j); }); }
+function writtenOffCard(){
+  var list=writtenOffJobs().sort(function(a,b){ return String(b.writeOff.at).localeCompare(String(a.writeOff.at)); });
+  if(!list.length) return '';
+  var admin=canSettleAccounts();
+  return '<div class="card"><div class="card-head"><h2>Written off</h2><span class="muted small">'+list.length+' · '+
+      peso(round2(list.reduce(function(s,j){ return s+jobWrittenOff(j); },0)))+'</span></div>'+
+    '<table class="tbl sm"><thead><tr><th>OR # / JO #</th><th>Customer</th><th>Type</th><th>Reason</th><th>When / by</th><th class="r">Amount</th><th></th></tr></thead><tbody>'+
+    list.map(function(j){ var w=j.writeOff;
+      return '<tr><td>'+eodRefHTML(j)+'</td><td>'+esc(custName(j))+'</td><td>'+esc(WRITEOFF_TYPES[w.type]||w.type)+'</td><td>'+esc(w.reason)+'</td>'+
+        '<td>'+esc(fmtDate(w.at))+' <span class="muted small">'+esc(w.byName||'')+'</span></td><td class="r">'+peso(w.amount)+'</td>'+
+        '<td class="r">'+(admin?'<button class="btn xs ghost" onclick="undoWriteOffUI(\''+j.id+'\')">Undo</button>':'')+'</td></tr>';
+    }).join('')+'</tbody></table></div>';
+}
+var woCtx=null;
+function writeOffDialog(id){
+  var j=jobById(id); if(!j) return;
+  woCtx=id;
+  openModal('Write off — '+(j.orNumber?j.orNumber+' · ':'')+j.no,
+    '<p>'+esc(custName(j))+' · '+esc(j.plate||'')+' · still owing <b>'+peso(jobBalance(j))+'</b></p>'+
+    field('Type','<select id="woType" onchange="woTypeChanged(this.value)">'+
+      '<option value="company">Company vehicle — maintenance on our own car</option>'+
+      '<option value="baddebt">Bad debt — customer will not pay</option></select>')+
+    field('Reason','<input id="woReason" value="Company vehicle maintenance" autocomplete="off">','Shown on the Written off list.')+
+    '<p class="muted small">The OR and the sale stay as billed and no payment is recorded. The balance goes to zero and the amount goes to Expenses &amp; P&amp;L. '+
+      'Janice is not changed — its invoice still shows this balance until the accountant adjusts it there. An admin can undo this.</p>',
+    { onOk:'saveWriteOff', okText:'Write off' });
+}
+function woTypeChanged(t){
+  var r=document.getElementById('woReason'); if(!r) return;
+  if(t==='company' && !r.value.trim()) r.value='Company vehicle maintenance';
+  if(t==='baddebt' && r.value==='Company vehicle maintenance') r.value='';
+}
+function saveWriteOff(){
+  var j=jobById(woCtx); var r=writeOffJob(j,{ type:val('woType'), reason:val('woReason') });
+  if(!r.ok){ toast(r.err,'err'); return; }
+  persist(); closeModal(); toast(j.no+' written off — '+peso(r.amount)); render();
+}
+function undoWriteOffUI(id){
+  var j=jobById(id); var r=undoWriteOff(j);
+  if(!r.ok){ toast(r.err,'err'); return; }
+  persist(); toast('Write-off undone — '+j.no+' is back in receivables'); render();
 }
 
 
@@ -6906,6 +6997,7 @@ function docEodBody(d, title, withDate, coversDay){
   function recTag(r){
     if(r.voided) return '<span class="vd">VOID'+(r.voidReason?' <i>'+esc(r.voidReason)+'</i>':'')+'</span>';
     if(r.status==='unpaid') return '<span class="up">UNPAID <i>'+peso(r.due)+' due</i></span>';
+    if(r.status==='writeoff') return '<span class="vd">WRITTEN OFF</span>';
     if(r.status==='part')   return '<span class="up">PART-PAID <i>'+peso(r.due)+' still due</i></span>';
     return '';
   }
@@ -7425,6 +7517,7 @@ if (typeof module!=='undefined' && module.exports){
     runningBill:runningBill, commissionTable:commissionTable, agingBucket:agingBucket,
     VIEWS:function(){ return VIEWS; },
     isOwnerEmail:isOwnerEmail, ownerLinkHTML:ownerLinkHTML,
+    writeOffJob:writeOffJob, undoWriteOff:undoWriteOff, opexForRange:opexForRange, localDay:localDay,
     go:go, goBack:goBack, getRoute:function(){ return ROUTE; }, resetNav:function(){ NAV_STACK.length=0; ROUTE.view='board'; ROUTE.arg=null; },
     backFabShown:backFabShown, backFabHTML:backFabHTML,
     docJobOrder:docJobOrder, docPostJob:docPostJob, docBilling:docBilling, docEstimate:docEstimate,
@@ -11355,6 +11448,8 @@ function opexForRange(from, to){
   (S.commadj||[]).concat(comebackDeductions()).forEach(function(a){ if(a && a.type!=='advance' && a.date>=from && a.date<=to) add(COMMADJ_CATEGORY, a.amount); });
   // A parts charge (part20) lowers it by the whole amount on the day it was charged, however many payouts it is spread over.
   partsChargeSources().forEach(function(c){ if(c.recorded>=from && c.recorded<=to) add(COMMADJ_CATEGORY, -c.total); });
+  // Written-off receivables (part7): company-car maintenance and bad debts, ex-VAT, on the day written off.
+  writtenOffJobs().forEach(function(j){ var d=localDay(j.writeOff.at); if(d>=from && d<=to) add(WRITEOFF_CATEGORY[j.writeOff.type]||'Bad debts (written off)', writeOffExVat(j)); });
   return { byCat:byCat, total:total };
 }
 function opexFor(m){ return opexForRange(m+'-01', m+'-'+String(daysInMonth(m)).padStart(2,'0')); }
