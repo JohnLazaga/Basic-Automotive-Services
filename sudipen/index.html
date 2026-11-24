@@ -690,7 +690,7 @@ var BRANCH = {"id":"sudipen","slug":"sudipen","name":"Basic by JMSI — Sudipen"
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-11-24 · 676a24f';
+var APP_VERSION = 'v1.3.0 · 2026-11-24 · e20f96c';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -4347,7 +4347,7 @@ function jobPaymentBlock(j,b){
       field('Payment received by (Secretary)','<select onchange="setJobField(\''+j.id+'\',\'paymentReceivedBy\',this.value)">'+optionList(staffByRole('Secretary'),j.paymentReceivedBy,true)+'</select>')+
     '</div>'+
     pays+
-    ((paid||!showPrice)? '' : '<div class="mt8">'+payMethodFields('py',{ amount:field('Amount','<input id="pyAmt" type="number" step="0.01" value="'+attr(b.balance)+'">') })+'</div>'+
+    ((paid||!showPrice)? '' : '<div class="mt8">'+payMethodFields('py',{ amount:field('Amount','<input id="pyAmt" type="number" step="0.01" value="'+attr(b.balance)+'">') })+overrideBox('py')+'</div>'+
       '<button class="btn sm" onclick="recordPayment(\''+j.id+'\')">Record payment</button>')+
     (canRefund?'<button class="btn sm ghost mt8" onclick="refundDialog(\''+j.id+'\')">Record refund…</button>':'')+
     field('Last service odometer','<input id="relOdo" type="number" value="'+attr(j.lastServiceOdo||j.odometer||'')+'" placeholder="reading at release">','Recorded on release; updates the vehicle’s last service odometer.')+
@@ -4384,8 +4384,10 @@ function recordPayment(id){
   var j=jobById(id); var amt=Number(val('pyAmt'))||0; if(amt<=0){toast('Enter amount','err');return;}
   var method=val('pyMethod'), ref=String(val('pyRef')||'').trim(), bank=PAYBANK_METHODS.indexOf(method)>=0 ? String(val('pyBank')||'').trim() : '';
   var perr=payDetailsErr(method, ref, bank); if(perr){ toast(perr,'err'); return; }
+  var ovr=overrideOn('py'), gerr=paymentGuardErr(j, amt, ovr); if(gerr){ toast(gerr,'err'); return; }
   if(method==='Cash') ref='';
   var pay={ amount:amt, method:method, date:new Date().toISOString() }; if(ref) pay.ref=ref; if(bank) pay.bank=bank;
+  if(amt>jobBalance(j)+0.009) pay.override=true;
   j.payments.push(pay);
   persist(); toast('Payment recorded'); render();
 }
@@ -4401,7 +4403,7 @@ function recordPayment(id){
    Kept as a plain function taking the job so it is testable without a DOM; the
    dialog below is only the wrapper that collects the fields. Returns
    {ok:true} or {ok:false, err:'...'}. */
-function addRefund(j, amt, method, reason){
+function addRefund(j, amt, method, reason, opts){
   if(!j) return { ok:false, err:'No job order' };
   amt = round2(Number(amt)||0);
   if(amt<=0) return { ok:false, err:'Enter the amount refunded' };
@@ -4411,10 +4413,14 @@ function addRefund(j, amt, method, reason){
   if(amt > paid + 0.001) return { ok:false, err:'Cannot refund more than the '+peso(paid)+' collected on this job order' };
   reason = String(reason||'').trim();
   if(reason.length<3) return { ok:false, err:'Give a reason — it is what explains the refund later' };
+  var guard=refundGuardErr(j, amt), ovr=!!(guard && opts && opts.override && curUserIsAdmin());
+  if(guard && !ovr) return { ok:false, err:guard, needsOverride:true };
   var me=(typeof CURRENT_USER!=='undefined' && CURRENT_USER) ? CURRENT_USER : null;
   j.payments = j.payments || [];
-  j.payments.push({ amount:round2(-amt), method:method||'Cash', date:new Date().toISOString(),
-    refund:true, reason:reason, by:(me&&me.uid)||'', byName:(me&&(me.name||me.username||me.email))||'' });
+  var rf={ amount:round2(-amt), method:method||'Cash', date:new Date().toISOString(),
+    refund:true, reason:reason, by:(me&&me.uid)||'', byName:(me&&(me.name||me.username||me.email))||'' };
+  if(ovr) rf.override=true;
+  j.payments.push(rf);
   return { ok:true, amount:amt };
 }
 var _refundCtx=null;
@@ -4434,14 +4440,16 @@ function refundDialog(id){
       field('Method','<select id="rfMethod">'+payMethodOptions('Cash')+'</select>','How the money went back out.')+
     '</div>'+
     field('Reason','<input id="rfReason" placeholder="e.g. voided receipt, overpayment, cancelled work" autocomplete="off">',
-      'Recorded against the refund so it can be explained later.'),
+      'Recorded against the refund so it can be explained later.')+
+    '<p class="muted small">Owed back on this job order: <b>'+peso(refundableAmount(j))+'</b>. A payment entered wrong is fixed with <b>Correct</b>, not refunded and paid again.</p>'+
+    overrideBox('rf'),
     { onOk:'confirmRefund', okText:'Record refund' });
   setTimeout(function(){ _refundCtx=id; },10);
 }
 function confirmRefund(){
   if (typeof requireRefund==='function' && !requireRefund()) return;
   var j=jobById(_refundCtx); if(!j){ closeModal(); return; }
-  var r=addRefund(j, val('rfAmt'), val('rfMethod'), val('rfReason'));
+  var r=addRefund(j, val('rfAmt'), val('rfMethod'), val('rfReason'), { override:overrideOn('rf') });
   if(!r.ok){ toast(r.err,'err'); return; }
   _refundCtx=null; persist(); closeModal();
   toast('Refund of '+peso(r.amount)+' recorded'); render();
@@ -6017,15 +6025,17 @@ function collectAR(id){
   var j=jobById(id); var bal=jobBalance(j);
   openModal('Collect payment — '+j.no,
     '<p class="muted small">'+(j.orNumber?orSIHTML(j.orNumber, siText(j))+' · ':'')+esc(custName(j))+' · Balance due <b>'+peso(bal)+'</b></p>'+
-    payMethodFields('ar',{ amount:field('Amount (₱)','<input id="arAmt" type="number" step="0.01" value="'+attr(bal)+'">') }),
+    payMethodFields('ar',{ amount:field('Amount (₱)','<input id="arAmt" type="number" step="0.01" value="'+attr(bal)+'">') })+overrideBox('ar'),
     { onOk:'saveAR', okText:'Record' }); setTimeout(function(){arCtx=id;},10);
 }
 var arCtx=null;
 function saveAR(){ var j=jobById(arCtx); var amt=Number(val('arAmt'))||0; if(amt<=0){toast('Enter amount','err');return;}
   var method=val('arMethod'), ref=String(val('arRef')||'').trim(), bank=PAYBANK_METHODS.indexOf(method)>=0 ? String(val('arBank')||'').trim() : '';
   var perr=payDetailsErr(method, ref, bank); if(perr){ toast(perr,'err'); return; }
+  var ovr=overrideOn('ar'), gerr=paymentGuardErr(j, amt, ovr); if(gerr){ toast(gerr,'err'); return; }
   if(method==='Cash') ref='';
   var pay={ amount:amt, method:method, date:new Date().toISOString() }; if(ref) pay.ref=ref; if(bank) pay.bank=bank;
+  if(amt>jobBalance(j)+0.009) pay.override=true;
   j.payments.push(pay);
   persist(); closeModal(); toast('Payment recorded'); render(); }
 
@@ -6655,6 +6665,16 @@ function docReceivingSlip(j){
 }
 function printReceivingSlip(id){ printDoc(docReceivingSlip(jobById(id))); }
 
+/* Parts / Labor subtotal rows under a priced lines table: the Amount (VAT-exclusive,
+   as the lines are) and, for a VAT-registered shop, the VAT-inclusive total. Labor
+   takes every non-part line plus approved additional work. Not-billed parts count 0. */
+function lineSubtotalRows(lines, addlAmt, lead, withVat){
+  var all=round2((lines||[]).reduce(function(t,l){ return t+lineTotal(l); },0)+(Number(addlAmt)||0));
+  var parts=sumLines(lines,'part'), labor=round2(all-parts);
+  function r(label, amt){ return '<tr><td colspan="'+lead+'" class="r"><b>'+label+'</b></td><td class="r"><b>'+peso(amt)+'</b></td>'+
+    (withVat?'<td class="r"><b>'+peso(vatSplit(amt,S).gross)+'</b></td>':'')+'</tr>'; }
+  return '<tfoot>'+r('Parts subtotal',parts)+r('Labor subtotal',labor)+'</tfoot>';
+}
 /* ---- Priced lines table (shared by Post Job & Billing) -------------------- */
 function pricedLinesTable(j,opts){
   opts=opts||{}; var sku=!!opts.sku;
@@ -6667,7 +6687,7 @@ function pricedLinesTable(j,opts){
     billedLines(j).map(function(l,i){return '<tr><td>'+(i+1)+'</td><td>'+(l.type==='part'?'Part':'Labor')+'</td>'+skuCell(l)+'<td>'+esc(l.desc)+'</td>'+
       '<td class="r">'+num(l.qty)+'</td><td class="r">'+peso(l.price)+'</td><td class="r">'+peso(lineTotal(l))+'</td>'+vatCell(lineTotal(l))+'</tr>';}).join('')+
     (j.addlWork||[]).filter(function(a){return a.approved;}).map(function(a){return '<tr><td></td><td>Add\'l</td>'+(sku?'<td>—</td>':'')+'<td>'+esc(a.desc)+'</td><td class="r">1</td><td class="r">'+peso(a.amount)+'</td><td class="r">'+peso(a.amount)+'</td>'+vatCell(a.amount)+'</tr>';}).join('')+
-    '</tbody></table>';
+    '</tbody>'+lineSubtotalRows(billedLines(j), addlTotal(j), sku?6:5, !!vatHead)+'</table>';
 }
 /* The printed reason for an Other discount. Older saves kept LESS VAT as the
    reason; printouts call that a plain discount. */
@@ -6830,7 +6850,7 @@ function docEstimate(e){
         ['Contact #', esc(e.contactNumber)],['Address', esc(eAddr)],
         ['Vehicle', esc(e.year+' '+e.make+' '+e.model)],['Odometer', num(e.odometer)+' km']])+
       '<table><thead><tr><th>Type</th><th>SKU</th><th>Description</th><th class="r">Qty</th><th class="r">Unit</th><th class="r">Amount</th>'+vatHead+'</tr></thead><tbody>'+
-      (e.lines||[]).map(function(l){return '<tr><td>'+(l.type==='part'?'Part':'Labor')+'</td><td>'+esc((l.type==='part'&&l.sku)?l.sku:'—')+'</td><td>'+esc(l.desc)+'</td><td class="r">'+num(l.qty)+'</td><td class="r">'+peso(l.price)+'</td><td class="r">'+peso(lineTotal(l))+'</td>'+vatCell(lineTotal(l))+'</tr>';}).join('')+'</tbody></table>'+
+      (e.lines||[]).map(function(l){return '<tr><td>'+(l.type==='part'?'Part':'Labor')+'</td><td>'+esc((l.type==='part'&&l.sku)?l.sku:'—')+'</td><td>'+esc(l.desc)+'</td><td class="r">'+num(l.qty)+'</td><td class="r">'+peso(l.price)+'</td><td class="r">'+peso(lineTotal(l))+'</td>'+vatCell(lineTotal(l))+'</tr>';}).join('')+'</tbody>'+lineSubtotalRows(e.lines, 0, 5, !vs.exempt)+'</table>'+
       '<div class="totbox">'+(vs.exempt?'<div class="l2"><span>VAT-Exempt Sales</span><span>'+peso(vs.gross)+'</span></div>':
         '<div class="l2"><span>VATable Sales</span><span>'+peso(vs.vatable)+'</span></div><div class="l2"><span>VAT ('+(S.shop.vatRate||12)+'%)</span><span>'+peso(vs.vat)+'</span></div>')+
         '<div class="l2 grand"><span>Estimated Total</span><span>'+peso(vs.gross)+'</span></div></div>'+
@@ -7559,7 +7579,7 @@ if (typeof module!=='undefined' && module.exports){
     runningBill:runningBill, commissionTable:commissionTable, agingBucket:agingBucket,
     VIEWS:function(){ return VIEWS; },
     isOwnerEmail:isOwnerEmail, ownerLinkHTML:ownerLinkHTML,
-    siText:siText, billingEditBlock:billingEditBlock, jobLinesPanel:jobLinesPanel, get PAY_METHODS(){ return PAY_METHODS; }, payDetailsErr:payDetailsErr, payMethodFields:payMethodFields, payRefHTML:payRefHTML,
+    siText:siText, billingEditBlock:billingEditBlock, jobLinesPanel:jobLinesPanel, get PAY_METHODS(){ return PAY_METHODS; }, payDetailsErr:payDetailsErr, payMethodFields:payMethodFields, payRefHTML:payRefHTML, paymentGuardErr:paymentGuardErr, refundGuardErr:refundGuardErr, refundableAmount:refundableAmount,
     allocateOrNumber:allocateOrNumber, orNoLabel:orNoLabel,
     writeOffJob:writeOffJob, undoWriteOff:undoWriteOff, opexForRange:opexForRange, localDay:localDay,
     go:go, goBack:goBack, getRoute:function(){ return ROUTE; }, resetNav:function(){ NAV_STACK.length=0; ROUTE.view='board'; ROUTE.arg=null; },
@@ -12043,9 +12063,46 @@ function payMethodSync(px){
   if(r) r.style.display = m==='Cash' ? 'none' : '';
   if(ri) ri.placeholder = m==='Check' ? 'Check no.' : 'Ref / txn no.';
 }
+/* ---- Money guards, with an admin override (2026-11-24) ---------------------------------
+   After FB-1737 (pay → refund → pay again; Janice got both payments and never the refund):
+     • a refund is only for money owed back — a voided receipt or cancelled job order (all
+       that was paid), or an overpayment (only the excess). A wrong payment is fixed with
+       Correct (Supervisor / admin), not refunded and re-entered.
+     • a payment can't be more than the balance (cash tendered typed instead of the amount
+       due, which then gets "refunded").
+   Anyone else is stopped; an admin can go past either rule by ticking Admin override, and
+   the payment/refund is marked override:true. No signed-in user (tests, LAN) = no guard. */
+function curUserIsAdmin(){ return !!(typeof CURRENT_USER!=='undefined' && CURRENT_USER && CURRENT_USER.isAdmin); }
+function moneyGuardOn(){ return typeof CURRENT_USER!=='undefined' && !!CURRENT_USER; }
+function refundableAmount(j){
+  var paid=jobPaid(j);
+  if(jobVoided(j) || (typeof jobCancelled==='function' && jobCancelled(j))) return Math.max(0, paid);
+  return Math.max(0, round2(-jobBalance(j)));
+}
+function refundGuardErr(j, amt){
+  if(!moneyGuardOn()) return '';
+  var can=refundableAmount(j);
+  if(amt <= can + 0.001) return '';
+  return (can>0.001 ? 'Only '+peso(can)+' is owed back on '+j.no+' (the overpayment).' : 'Nothing is owed back on '+j.no+' — it is not voided, cancelled or overpaid.')+
+    ' If a payment was entered wrong, a Supervisor or admin fixes it with Correct instead of a refund.'+
+    (curUserIsAdmin() ? ' To refund anyway, tick Admin override.' : ' Only an admin can override this.');
+}
+function paymentGuardErr(j, amt, override){
+  if(!moneyGuardOn()) return '';
+  var bal=jobBalance(j);
+  if(amt <= bal + 0.009) return '';
+  if(override && curUserIsAdmin()) return '';
+  return 'That is more than the '+peso(Math.max(0,bal))+' balance — enter the amount paid toward this job order, not the cash tendered.'+
+    (curUserIsAdmin() ? ' To record it anyway, tick Admin override.' : ' Only an admin can override this.');
+}
+function overrideBox(px){
+  return curUserIsAdmin() ? '<label class="row gap small mt8" style="justify-content:flex-start"><input type="checkbox" id="'+px+'Override" style="width:auto"> '+
+    '<span><b>Admin override</b> — record it even though it breaks the money rules (marked on the payment)</span></label>' : '';
+}
+function overrideOn(px){ if(typeof document==='undefined') return false; var el=document.getElementById(px+'Override'); return !!(el && el.checked); }
 /* What a payment line shows after its method: the bank, then the reference. */
 function payRefHTML(p){
-  return (p && p.bank ? ' <span class="muted small">'+esc(p.bank)+'</span>' : '')+(p && p.ref ? ' <span class="muted small">#'+esc(p.ref)+'</span>' : '');
+  return (p && p.override ? ' '+chip('admin override','due') : '')+(p && p.bank ? ' <span class="muted small">'+esc(p.bank)+'</span>' : '')+(p && p.ref ? ' <span class="muted small">#'+esc(p.ref)+'</span>' : '');
 }
 var PAYREF_SINCE = '2026-10-09';   // first full day with the field (deployed the evening of Oct 8); older payments are not flagged
 function payRefRequired(method){ return PAYREF_METHODS.indexOf(method)>=0 && method!=='Card'; }   // a check needs its number
