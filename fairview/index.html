@@ -690,7 +690,7 @@ var BRANCH = {"id":"main","slug":"fairview","name":"Basic by JMSI — Fairview (
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-11-23 · b68eedf';
+var APP_VERSION = 'v1.3.0 · 2026-11-24 · 676a24f';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -2520,8 +2520,10 @@ function blankJob(){
 
 async function createJob(base){
   base = base || {};
-  var depAmt = Number(base.depositAmount)||0, depM = base.depositMethod||'Cash', depRef = String(base.depositRef||'').trim();
-  delete base.depositAmount; delete base.depositMethod; delete base.depositRef;   // not job fields — recorded as a payment below
+  var depAmt = Number(base.depositAmount)||0, depM = base.depositMethod||'Cash', depRef = String(base.depositRef||'').trim(), depBank = String(base.depositBank||'').trim();
+  if (depM==='Cash') depRef='';
+  if (PAYBANK_METHODS.indexOf(depM)<0) depBank='';
+  delete base.depositAmount; delete base.depositMethod; delete base.depositRef; delete base.depositBank;   // not job fields — recorded as a payment below
   var j = Object.assign(blankJob(), base);
   j.no = await allocateSeriesNumber('jo','JO-',4, j.id);    // atomic, unique, idempotent per job
   if (!j.statusLog.length) j.statusLog=[{ time:new Date().toISOString(), code:j.status||'A1', by:j.saId||'', note:'Job Order created.' }];
@@ -2530,7 +2532,7 @@ async function createJob(base){
   VEHICLE_SYNC_FIELDS.forEach(function(k){
     if(!j[k]) j[k]=v[k];
   });
-  if (depAmt>0){ var dep={ amount:round2(depAmt), method:depM, date:new Date().toISOString(), note:'Deposit (intake)' }; if(depRef) dep.ref=depRef; j.payments.push(dep); }
+  if (depAmt>0){ var dep={ amount:round2(depAmt), method:depM, date:new Date().toISOString(), note:'Deposit (intake)' }; if(depRef) dep.ref=depRef; if(depBank) dep.bank=depBank; j.payments.push(dep); }
   S.jobs.unshift(j); persist();
   publishJobPortal(j);
   return j;
@@ -2683,9 +2685,8 @@ function intakeForm(d){
     field('Concerns / reported issues','<textarea id="inNotes" rows="3">'+esc(d.notes||'')+'</textarea>')+
     '<div class="grid2">'+
       field('Deposit collected (optional)','<input id="inDeposit" type="number" step="0.01" min="0" value="'+attr(d.depositAmount||'')+'" placeholder="0.00">','Recorded as a payment on the job — reduces the balance from the start.')+
-      field('Deposit method','<select id="inDepositM">'+['Cash','GCash','Card','Bank transfer','Check'].map(function(m){ return '<option'+(m===(d.depositMethod||'Cash')?' selected':'')+'>'+m+'</option>'; }).join('')+'</select>')+
     '</div>'+
-    field('Deposit reference #','<input id="inDepositRef" value="'+attr(d.depositRef||'')+'" placeholder="GCash / bank / card ref, or check # and bank — required for GCash, bank transfer and check" autocomplete="off">');
+    payMethodFields('inDeposit',{ method:d.depositMethod||'Cash', bank:d.depositBank, ref:d.depositRef });
 }
 function intakeLookup(){ var v=vehicleByPlate(val('inPlate')); if(v){ setVal('inCP',v.contactPerson); setVal('inContact',v.contactNumber);
   setVal('inOwner',v.owner); setVal('inAddr',v.address); setVal('inChassis',v.chassis); setVal('inYear',v.year); setVal('inMake',v.make); setVal('inModel',v.model); setVal('inVariant',v.variant); setVal('inOdo',v.odometer);
@@ -2696,10 +2697,10 @@ function intakeSubmit(kind){
   var base={ plate:val('inPlate'), contactPerson:val('inCP'), contactNumber:val('inContact'), owner:val('inOwner'),
     address:val('inAddr'), chassis:val('inChassis'), year:val('inYear'), make:val('inMake'), model:val('inModel'), variant:val('inVariant'),
     odometer:Number(val('inOdo'))||0, notes:val('inNotes'),
-    depositAmount:Number(val('inDeposit'))||0, depositMethod:val('inDepositM')||'Cash', depositRef:String(val('inDepositRef')||'').trim() };
+    depositAmount:Number(val('inDeposit'))||0, depositMethod:val('inDepositMethod')||'Cash', depositRef:String(val('inDepositRef')||'').trim(), depositBank:String(val('inDepositBank')||'').trim() };
   if (!base.plate){ toast('Plate is required','err'); return; }
   if (kind==='estimate'){ closeModal(); createEstimateFrom(base).then(function(e){ go('estimate', e.id); }); return; }
-  if (base.depositAmount>0 && payRefRequired(base.depositMethod) && !base.depositRef){ toast('Enter the '+base.depositMethod+' reference # for the deposit','err'); return; }
+  if (base.depositAmount>0){ var derr=payDetailsErr(base.depositMethod, base.depositRef, base.depositBank); if(derr){ toast(derr+' (deposit)','err'); return; } }
   warnIfPlateOnBoard(base.plate, function(){
     // Job Order: if ingress is incomplete, prompt to finish now or proceed and complete later.
     var missing = jobMissingFields(base);
@@ -4346,9 +4347,7 @@ function jobPaymentBlock(j,b){
       field('Payment received by (Secretary)','<select onchange="setJobField(\''+j.id+'\',\'paymentReceivedBy\',this.value)">'+optionList(staffByRole('Secretary'),j.paymentReceivedBy,true)+'</select>')+
     '</div>'+
     pays+
-    ((paid||!showPrice)? '' : '<div class="grid2 mt8">'+field('Amount','<input id="pyAmt" type="number" step="0.01" value="'+attr(b.balance)+'">')+
-      field('Method','<select id="pyMethod"><option>Cash</option><option>GCash</option><option>Card</option><option>Bank transfer</option><option>Check</option></select>')+'</div>'+
-      field('Reference #','<input id="pyRef" placeholder="GCash / bank / card ref, or check # and bank — required for GCash, bank transfer and check" autocomplete="off">')+
+    ((paid||!showPrice)? '' : '<div class="mt8">'+payMethodFields('py',{ amount:field('Amount','<input id="pyAmt" type="number" step="0.01" value="'+attr(b.balance)+'">') })+'</div>'+
       '<button class="btn sm" onclick="recordPayment(\''+j.id+'\')">Record payment</button>')+
     (canRefund?'<button class="btn sm ghost mt8" onclick="refundDialog(\''+j.id+'\')">Record refund…</button>':'')+
     field('Last service odometer','<input id="relOdo" type="number" value="'+attr(j.lastServiceOdo||j.odometer||'')+'" placeholder="reading at release">','Recorded on release; updates the vehicle’s last service odometer.')+
@@ -4364,7 +4363,7 @@ function paymentLinesHTML(j){
   var canFix = canCorrectPayment();
   return (j.payments||[]).map(function(p, i){
     var isR=Number(p.amount)<0, last=(p.corrections||[]).slice(-1)[0];
-    return '<div class="l2"><span>'+esc(fmtDate(p.date))+' · '+esc(p.method)+(p.ref?' <span class="muted small">#'+esc(p.ref)+'</span>':'')+
+    return '<div class="l2"><span>'+esc(fmtDate(p.date))+' · '+esc(p.method)+payRefHTML(p)+
       (isR?' · <b>REFUND</b>'+(p.reason?' <span class="muted small">'+esc(p.reason)+'</span>':''):'')+
       (last?'<div class="muted small">Corrected from '+peso(p.corrections[0].from.amount)+' '+esc(p.corrections[0].from.method)+
         ' by '+esc(last.byName||'—')+' · '+esc(fmtDateTime(last.at))+' — '+esc(last.reason)+'</div>':'')+
@@ -4383,9 +4382,10 @@ function releasedPaymentsBlock(j){
 }
 function recordPayment(id){
   var j=jobById(id); var amt=Number(val('pyAmt'))||0; if(amt<=0){toast('Enter amount','err');return;}
-  var method=val('pyMethod'), ref=String(val('pyRef')||'').trim();
-  if(payRefRequired(method) && !ref){ toast('Enter the '+method+' reference #','err'); return; }
-  var pay={ amount:amt, method:method, date:new Date().toISOString() }; if(ref) pay.ref=ref;
+  var method=val('pyMethod'), ref=String(val('pyRef')||'').trim(), bank=PAYBANK_METHODS.indexOf(method)>=0 ? String(val('pyBank')||'').trim() : '';
+  var perr=payDetailsErr(method, ref, bank); if(perr){ toast(perr,'err'); return; }
+  if(method==='Cash') ref='';
+  var pay={ amount:amt, method:method, date:new Date().toISOString() }; if(ref) pay.ref=ref; if(bank) pay.bank=bank;
   j.payments.push(pay);
   persist(); toast('Payment recorded'); render();
 }
@@ -4431,7 +4431,7 @@ function refundDialog(id){
     (jobVoided(j)?'<p class="muted small">Receipt <b>'+esc(j.orNumber)+'</b> is voided, so the sale is already out of revenue. This returns the money.</p>':'')+
     '<div class="grid2">'+
       field('Amount refunded','<input id="rfAmt" type="number" step="0.01" min="0" max="'+attr(paid)+'" value="'+attr(paid)+'">','Collected so far: '+peso(paid))+
-      field('Method','<select id="rfMethod"><option>Cash</option><option>GCash</option><option>Card</option><option>Bank transfer</option><option>Check</option></select>','How the money went back out.')+
+      field('Method','<select id="rfMethod">'+payMethodOptions('Cash')+'</select>','How the money went back out.')+
     '</div>'+
     field('Reason','<input id="rfReason" placeholder="e.g. voided receipt, overpayment, cancelled work" autocomplete="off">',
       'Recorded against the refund so it can be explained later.'),
@@ -4492,7 +4492,7 @@ function correctPaymentDialog(id, idx){
   if(!canCorrectPayment()){ toast('Only an admin or Supervisor can correct a payment','err'); return; }
   var j=jobById(id), p=j&&(j.payments||[])[idx]; if(!p) return;
   _corrCtx={ id:id, idx:idx };
-  var isR=Number(p.amount)<0, methods=['Cash','GCash','Card','Bank transfer','Check','Charge account'];
+  var isR=Number(p.amount)<0, methods=PAY_METHODS.concat(['Charge account']);
   if(methods.indexOf(p.method)<0) methods.push(p.method);
   openModal('Correct '+(isR?'refund':'payment')+' · '+esc(j.no),
     '<p class="muted small">Recorded '+esc(fmtDate(p.date))+': <b>'+peso(Math.abs(p.amount))+'</b> by '+esc(p.method)+'. '+
@@ -5725,7 +5725,7 @@ VIEWS.dailyclose = function(){
         return '<tr'+(isR?' class="void-row"':'')+'><td>'+eodRefHTML(t.job)+
           (isR?' <span class="chip">REFUND</span>':'')+'</td><td>'+esc(t.job.owner)+
           (isR&&t.p.reason?' <span class="muted small">'+esc(t.p.reason)+'</span>':'')+
-          '</td><td>'+esc(t.p.method)+(t.p.ref?' <span class="muted small">#'+esc(t.p.ref)+'</span>':'')+'</td><td class="r">'+peso(t.p.amount)+'</td></tr>';
+          '</td><td>'+esc(t.p.method)+payRefHTML(t.p)+'</td><td class="r">'+peso(t.p.amount)+'</td></tr>';
       }).join('')+
       '<tr class="tot"><td colspan="3" class="r"><b>Total collected</b></td><td class="r"><b>'+peso(d.collections)+'</b></td></tr>'+
       '</tbody></table>':emptyState('No collections on this date.'))+'</div>'+
@@ -5977,7 +5977,7 @@ function arFilter(custList, q){
   var out=[];
   custList.forEach(function(c){
     if(c.name.toLowerCase().indexOf(q)>=0){ out.push(c); return; }
-    var jobs=c.jobs.filter(function(x){ return String(x.j.no||'').toLowerCase().indexOf(q)>=0; });
+    var jobs=c.jobs.filter(function(x){ return (String(x.j.no||'')+' '+String(x.j.orNumber||'')).toLowerCase().indexOf(q)>=0; });
     if(jobs.length) out.push({ name:c.name, jobs:jobs, total:round2(jobs.reduce(function(s,x){ return s+x.bal; },0)) });
   });
   return out;
@@ -5989,7 +5989,7 @@ function arSearch(v){ AR_Q=v; var el=document.getElementById('arBody'); if(el) e
 function arBodyHTML(all){
   var custList=arFilter(all, AR_Q);
   if(!all.length) return emptyState('No outstanding receivables.');
-  if(!custList.length) return '<div class="empty">No customer or JO # matches “'+esc(AR_Q)+'”.</div>';
+  if(!custList.length) return '<div class="empty">No customer, JO # or FB # matches “'+esc(AR_Q)+'”.</div>';
   return custList.map(function(c){
     return '<div class="card"><div class="card-head"><h2>'+esc(c.name)+'</h2><div class="row gap"><b>'+peso(c.total)+'</b>'+
       '<button class="btn sm ghost" onclick="printStatement(\''+attr(encodeURIComponent(c.name))+'\')">⎙ Statement</button></div></div>'+
@@ -6006,7 +6006,7 @@ VIEWS.receivables = function(){
   var custHTML='<div id="arBody">'+arBodyHTML(custList)+'</div>';
   /* Search + Print sit in the page header, as on Vehicles / Job Orders. */
   var tools=custList.length ? '<div class="row gap" style="flex-wrap:nowrap"><input class="searchbox" style="width:240px;min-width:160px" id="arSearch" value="'+attr(AR_Q)+'" oninput="arSearch(this.value)" '+
-      'placeholder="Search customer name or JO #…" autocomplete="off">'+
+      'placeholder="Search customer, JO # or FB #…" autocomplete="off">'+
       '<button class="btn ghost" onclick="printReceivables()">⎙ Print list</button></div>' : '';
   return '<div class="page"><div class="page-head"><h1>Receivables (A/R)</h1>'+tools+'</div>'+
     '<div class="kpis">'+kpi('Total A/R',peso(total))+kpi('0–30',peso(buckets['0-30']))+kpi('31–60',peso(buckets['31-60']))+
@@ -6016,16 +6016,16 @@ VIEWS.receivables = function(){
 function collectAR(id){
   var j=jobById(id); var bal=jobBalance(j);
   openModal('Collect payment — '+j.no,
-    '<div class="grid2">'+field('Amount','<input id="arAmt" type="number" step="0.01" value="'+attr(bal)+'">')+
-    field('Method','<select id="arMethod"><option>Cash</option><option>GCash</option><option>Card</option><option>Bank transfer</option><option>Check</option></select>')+'</div>'+
-    field('Reference #','<input id="arRef" placeholder="required for GCash, bank transfer and check (check # and bank)" autocomplete="off">'),
+    '<p class="muted small">'+(j.orNumber?orSIHTML(j.orNumber, siText(j))+' · ':'')+esc(custName(j))+' · Balance due <b>'+peso(bal)+'</b></p>'+
+    payMethodFields('ar',{ amount:field('Amount (₱)','<input id="arAmt" type="number" step="0.01" value="'+attr(bal)+'">') }),
     { onOk:'saveAR', okText:'Record' }); setTimeout(function(){arCtx=id;},10);
 }
 var arCtx=null;
 function saveAR(){ var j=jobById(arCtx); var amt=Number(val('arAmt'))||0; if(amt<=0){toast('Enter amount','err');return;}
-  var method=val('arMethod'), ref=String(val('arRef')||'').trim();
-  if(payRefRequired(method) && !ref){ toast('Enter the '+method+' reference #','err'); return; }
-  var pay={ amount:amt, method:method, date:new Date().toISOString() }; if(ref) pay.ref=ref;
+  var method=val('arMethod'), ref=String(val('arRef')||'').trim(), bank=PAYBANK_METHODS.indexOf(method)>=0 ? String(val('arBank')||'').trim() : '';
+  var perr=payDetailsErr(method, ref, bank); if(perr){ toast(perr,'err'); return; }
+  if(method==='Cash') ref='';
+  var pay={ amount:amt, method:method, date:new Date().toISOString() }; if(ref) pay.ref=ref; if(bank) pay.bank=bank;
   j.payments.push(pay);
   persist(); closeModal(); toast('Payment recorded'); render(); }
 
@@ -6044,7 +6044,7 @@ function settleDayStamp(day){   // a local calendar day -> noon local, so localD
 }
 /* `amount` (optional, one job order only) records part of the balance; left
    out, each job's whole balance is paid. */
-function settleJobs(jobs, day, method, ref, amount){
+function settleJobs(jobs, day, method, ref, amount, bank){
   if(!canSettleAccounts()) return { ok:false, err:'Only an admin can settle accounts' };
   jobs=(jobs||[]).filter(Boolean);
   if(!jobs.length) return { ok:false, err:'Tick at least one job order' };
@@ -6058,8 +6058,9 @@ function settleJobs(jobs, day, method, ref, amount){
   }
   if(!/^\d{4}-\d{2}-\d{2}$/.test(String(day||''))) return { ok:false, err:'Enter the date the customer paid' };
   if(day>todayISO()) return { ok:false, err:'The payment date cannot be in the future' };
-  ref=String(ref||'').trim();
-  if(payRefRequired(method) && !ref) return { ok:false, err:'Enter the '+method+' reference #' };
+  ref=String(ref||'').trim(); bank=PAYBANK_METHODS.indexOf(method)>=0 ? String(bank||'').trim() : '';
+  if(method==='Cash') ref='';
+  var perr=payDetailsErr(method, ref, bank); if(perr) return { ok:false, err:perr };
   for(var i=0;i<jobs.length;i++){
     var bd=localDay(jobs[i].billedAt);
     if(bd && day<bd) return { ok:false, err:jobs[i].no+' was billed on '+fmtDate(jobs[i].billedAt)+' — it cannot have been paid before that' };
@@ -6072,7 +6073,7 @@ function settleJobs(jobs, day, method, ref, amount){
     if(part) bal=amount;
     var pay={ amount:round2(bal), method:method, date:stamp, settled:true,
       enteredAt:new Date().toISOString(), enteredBy:(me&&(me.name||me.username||me.email))||'' };
-    if(ref) pay.ref=ref;
+    if(ref) pay.ref=ref; if(bank) pay.bank=bank;
     (j.payments=j.payments||[]).push(pay);
     total=round2(total+bal); count++;
   });
@@ -6091,18 +6092,15 @@ function adminSettleDialog(id){
       'the rest stays in Receivables. Billed '+esc(fmtDate(j.billedAt))+(j.orNumber?' · '+esc(j.orNumber):'')+'.</p>'+
     field('Amount received (₱)','<input id="stAmt" type="number" step="0.01" min="0.01" max="'+attr(jobBalance(j))+'" value="'+attr(jobBalance(j))+'">',
       'Balance owing: '+peso(jobBalance(j)))+
-    '<div class="grid2">'+
-      field('Date paid','<input id="stDate" type="date" min="'+attr(localDay(j.billedAt))+'" max="'+attr(todayISO())+'" value="'+attr(todayISO())+'" onchange="settleWarn()">')+
-      field('Method','<select id="stMethod" onchange="settleWarn()"><option>Check</option><option>Bank transfer</option><option>Cash</option><option>GCash</option><option>Card</option></select>')+
-    '</div>'+
-    field('Reference #','<input id="stRef" placeholder="check # and bank, or transfer / GCash ref" autocomplete="off">')+
+    payMethodFields('st',{ method:'Check', onchange:'settleWarn()',
+      amount:field('Date paid','<input id="stDate" type="date" min="'+attr(localDay(j.billedAt))+'" max="'+attr(todayISO())+'" value="'+attr(todayISO())+'" onchange="settleWarn()">') })+
     '<div id="stWarn"></div>',
     { onOk:'confirmAdminSettle', okText:'Mark paid' });
 }
 function confirmAdminSettle(){
   var j=jobById(_adminSettleId); if(!j){ closeModal(); return; }
   if(!String(val('stAmt')).trim()){ toast('Enter the amount received','err'); return; }   // blank must not mean "whole balance"
-  var r=settleJobs([j], val('stDate'), val('stMethod'), val('stRef'), val('stAmt'));
+  var r=settleJobs([j], val('stDate'), val('stMethod'), val('stRef'), val('stAmt'), val('stBank'));
   if(!r.ok){ toast(r.err,'err'); return; }
   _adminSettleId=null; persist(); closeModal();
   toast(r.left>0.001 ? j.no+' · '+peso(r.total)+' recorded, '+peso(r.left)+' still owing' : j.no+' settled · '+peso(r.total)); render();
@@ -6812,7 +6810,7 @@ function paymentsDoc(j){
     '<table><thead><tr><th>Date</th><th>Method</th><th>Reference</th><th class="r">Amount</th></tr></thead><tbody>'+
     pays.map(function(p){ var isR=Number(p.amount)<0;
       return '<tr><td>'+esc(fmtDate(p.date))+'</td><td>'+esc(p.method||'')+(isR?' — Refund':'')+'</td>'+
-        '<td>'+esc(p.ref||'')+(isR&&p.reason?' '+esc(p.reason):'')+'</td><td class="r">'+peso(p.amount)+'</td></tr>'; }).join('')+
+        '<td>'+esc([p.bank, p.ref].filter(Boolean).join(' · '))+(isR&&p.reason?' '+esc(p.reason):'')+'</td><td class="r">'+peso(p.amount)+'</td></tr>'; }).join('')+
     '</tbody></table>'+
     '<div class="totbox"><div class="l2"><span>Total paid</span><span>'+peso(b.paid)+'</span></div>'+
       (b.balance>0.009 ? '<div class="l2 grand"><span>Balance due</span><span>'+peso(b.balance)+'</span></div>'
@@ -7561,7 +7559,7 @@ if (typeof module!=='undefined' && module.exports){
     runningBill:runningBill, commissionTable:commissionTable, agingBucket:agingBucket,
     VIEWS:function(){ return VIEWS; },
     isOwnerEmail:isOwnerEmail, ownerLinkHTML:ownerLinkHTML,
-    siText:siText, billingEditBlock:billingEditBlock, jobLinesPanel:jobLinesPanel,
+    siText:siText, billingEditBlock:billingEditBlock, jobLinesPanel:jobLinesPanel, get PAY_METHODS(){ return PAY_METHODS; }, payDetailsErr:payDetailsErr, payMethodFields:payMethodFields, payRefHTML:payRefHTML,
     allocateOrNumber:allocateOrNumber, orNoLabel:orNoLabel,
     writeOffJob:writeOffJob, undoWriteOff:undoWriteOff, opexForRange:opexForRange, localDay:localDay,
     go:go, goBack:goBack, getRoute:function(){ return ROUTE; }, resetNav:function(){ NAV_STACK.length=0; ROUTE.view='board'; ROUTE.arg=null; },
@@ -12008,9 +12006,49 @@ function cashCountRows(r){
 }
 
 /* ---- 4. Payment reference numbers ---------------------------------------- */
-var PAYREF_METHODS = ['GCash','Bank transfer','Card','Check'];
+/* Payment methods — the same list, order and fields as Janice's "Record payment"
+   (2026-11-24). Bank transfer and Instapay/PESONet need the bank and a reference;
+   GCash, PayMaya and Check a reference (check #); Card's reference is optional. */
+var PAY_METHODS = ['Cash','GCash','PayMaya','Bank transfer','Instapay/PESONet','Check','Card'];
+var PAYBANK_METHODS = ['Bank transfer','Instapay/PESONet','Check'];      // show a Bank box
+var PAYREF_METHODS = ['GCash','PayMaya','Bank transfer','Instapay/PESONet','Card','Check'];
+function payBankRequired(method){ return method==='Bank transfer' || method==='Instapay/PESONet'; }
+function payDetailsErr(method, ref, bank){
+  if(payRefRequired(method) && !String(ref||'').trim()) return 'Enter the '+method+' reference'+(method==='Check'?' (check #)':' #');
+  if(payBankRequired(method) && !String(bank||'').trim()) return 'Enter the bank for the '+method+' payment';
+  return '';
+}
+function payMethodOptions(sel, list){
+  list=(list||PAY_METHODS).slice(); if(sel && list.indexOf(sel)<0) list.push(sel);
+  return list.map(function(m){ return '<option'+(m===sel?' selected':'')+'>'+esc(m)+'</option>'; }).join('');
+}
+/* Method + Bank + Reference boxes with ids <px>Method / <px>Bank / <px>Ref. The Bank and
+   Reference boxes show only for the methods that use them, as in Janice. o.amount is the
+   field shown beside Method; o.onchange runs after a method change. */
+function payMethodFields(px, o){
+  o=o||{}; var m=o.method||'Cash';
+  return '<div class="grid2">'+(o.amount||'')+
+      field('Method','<select id="'+px+'Method" onchange="payMethodSync(\''+px+'\')'+(o.onchange?';'+o.onchange:'')+'">'+payMethodOptions(m, o.methods)+'</select>')+'</div>'+
+    '<div class="grid2">'+
+      '<div id="'+px+'BankBox"'+(PAYBANK_METHODS.indexOf(m)>=0?'':' style="display:none"')+'>'+
+        field('Bank','<input id="'+px+'Bank" value="'+attr(o.bank||'')+'" placeholder="Bank name" autocomplete="off">')+'</div>'+
+      '<div id="'+px+'RefBox"'+(m==='Cash'?' style="display:none"':'')+'>'+
+        field('Reference','<input id="'+px+'Ref" value="'+attr(o.ref||'')+'" placeholder="'+(m==='Check'?'Check no.':'Ref / txn no.')+'" autocomplete="off">')+'</div>'+
+    '</div>';
+}
+function payMethodSync(px){
+  if(typeof document==='undefined') return;
+  var m=val(px+'Method'), b=document.getElementById(px+'BankBox'), r=document.getElementById(px+'RefBox'), ri=document.getElementById(px+'Ref');
+  if(b) b.style.display = PAYBANK_METHODS.indexOf(m)>=0 ? '' : 'none';
+  if(r) r.style.display = m==='Cash' ? 'none' : '';
+  if(ri) ri.placeholder = m==='Check' ? 'Check no.' : 'Ref / txn no.';
+}
+/* What a payment line shows after its method: the bank, then the reference. */
+function payRefHTML(p){
+  return (p && p.bank ? ' <span class="muted small">'+esc(p.bank)+'</span>' : '')+(p && p.ref ? ' <span class="muted small">#'+esc(p.ref)+'</span>' : '');
+}
 var PAYREF_SINCE = '2026-10-09';   // first full day with the field (deployed the evening of Oct 8); older payments are not flagged
-function payRefRequired(method){ return method==='GCash' || method==='Bank transfer' || method==='Check'; }   // a check needs its number (and bank)
+function payRefRequired(method){ return PAYREF_METHODS.indexOf(method)>=0 && method!=='Card'; }   // a check needs its number
 function paymentsMissingRef(){
   var out=[];
   (S.jobs||[]).forEach(function(j){ (j.payments||[]).forEach(function(p, i){
