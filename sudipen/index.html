@@ -690,7 +690,7 @@ var BRANCH = {"id":"sudipen","slug":"sudipen","name":"Basic by JMSI — Sudipen"
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-11-24 · e20f96c';
+var APP_VERSION = 'v1.3.0 · 2026-11-25 · 19bf598';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -2554,6 +2554,72 @@ function createJobFromAppt(a){
 }
 
 /* ---- Ingress (front-desk intake) ------------------------------------------ */
+/* ---- Make / Model: a prompt, never a block (2026-11-24) -------------------------------
+   After the vehicle clean-up (years, the make again, numbers and chassis #s typed as the
+   model; IZUSU, MITSUBUSHI…), the Make and Model boxes offer the known names as you type
+   and show a warning under Model when it looks wrong. John: "prompt only, don't guard" —
+   whatever is typed still saves. Names follow the Philippine market / parts catalogues. */
+var VEHICLE_MODELS = {
+  'TOYOTA':['86','ALPHARD','AVANZA','BB','CAMRY','COROLLA','COROLLA ALTIS','COROLLA CROSS','CORONA','CRESSIDA','CROWN','FJ CRUISER','FORTUNER','GR YARIS','HIACE','HILUX','HILUX SURF','INNOVA','INNOVA ZENIX','LAND CRUISER','LAND CRUISER PRADO','LITE ACE','PREVIA','RAIZE','RAV4','REVO','RUSH','SUPRA','TAMARAW','TAMARAW FX','VELOZ','VIOS','WIGO','YARIS','YARIS CROSS'],
+  'MITSUBISHI':['ADVENTURE','ASX','CANTER','CEDIA','DELICA','DESTINATOR','FUZION','GALANT','L200','L300','LANCER','LANCER EVOLUTION','LANCER EX','MIRAGE','MIRAGE G4','MONTERO','MONTERO SPORT','OUTLANDER','PAJERO','STRADA','SUPER EXCEED','TRITON','VERSA VAN','XFORCE','XPANDER','XPANDER CROSS'],
+  'HONDA':['ACCORD','AMAZE','BR-V','BRIO','CITY','CIVIC','CR-V','HR-V','JAZZ','MOBILIO','ODYSSEY','S2000','STEPWGN','WR-V'],
+  'HYUNDAI':['ACCENT','CRETA','CUSTIN','ELANTRA','EON','GENESIS','GETZ','GRACE','GRAND STAREX','H100','H350','I10','KONA','REINA','SANTA FE','STAREX','STARGAZER','TUCSON','VELOSTER'],
+  'ISUZU':['ALTERRA','BIGHORN','CROSSWIND','D-MAX','ELF','FUEGO','HI-LANDER','MU-X','N-SERIES','NHR','NKR','NQR','TRAVIZ','TROOPER','WIZARD'],
+  'FORD':['ECOSPORT','ESCAPE','EVEREST','EXPEDITION','EXPLORER','FIESTA','FOCUS','MUSTANG','RANGER','TERRITORY'],
+  'NISSAN':['350Z','400Z','ALMERA','CEFIRO','EXALTA','FRONTIER','JUKE','KICKS','LIVINA','NAVARA','NV350','PATROL','SENTRA','SILVIA','TEANA','TERRA','URVAN','X-TRAIL'],
+  'SUZUKI':['APV','CARRY','CELERIO','CIAZ','DZIRE','ERTIGA','FRONX','JIMNY','MULTICAB','S-PRESSO','SWIFT','SX4','VITARA','XL7'],
+  'SUBARU':['BRZ','FORESTER','IMPREZA','LEGACY','OUTBACK','WRX','WRX STI','XV'],
+  'KIA':['BESTA','CARENS','CARNIVAL','K2500','K2700','PICANTO','PREGIO','PRIDE','RIO','SELTOS','SOLUTO','SONET','SORENTO','SPORTAGE','STONIC'],
+  'MAZDA':['2','3','6','BONGO','BT-50','CX-3','CX-30','CX-5','CX-60','CX-9','MX-5'],
+  'CHEVROLET':['AVEO','CAPTIVA','COLORADO','ORLANDO','SAIL','SPARK','SPIN','SUBURBAN','TRAILBLAZER','TRAX'],
+  'GEELY':['AZKARRA','COOLRAY','EMGRAND','GX3','OKAVANGO'], 'MG':['5','6','GT','HS','RX5','ZS'], 'GAC':['EMKOO','GS3','GS4','GS8','M6','M8'],
+  'FOTON':['GRATOUR','THUNDER','TORNADO','TOPLANDER','TRANSVAN','TRAVELLER'], 'CHERY':['TIGGO','TIGGO 2','TIGGO 5X','TIGGO 7','TIGGO 8'],
+  'CHRYSLER':['300C','TOWN & COUNTRY'], 'BMW':[], 'MERCEDES-BENZ':[], 'AUDI':[], 'JEEP':['WRANGLER','GRAND CHEROKEE'], 'LAND ROVER':['DEFENDER','DISCOVERY','RANGE ROVER'],
+  'MINI':['COOPER','COUNTRYMAN'], 'CHANGAN':['ALSVIN','CS35','CS55'], 'JAC':['PRINCE','T6'], 'HINO':['200','300','500'], 'MAHINDRA':['ENFORCER','XUV500','SCORPIO'],
+  'HUMMER':['H2','H3'], 'PEUGEOT':['2008','3008','5008'], 'BYD':['ATTO 3','DOLPHIN','SEAL','SEALION'], 'VOLKSWAGEN':['LAVIDA','SANTANA','T-CROSS'], 'LEXUS':[], 'PORSCHE':[], 'VOLVO':[] };
+var MAKE_MISSPELT = { IZUSU:'ISUZU', ISUZA:'ISUZU', ISUZO:'ISUZU', MITSUBUSHI:'MITSUBISHI', MISTUBISHI:'MITSUBISHI', MITSUBIHSI:'MITSUBISHI', MITUBISHI:'MITSUBISHI',
+  MTISUBISHI:'MITSUBISHI', NITSUBISHI:'MITSUBISHI', CHEVY:'CHEVROLET', HUYNDAI:'HYUNDAI', HYANDAI:'HYUNDAI', HYUNDA:'HYUNDAI', TOYOA:'TOYOTA', TOYOTS:'TOYOTA',
+  TOYTA:'TOYOTA', NISSA:'NISSAN', KIRA:'KIA', CHERRY:'CHERY', MERCEDES:'MERCEDES-BENZ', BENZ:'MERCEDES-BENZ', VW:'VOLKSWAGEN' };
+function vehNameKey(s){ return String(s==null?'':s).toUpperCase().replace(/\s+/g,' ').trim(); }
+function _editDist(a,b){ var m=a.length,n=b.length,d=[],i,j; for(i=0;i<=m;i++){ d[i]=[i]; } for(j=0;j<=n;j++) d[0][j]=j;
+  for(i=1;i<=m;i++) for(j=1;j<=n;j++) d[i][j]=Math.min(d[i-1][j]+1, d[i][j-1]+1, d[i-1][j-1]+(a[i-1]===b[j-1]?0:1)); return d[m][n]; }
+function _closest(word, list){ var best='', bd=99; (list||[]).forEach(function(x){ var k=_editDist(word.replace(/[\s-]/g,''), x.replace(/[\s-]/g,'')); if(k<bd){ bd=k; best=x; } });
+  return bd<=Math.max(2, Math.floor(word.length/3)) ? best : ''; }
+function makeWarn(make){
+  var mk=vehNameKey(make); if(!mk || VEHICLE_MODELS[mk]) return '';
+  if(MAKE_MISSPELT[mk]) return 'Did you mean '+MAKE_MISSPELT[mk]+'?';
+  var c=_closest(mk, Object.keys(VEHICLE_MODELS));
+  return c ? 'Did you mean '+c+'? (not in the list of makes)' : 'Not in the list of makes — check the spelling, and put only the make here (e.g. TOYOTA), not the model.';
+}
+function modelWarn(make, model){
+  var mk=vehNameKey(make), md=vehNameKey(model); mk=MAKE_MISSPELT[mk]||mk;
+  if(!md) return '';
+  if(/^(19|20)\d\d$/.test(md)) return 'That is a year — put it in Year. Model is the car’s name (e.g. VIOS, MONTERO SPORT).';
+  if(/^[A-Z0-9]{11,}$/.test(md) && /\d{5}/.test(md)) return 'That looks like a chassis number — it goes in Chassis #.';
+  if(/^\d{4,}$/.test(md)) return 'That is a number, not a model name.';
+  if(md===mk || VEHICLE_MODELS[md] || MAKE_MISSPELT[md]) return 'That is a make, not the model — type the car’s name (e.g. VIOS, MONTERO SPORT).';
+  var list=VEHICLE_MODELS[mk]; if(!list || !list.length || list.indexOf(md)>=0) return '';
+  var c=_closest(md, list);
+  return c ? 'Did you mean '+c+'? (not in the list for '+mk+')' : 'Not in the list for '+mk+' — check the spelling. Engine or trim (1.5, 2KD, GL GRANDIA) goes in Variant.';
+}
+/* Make + Model inputs with the known names offered as you type, and the prompt under each. */
+function vehNameFields(px, d){
+  d=d||{}; var mk=vehNameKey(d.make);
+  return field('Make','<input id="'+px+'Make" list="'+px+'MakeList" value="'+attr(d.make||'')+'" oninput="vehNameHint(\''+px+'\')" autocomplete="off">'+
+      '<datalist id="'+px+'MakeList">'+Object.keys(VEHICLE_MODELS).map(function(k){ return '<option value="'+attr(k)+'">'; }).join('')+'</datalist>'+
+      '<div id="'+px+'MakeHint" class="small" style="color:var(--warn,#b45309)">'+esc(makeWarn(d.make))+'</div>')+
+    field('Model','<input id="'+px+'Model" list="'+px+'ModelList" value="'+attr(d.model||'')+'" oninput="vehNameHint(\''+px+'\')" autocomplete="off">'+
+      '<datalist id="'+px+'ModelList">'+(VEHICLE_MODELS[MAKE_MISSPELT[mk]||mk]||[]).map(function(k){ return '<option value="'+attr(k)+'">'; }).join('')+'</datalist>'+
+      '<div id="'+px+'ModelHint" class="small" style="color:var(--warn,#b45309)">'+esc(modelWarn(d.make, d.model))+'</div>');
+}
+function vehNameHint(px){
+  if(typeof document==='undefined') return;
+  var mk=val(px+'Make'), md=val(px+'Model'), k=vehNameKey(mk); k=MAKE_MISSPELT[k]||k;
+  var a=document.getElementById(px+'MakeHint'), b=document.getElementById(px+'ModelHint'), dl=document.getElementById(px+'ModelList');
+  if(a) a.textContent=makeWarn(mk); if(b) b.textContent=modelWarn(mk, md);
+  if(dl) dl.innerHTML=(VEHICLE_MODELS[k]||[]).map(function(x){ return '<option value="'+attr(x)+'">'; }).join('');
+}
+
 /* Fields that must be filled for a complete ingress. The Job Order can be created
    with gaps (finish later), but a Post Job Report can NOT be created until these
    are all complete. */
@@ -2677,8 +2743,7 @@ function intakeForm(d){
     field('Address','<input id="inAddr" value="'+attr(d.address||'')+'">')+
     field('Chassis #','<input id="inChassis" value="'+attr(d.chassis||'')+'">')+
     field('Year','<input id="inYear" type="number" value="'+attr(d.year||'')+'">')+
-    field('Make','<input id="inMake" value="'+attr(d.make||'')+'">')+
-    field('Model','<input id="inModel" value="'+attr(d.model||'')+'">')+
+    vehNameFields('in', d)+
     field('Variant','<input id="inVariant" value="'+attr(d.variant||'')+'">')+
     field('Ingress odometer','<input id="inOdo" type="number" value="'+attr(d.odometer||'')+'">')+
     '</div>'+
@@ -2689,7 +2754,7 @@ function intakeForm(d){
     payMethodFields('inDeposit',{ method:d.depositMethod||'Cash', bank:d.depositBank, ref:d.depositRef });
 }
 function intakeLookup(){ var v=vehicleByPlate(val('inPlate')); if(v){ setVal('inCP',v.contactPerson); setVal('inContact',v.contactNumber);
-  setVal('inOwner',v.owner); setVal('inAddr',v.address); setVal('inChassis',v.chassis); setVal('inYear',v.year); setVal('inMake',v.make); setVal('inModel',v.model); setVal('inVariant',v.variant); setVal('inOdo',v.odometer);
+  setVal('inOwner',v.owner); setVal('inAddr',v.address); setVal('inChassis',v.chassis); setVal('inYear',v.year); setVal('inMake',v.make); setVal('inModel',v.model); setVal('inVariant',v.variant); setVal('inOdo',v.odometer); vehNameHint('in');
   var onBoard=openJobsForPlate(val('inPlate'));
   if(onBoard.length) toast('Heads up: already on the board as '+onBoard.map(function(j){return j.no;}).join(', '),'err');
   else toast('Existing vehicle found — prefilled'); } }
@@ -3967,8 +4032,7 @@ function editJobDetails(id){
     field('Customer TIN','<input id="jdTin" value="'+attr(j.customerTin||'')+'">')+
     field('Chassis #','<input id="jdChassis" value="'+attr(j.chassis)+'">')+
     field('Year','<input id="jdYear" type="number" value="'+attr(j.year||'')+'">')+
-    field('Make','<input id="jdMake" value="'+attr(j.make||'')+'">')+
-    field('Model','<input id="jdModel" value="'+attr(j.model||'')+'">')+
+    vehNameFields('jd', j)+
     field('Variant','<input id="jdVariant" value="'+attr(j.variant||'')+'">')+
     field('Date in','<input id="jdDateIn" type="date" value="'+attr(j.dateIn)+'">')+
     field('ETD','<input id="jdEtd" type="date" value="'+attr(j.etd)+'">'+
@@ -4851,8 +4915,7 @@ function editVehicle(id){
     field('Address','<input id="vehAddr" value="'+attr(v.address||'')+'">')+
     field('Chassis #','<input id="vehChassis" value="'+attr(v.chassis||'')+'">')+
     field('Year','<input id="vehYear" type="number" value="'+attr(v.year||'')+'">')+
-    field('Make','<input id="vehMake" value="'+attr(v.make||'')+'">')+
-    field('Model','<input id="vehModel" value="'+attr(v.model||'')+'">')+
+    vehNameFields('veh', v)+
     field('Variant','<input id="vehVariant" value="'+attr(v.variant||'')+'">')+
     field('Last service odometer','<input id="vehOdo" type="number" value="'+attr(v.odometer||0)+'">')+
     field('Next service odometer','<input id="vehNextOdo" type="number" value="'+attr(v.nextServiceOdo||'')+'">')+
@@ -7636,7 +7699,7 @@ if (typeof module!=='undefined' && module.exports){
     scheduleNextService:scheduleNextService, clearNextService:clearNextService, alertStrip:alertStrip,
     jobVehicleLabel:jobVehicleLabel, replyRecipients:replyRecipients, unreadMessages:unreadMessages, messageStrip:messageStrip, myStaffIds:myStaffIds, messageAcked:messageAcked,
     buildLogEntry:buildLogEntry, logEntryFor:logEntryFor, jobStatusPanel:jobStatusPanel, lastLogForLabel:lastLogForLabel,
-    jobDescriptionPanel:jobDescriptionPanel, jobMissingFields:jobMissingFields, postJobMissingFields:postJobMissingFields, fillVehicleBlanks:fillVehicleBlanks, openJobsForPlate:openJobsForPlate, correctPayment:correctPayment, overpaidJobs:overpaidJobs, paymentCorrections:paymentCorrections, billBaseline:billBaseline, trackBillChanges:trackBillChanges, billChanges:billChanges, discountRows:discountRows, discountReasonMissing:discountReasonMissing, cashExpected:cashExpected, cashCountRows:cashCountRows, paymentsMissingRef:paymentsMissingRef, releasedOwing:releasedOwing, docMoneyChecks:docMoneyChecks, moneyCheckData:moneyCheckData, voidedReceipts:voidedReceipts, cancelledJobs:cancelledJobs, voidsHoldingMoney:voidsHoldingMoney, docVoids:docVoids, addPayAdj:addPayAdj, payAdjInPeriod:payAdjInPeriod, accessLogHTML:accessLogHTML, unauthSignins:unauthSignins, newUnauthSignins:newUnauthSignins, unauthBannerHTML:unauthBannerHTML, alKey:alKey, docWaiver:docWaiver, testDriveWaiverOf:testDriveWaiverOf, offerTestDriveWaiver:offerTestDriveWaiver, issueWaiverCore:issueWaiverCore, issueReleaseCore:issueReleaseCore, updateReleaseCore:updateReleaseCore, docRelease:docRelease, issueFormCore:issueFormCore, updateFormCore:updateFormCore, docGenericForm:docGenericForm, docBlankForm:docBlankForm, genericFormHTML:genericFormHTML, fdLockRefresh:fdLockRefresh, agreementIssue:agreementIssue, deductionAgreementIssues:deductionAgreementIssues, partsAgreementHTML:partsAgreementHTML, saveLine:saveLine, saveLineMore:saveLineMore, setLineCtx:function(c){ lineCtx=c; }, formMenu:formMenu, formWho:formWho, FORM_DEFS:function(){ return FORM_DEFS; }, FORM_DEF_ORDER:function(){ return FORM_DEF_ORDER; }, billingReleaseForm:billingReleaseForm, docBillingWithRelease:docBillingWithRelease, formJobMatches:formJobMatches, jobBelongings:jobBelongings, finishRelease:finishRelease, updateWaiverCore:updateWaiverCore, fmtDateFil:fmtDateFil, waiverDefaultItems:waiverDefaultItems, issuedForms:issuedForms, deviceLockAtRisk:deviceLockAtRisk, deviceLockWarningHTML:deviceLockWarningHTML, comebackSetupWarning:comebackSetupWarning, comebackDeductions:comebackDeductions, printDoc:printDoc, partsCharges:partsCharges, partsChargeSources:partsChargeSources, allDeductions:allDeductions, jobPartsCharge:jobPartsCharge, lineChargeFields:lineChargeFields, cbSetPay:cbSetPay, cbPartsCost:cbPartsCost, billedLines:billedLines, lineNoBill:lineNoBill, partsPendingNotCounted:partsPendingNotCounted, noBillFields:noBillFields, cbPayFields:cbPayFields, finalizePayoutCore:finalizePayoutCore, finalizePayoutCheck:finalizePayoutCheck, voidPayoutCore:voidPayoutCore, undoComebackCore:undoComebackCore, payoutStatusText:payoutStatusText, comebackPendingNotCounted:comebackPendingNotCounted, comebackTakenNote:comebackTakenNote, comebackDeductionsInPeriod:comebackDeductionsInPeriod, netPayoutRows:netPayoutRows, docPayout:docPayout, docMechCommission:docMechCommission, setProdPeriod:function(p,f,t){ PROD_PERIOD=p; PROD_FROM=f||''; PROD_TO=t||''; }, paymentsDoc:paymentsDoc, pmsGateMissing:pmsGateMissing, jobsMissingInfo:jobsMissingInfo, partNetMissing:partNetMissing, lessVatApplied:lessVatApplied, lessVatStale:lessVatStale, markLessVat:markLessVat, syncLessVat:syncLessVat, discVat:discVat, discountReasonPicker:discountReasonPicker, jobPLSplit:jobPLSplit, plForRange:plForRange, opexForRange:opexForRange, docPL:docPL, discountExVat:discountExVat, discountAmount:discountAmount, discountedLabor:discountedLabor, readDiscountObj:function(d){ return d; }, discountEditor:discountEditor, pmsDefaultMechs:pmsDefaultMechs, pmsReadyToSubmit:pmsReadyToSubmit, PMS_TEMPLATE:function(){ return PMS_TEMPLATE; }, pmsSectionMissing:pmsSectionMissing, orSeriesInRange:orSeriesInRange, orRangeGaps:orRangeGaps, inRptRange:inRptRange, setRptRangeRaw:function(k,r){ RPT_RANGE[k]=r; }, docDiscounts:docDiscounts, warnIfPlateOnBoard:warnIfPlateOnBoard, plFor:plFor, opexFor:opexFor, payFor:payFor, monthlyPay:monthlyPay, addMonths:addMonths, syncCollections:syncCollections, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
+    jobDescriptionPanel:jobDescriptionPanel, jobMissingFields:jobMissingFields, modelWarn:modelWarn, makeWarn:makeWarn, vehNameFields:vehNameFields, postJobMissingFields:postJobMissingFields, fillVehicleBlanks:fillVehicleBlanks, openJobsForPlate:openJobsForPlate, correctPayment:correctPayment, overpaidJobs:overpaidJobs, paymentCorrections:paymentCorrections, billBaseline:billBaseline, trackBillChanges:trackBillChanges, billChanges:billChanges, discountRows:discountRows, discountReasonMissing:discountReasonMissing, cashExpected:cashExpected, cashCountRows:cashCountRows, paymentsMissingRef:paymentsMissingRef, releasedOwing:releasedOwing, docMoneyChecks:docMoneyChecks, moneyCheckData:moneyCheckData, voidedReceipts:voidedReceipts, cancelledJobs:cancelledJobs, voidsHoldingMoney:voidsHoldingMoney, docVoids:docVoids, addPayAdj:addPayAdj, payAdjInPeriod:payAdjInPeriod, accessLogHTML:accessLogHTML, unauthSignins:unauthSignins, newUnauthSignins:newUnauthSignins, unauthBannerHTML:unauthBannerHTML, alKey:alKey, docWaiver:docWaiver, testDriveWaiverOf:testDriveWaiverOf, offerTestDriveWaiver:offerTestDriveWaiver, issueWaiverCore:issueWaiverCore, issueReleaseCore:issueReleaseCore, updateReleaseCore:updateReleaseCore, docRelease:docRelease, issueFormCore:issueFormCore, updateFormCore:updateFormCore, docGenericForm:docGenericForm, docBlankForm:docBlankForm, genericFormHTML:genericFormHTML, fdLockRefresh:fdLockRefresh, agreementIssue:agreementIssue, deductionAgreementIssues:deductionAgreementIssues, partsAgreementHTML:partsAgreementHTML, saveLine:saveLine, saveLineMore:saveLineMore, setLineCtx:function(c){ lineCtx=c; }, formMenu:formMenu, formWho:formWho, FORM_DEFS:function(){ return FORM_DEFS; }, FORM_DEF_ORDER:function(){ return FORM_DEF_ORDER; }, billingReleaseForm:billingReleaseForm, docBillingWithRelease:docBillingWithRelease, formJobMatches:formJobMatches, jobBelongings:jobBelongings, finishRelease:finishRelease, updateWaiverCore:updateWaiverCore, fmtDateFil:fmtDateFil, waiverDefaultItems:waiverDefaultItems, issuedForms:issuedForms, deviceLockAtRisk:deviceLockAtRisk, deviceLockWarningHTML:deviceLockWarningHTML, comebackSetupWarning:comebackSetupWarning, comebackDeductions:comebackDeductions, printDoc:printDoc, partsCharges:partsCharges, partsChargeSources:partsChargeSources, allDeductions:allDeductions, jobPartsCharge:jobPartsCharge, lineChargeFields:lineChargeFields, cbSetPay:cbSetPay, cbPartsCost:cbPartsCost, billedLines:billedLines, lineNoBill:lineNoBill, partsPendingNotCounted:partsPendingNotCounted, noBillFields:noBillFields, cbPayFields:cbPayFields, finalizePayoutCore:finalizePayoutCore, finalizePayoutCheck:finalizePayoutCheck, voidPayoutCore:voidPayoutCore, undoComebackCore:undoComebackCore, payoutStatusText:payoutStatusText, comebackPendingNotCounted:comebackPendingNotCounted, comebackTakenNote:comebackTakenNote, comebackDeductionsInPeriod:comebackDeductionsInPeriod, netPayoutRows:netPayoutRows, docPayout:docPayout, docMechCommission:docMechCommission, setProdPeriod:function(p,f,t){ PROD_PERIOD=p; PROD_FROM=f||''; PROD_TO=t||''; }, paymentsDoc:paymentsDoc, pmsGateMissing:pmsGateMissing, jobsMissingInfo:jobsMissingInfo, partNetMissing:partNetMissing, lessVatApplied:lessVatApplied, lessVatStale:lessVatStale, markLessVat:markLessVat, syncLessVat:syncLessVat, discVat:discVat, discountReasonPicker:discountReasonPicker, jobPLSplit:jobPLSplit, plForRange:plForRange, opexForRange:opexForRange, docPL:docPL, discountExVat:discountExVat, discountAmount:discountAmount, discountedLabor:discountedLabor, readDiscountObj:function(d){ return d; }, discountEditor:discountEditor, pmsDefaultMechs:pmsDefaultMechs, pmsReadyToSubmit:pmsReadyToSubmit, PMS_TEMPLATE:function(){ return PMS_TEMPLATE; }, pmsSectionMissing:pmsSectionMissing, orSeriesInRange:orSeriesInRange, orRangeGaps:orRangeGaps, inRptRange:inRptRange, setRptRangeRaw:function(k,r){ RPT_RANGE[k]=r; }, docDiscounts:docDiscounts, warnIfPlateOnBoard:warnIfPlateOnBoard, plFor:plFor, opexFor:opexFor, payFor:payFor, monthlyPay:monthlyPay, addMonths:addMonths, syncCollections:syncCollections, fmtFuel:fmtFuel, odo:odo, orSeed:orSeed,
     afterServiceMissing:afterServiceMissing, afterServiceDone:afterServiceDone, afterServiceStaff:afterServiceStaff,
     canWriteAfterService:canWriteAfterService, afterServiceSignerName:afterServiceSignerName, afterServiceBlock:afterServiceBlock,
     allocateSeriesNumber:allocateSeriesNumber, maxSeriesNo:maxSeriesNo, nextNo:nextNo,
