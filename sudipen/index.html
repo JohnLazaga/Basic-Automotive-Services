@@ -690,7 +690,7 @@ var BRANCH = {"id":"sudipen","slug":"sudipen","name":"Basic by JMSI — Sudipen"
 /* App version — stamped by build.js from the VERSION file + build date. Shown on
    the login screen and in the sidebar so each branch's installed version is
    visible (branches update by refreshing the page). */
-var APP_VERSION = 'v1.3.0 · 2026-11-25 · 19bf598';
+var APP_VERSION = 'v1.3.0 · 2026-11-26 · b6b0e36';
 
 /* ---- Brand / logo --------------------------------------------------------- */
 var BRAND = { red:'#F21717', redDark:'#CC0F0F', gold:'#FFC000' };
@@ -3215,6 +3215,14 @@ function partFields(l){
     '</div><div id="skuMsg" class="muted small">'+catalogHint()+'</div>'+
     (_lineForJob ? noBillFields(l) : '');
 }
+/* Weekly payouts for a charge: any whole number 1–52 can be typed (John, 2026-11-26);
+   the usual choices are offered as you type. Blank or 0 = all on the next payout. */
+var PAYOUTS_MAX=52;
+function payoutsN(n){ return Math.min(PAYOUTS_MAX, Math.max(1, Math.round(Number(n)||1))); }
+function payoutsInput(id, n){
+  return '<input id="'+id+'" type="text" inputmode="numeric" list="'+id+'List" value="'+attr(payoutsN(n))+'" onfocus="this.select()" autocomplete="off" style="max-width:8em"> <span class="small muted">weekly payout(s) — 1 = all on the next payout</span>'+
+    '<datalist id="'+id+'List">'+[1,2,3,4,5,6,8,10,12,16,20,26,52].map(function(k){ return '<option value="'+k+'">'; }).join('')+'</datalist>';
+}
 /* "Not billed": a replacement for a part damaged here. Who pays for it decides
    the mechanic's pay, so only an admin or Supervisor picks the mechanic. */
 var _lineForJob=false;
@@ -3225,7 +3233,7 @@ function noBillFields(l){
     ? '<select id="lnChargeTo"><option value="">— shop absorbs the cost —</option>'+mechs.map(function(s){ return '<option value="'+s.id+'"'+(l.chargeTo===s.id?' selected':'')+'>'+esc(s.name)+'</option>'; }).join('')+'</select>'
     : '<div class="small">'+(l.chargeTo?esc(staffName(l.chargeTo)):'Shop absorbs the cost')+' <span class="muted">· an admin or Supervisor sets this</span></div>';
   var n=Number(l.chargeN)||1, inst = can
-    ? '<select id="lnChargeN">'+[1,2,3,4,5,6,7,8].map(function(k){ return '<option value="'+k+'"'+(k===n?' selected':'')+'>'+(k===1?'All on the next payout':k+' weekly payouts')+'</option>'; }).join('')+'</select>' : '';
+    ? payoutsInput('lnChargeN', n) : '';
   return '<label class="chk mt8"><input type="checkbox" id="lnNoBill"'+(on?' checked':'')+' onchange="document.getElementById(\'lnChargeBox\').style.display=this.checked?\'\':\'none\'">'+
       ' Not billed — replaces a part damaged here; the customer is not charged</label>'+
     '<div id="lnChargeBox"'+(on?'':' style="display:none"')+'><div class="grid2">'+
@@ -3418,7 +3426,7 @@ function noBillFromForm(prev){
 function lineChargeFields(prev, on, to, n){
   var was=(prev&&prev.chargeTo)||'', at=(prev&&prev.chargeAt)||'';
   if(!to) at=''; else if(to!==was || !at) at=new Date().toISOString();
-  return { noBill:!!on, chargeTo:to, chargeN:Math.min(8, Math.max(1, Math.round(Number(n)||1))), chargeAt:at };
+  return { noBill:!!on, chargeTo:to, chargeN:payoutsN(n), chargeAt:at };
 }
 function saveLine(){
   var j=jobById(lineCtx.job); var data=readLine();
@@ -3670,7 +3678,7 @@ function cbPayFields(j){
   return '<div class="mt8"><b class="small">What the at-fault mechanic gives back</b>'+(can?'':' <span class="muted small">· an admin or Supervisor sets this</span>')+'</div>'+
     '<label class="chk"><input type="checkbox" id="cbGive"'+(cbGiveBack(j)?' checked':'')+dis+'> Their commission on the original job (once, on the next payout finalized)</label>'+
     '<label class="chk"><input type="checkbox" id="cbParts"'+(pc?' checked':'')+dis+'> The cost of the parts on this job — warranty only ('+peso(cbPartsCost(j))+' now)</label>'+
-    (can?field('Deduct the parts over','<select id="cbPartsN">'+[1,2,3,4,5,6,7,8].map(function(k){ return '<option value="'+k+'"'+(k===n?' selected':'')+'>'+(k===1?'All on the next payout':k+' weekly payouts')+'</option>'; }).join('')+'</select>',
+    (can?field('Deduct the parts over',payoutsInput('cbPartsN', n),
       'Keep each deduction to 20% of the week’s wages or less. Have the mechanic sign a Salary Deduction Agreement (Forms).'):'');
 }
 /* Net cost of this job’s part lines not charged on their own. */
@@ -3723,7 +3731,7 @@ function cbSetPay(j, give, parts, n){
   j.cbGiveBack=!!give;
   if(!parts || !j.comebackMechId){ j.cbChargeParts=null; return; }
   var was=j.cbChargeParts, keep=was && was.at && was.staffId===j.comebackMechId;
-  j.cbChargeParts={ at:keep?was.at:new Date().toISOString(), staffId:j.comebackMechId, n:Math.min(8, Math.max(1, Math.round(Number(n)||1))) };
+  j.cbChargeParts={ at:keep?was.at:new Date().toISOString(), staffId:j.comebackMechId, n:payoutsN(n) };
 }
 
 /* ---- Per-mechanic labor timer --------------------------------------------- */
